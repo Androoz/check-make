@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 256" role="img" aria-labelledby="title description">
+  <title id="title">CHECK / MAKE</title>
+  <desc id="description">Check Make wordmark with a checked isometric cube.</desc>
+  <g transform="translate(8)">
+    <g fill="none" stroke="#171A19" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M128 27 218 79v102l-90 52-90-52V79Z"/>
+      <path d="m38 79 90 52 90-52M128 131v102"/>
+    </g>
+    <path d="m49 142 55 53 104-101" fill="none" stroke="#35C98B" stroke-width="23" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="278" y="114" fill="#171A19" font-family="Arial Black, Arial, sans-serif" font-size="86" font-weight="900" letter-spacing="-4">CHECK</text>
+  <text x="278" y="212" fill="#171A19" font-family="Arial Black, Arial, sans-serif" font-size="86" font-weight="900" letter-spacing="-4">/ MAKE</text>
+</svg>

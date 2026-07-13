@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">Check Make symbol</title>
+  <g fill="none" stroke="#171A19" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M128 27 218 79v102l-90 52-90-52V79Z"/>
+    <path d="m38 79 90 52 90-52M128 131v102"/>
+  </g>
+  <path d="m49 142 55 53 104-101" fill="none" stroke="#35C98B" stroke-width="23" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

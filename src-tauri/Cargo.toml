@@ -1,13 +1,17 @@
 [package]
-name = "optimusprint"
-version = "0.1.0"
+name = "check-make"
+version = "0.2.0"
 edition = "2021"
 [lib]
-name = "optimusprint_lib"
+name = "check_make_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 stl_io = "0.8"
+rfd = "0.15"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

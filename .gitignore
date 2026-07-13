@@ -1,5 +1,8 @@
 node_modules/
 dist/
 src-tauri/target/
+src-tauri/gen/
+result.json
+/assets/optimusprint-icon.svg
 .DS_Store
 *.log
