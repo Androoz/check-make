@@ -44,16 +44,18 @@ npm run tauri build
 - deterministic rules for material, orientation, compatibility, and process validation
 - Core 3MF generation with millimetre units, baked orientation, removal of degenerate triangles, and Check Make analysis metadata
 - an export adapter registry that detects Bambu Studio, OrcaSlicer, PrusaSlicer, and UltiMaker Cura
-- Bambu Studio project export using the installed application's machine, process, and filament profiles
+- direct Bambu Studio project export using the installed application's machine, process, and filament profiles without launching the slicer
 - deterministic mapping of layer height, walls, shells, infill, support, brim, wall generator/order, seam, and temperatures into Bambu settings
-- post-export validation by reopening the generated project with Bambu Studio
+- active Bambu project-override markers so mapped values survive profile loading instead of reverting to system defaults
+- structural and setting-level validation before the generated project is saved, plus an integration test of Bambu Studio's effective settings
+- direct “Open in Bambu Studio” using a temporary project, alongside permanent “Save project…” export
 
 ## Important boundaries
 
 - An STL does not contain semantics, load direction, environment, or intended use. AI output is therefore presented as a hypothesis with evidence and confidence.
 - The current AI request uses one rendered view plus mesh measurements. Multi-view rendering and richer topology features are the next analysis milestone.
 - MCP is not a mechanism for a standalone app to reuse a consumer ChatGPT or Claude subscription. Check Make currently supports direct OpenAI API access. A future Check Make MCP server could let ChatGPT or Claude use Check Make as a tool, but that is a different interaction model.
-- Generic Core 3MF makes geometry, units, transforms, and metadata portable, but its process settings remain advisory. The Bambu Studio adapter creates a native project 3MF and validates it through the locally installed Bambu Studio CLI. OrcaSlicer, PrusaSlicer, and Cura are detected but their project adapters are clearly marked as planned rather than emitting misleading files.
+- Generic Core 3MF makes geometry, units, transforms, and metadata portable, but its process settings remain advisory. The Bambu Studio adapter writes the native project structure directly and validates all mapped settings before saving. OrcaSlicer, PrusaSlicer, and Cura are detected but their project adapters remain planned.
 - Native project export depends on the target slicer being installed. Bambu export currently supports the bundled 0.4 mm profiles for X1 Carbon, P1S, A1, and A1 mini.
 - Bambu Studio does not expose a single portable `speed preset` setting through this export path, so that recommendation remains advisory and is reported as a warning.
 - Basic export correction currently removes degenerate triangles and bakes the selected orientation. Full manifold repair, hole closing, self-intersection repair, and dimensional geometry changes remain future work.

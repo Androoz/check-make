@@ -61,7 +61,7 @@ The implemented Bambu Studio adapter:
 1. resolves the installed Bambu machine, process, and filament profile inheritance;
 2. overlays supported Check Make recommendations without changing the canonical rules;
 3. asks Bambu Studio to create the project 3MF;
-4. asks Bambu Studio to reopen the output and reports success only after validation.
+4. marks mapped keys as active project overrides, validates their values and markers before saving, and uses an integration test to verify Bambu Studio's effective settings after profile resolution.
 
 Mapped settings are layer height, wall loops, top/bottom shells, infill pattern/density, support, brim, wall generator, wall/infill order, seam, nozzle temperature, and build-plate temperature. Build orientation is already baked into the corrected mesh. The high-level speed preset remains advisory because it is not one portable Bambu process key.
 
