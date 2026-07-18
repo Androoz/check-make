@@ -1,34 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
   <title id="title">Check Make app icon</title>
-  <desc id="description">A checked isometric model transitioning from a blueprint into a manufactured part.</desc>
+  <desc id="description">A green check across an isometric component transitioning from blueprint to manufactured reality.</desc>
   <defs>
-    <clipPath id="app-shape"><rect width="1024" height="1024" rx="224"/></clipPath>
-    <pattern id="blueprint-grid" width="64" height="64" patternUnits="userSpaceOnUse">
-      <path d="M64 0H0V64" fill="none" stroke="#8DDCFF" stroke-width="2" opacity=".14"/>
-    </pattern>
+    <clipPath id="app-clip"><rect width="1024" height="1024" rx="220"/></clipPath>
     <clipPath id="blueprint-half"><rect width="512" height="1024"/></clipPath>
-    <clipPath id="made-half"><rect x="512" width="512" height="1024"/></clipPath>
+    <clipPath id="manufactured-half"><rect x="512" width="512" height="1024"/></clipPath>
+    <pattern id="blueprint-grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#4E91BD" stroke-width="2" opacity=".22"/>
+    </pattern>
+    <linearGradient id="blueprint-field" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#073B62"/><stop offset="1" stop-color="#052A49"/>
+    </linearGradient>
+    <radialGradient id="manufactured-field" cx="52%" cy="42%" r="78%">
+      <stop stop-color="#202523"/><stop offset="1" stop-color="#111514"/>
+    </radialGradient>
+    <linearGradient id="frame-face" x1=".15" y1="0" x2=".85" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".46" stop-color="#F8F8F6"/><stop offset=".72" stop-color="#E9EAE8"/><stop offset="1" stop-color="#C9CCCA"/>
+    </linearGradient>
+    <linearGradient id="frame-highlight" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset="1" stop-color="#E4E7E5"/>
+    </linearGradient>
+    <linearGradient id="check-face" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#58DDA2"/><stop offset=".5" stop-color="#35C98B"/><stop offset="1" stop-color="#27B97D"/>
+    </linearGradient>
+    <filter id="frame-shadow" x="-20%" y="-20%" width="150%" height="160%">
+      <feDropShadow dx="10" dy="14" stdDeviation="10" flood-color="#000000" flood-opacity=".42"/>
+    </filter>
+    <filter id="check-shadow" x="-25%" y="-25%" width="160%" height="175%">
+      <feDropShadow dx="5" dy="12" stdDeviation="8" flood-color="#001A13" flood-opacity=".62"/>
+    </filter>
   </defs>
-  <g clip-path="url(#app-shape)">
-    <rect width="1024" height="1024" fill="#171A19"/>
-    <rect width="512" height="1024" fill="#073A60"/>
+
+  <g clip-path="url(#app-clip)">
+    <rect width="1024" height="1024" fill="url(#manufactured-field)"/>
+    <rect width="512" height="1024" fill="url(#blueprint-field)"/>
     <rect width="512" height="1024" fill="url(#blueprint-grid)"/>
-    <path d="M512 0V1024" stroke="#8DDCFF" stroke-width="4" opacity=".7"/>
-    <g fill="none" stroke="#8DDCFF" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#blueprint-half)">
-      <path d="M512 188 794 351v322L512 836 230 673V351Z"/>
-      <path d="m230 351 282 163 282-163M512 514v322"/>
+    <path d="M512 0V1024" stroke="#68D3FF" stroke-width="3" opacity=".75"/>
+
+    <!-- One shared cube geometry, rendered as construction lines on the left. -->
+    <g clip-path="url(#blueprint-half)" fill="none" stroke-linecap="square" stroke-linejoin="miter">
+      <g stroke="#F2F9FF" stroke-width="12">
+        <path d="M512 150 820 325v390L512 890 204 715V325Z"/>
+        <path d="m204 325 308 175 308-175M512 500v390"/>
+      </g>
+      <g stroke="#D9F2FF" stroke-width="8" opacity=".95">
+        <path d="M512 205 300 325 512 445"/>
+        <path d="M250 366v322l262 148M468 525v287"/>
+      </g>
+      <g stroke="#75BDE8" stroke-width="4" opacity=".55">
+        <path d="M512 225 334 325 512 425"/>
+        <path d="M270 388v278l242 137"/>
+      </g>
     </g>
-    <g fill="none" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#made-half)">
-      <path d="M512 188 794 351v322L512 836 230 673V351Zm-282 163 282 163 282-163M512 514v322" stroke="#8D9491" stroke-width="70" opacity=".28" transform="translate(9 10)"/>
-      <path d="M512 188 794 351v322L512 836 230 673V351Zm-282 163 282 163 282-163M512 514v322" stroke="#FFFFFF" stroke-width="54"/>
+
+    <!-- The same geometry becomes a substantial, bevel-like white frame on the right. -->
+    <g clip-path="url(#manufactured-half)" fill="none" stroke-linecap="square" stroke-linejoin="bevel">
+      <path d="M512 150 820 325v390L512 890 204 715V325Zm-308 175 308 175 308-175M512 500v390" stroke="#929795" stroke-width="86" opacity=".48"/>
+      <path d="M512 150 820 325v390L512 890 204 715V325Zm-308 175 308 175 308-175M512 500v390" stroke="url(#frame-face)" stroke-width="72"/>
     </g>
-    <g fill="none" stroke="#C9F1FF" stroke-width="8" opacity=".9">
-      <path d="M158 226V732M134 226h48M134 732h48"/>
-      <path d="M204 816H458M204 792v48M458 792v48"/>
-      <circle cx="158" cy="184" r="18"/><path d="M126 184h64M158 152v64"/>
-      <circle cx="204" cy="816" r="14"/><path d="M180 816h48M204 792v48"/>
+
+    <!-- Minimal engineering dimensions, matching the approved reference. -->
+    <g fill="none" stroke="#DDF5FF" stroke-width="7" opacity=".95">
+      <path d="M118 165v675M94 165h48M94 840h48"/>
+      <path d="M96 312h44M96 520h44M96 708h44"/>
+      <circle cx="118" cy="126" r="17"/><path d="M88 126h60M118 96v60"/>
+      <circle cx="118" cy="866" r="17"/><path d="M88 866h60M118 836v60"/>
+      <path d="M204 920h265M204 895v50M469 895v50"/>
     </g>
   </g>
-  <path d="m270 535 220 181 274-318" fill="none" stroke="#176B50" stroke-width="108" stroke-linecap="round" stroke-linejoin="round" opacity=".34" transform="translate(0 10)"/>
-  <path d="m270 535 220 181 274-318" fill="none" stroke="#35C98B" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- The check is a foreground object with depth, not a flat overlay. -->
+  <path d="m225 520 241 170 351-316" fill="none" stroke="#0C3E2D" stroke-width="102" stroke-linecap="round" stroke-linejoin="round" opacity=".72" transform="translate(2 8)" filter="url(#check-shadow)"/>
+  <path d="m225 520 241 170 351-316" fill="none" stroke="url(#check-face)" stroke-width="86" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m225 520 241 170 351-316" fill="none" stroke="#A4F0CF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".68" transform="translate(-2 -11)"/>
 </svg>

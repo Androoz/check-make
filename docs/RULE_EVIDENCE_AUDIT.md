@@ -262,3 +262,20 @@ Still provisional:
 - the generated screening stage is ready, but no physical observations exist until a real printer, filament lot, process, environment, and measurement system are locked and the jobs are run.
 
 Detailed definitions and the physical pilot handoff are in `docs/P1_GEOMETRY_VALIDATION.md`.
+
+## External evidence reuse status — 2026-07-18
+
+Implemented:
+
+- a machine-readable external dataset catalog separate from bibliographic sources;
+- independent source-strength, access, integrity, license, outcome-match, and scope-match dimensions;
+- conservative eligibility states for fitting, priors, required import, directional use, and exclusion;
+- scope matching across process, material product/family, printer/model/kinematics, nozzle, layer height, enclosure, geometry class, and outcome;
+- CSV, JSON, and JSONL normalization through reviewed column mappings and unit conversions;
+- SHA-256 provenance for raw input, mapping, and normalized append-only observations;
+- reference-scope and per-rule gap-report generation;
+- tests proving that publication or remote raw availability alone cannot calibrate a rule.
+
+Current result: seven external dataset records are cataloged, but none is yet both locally checksum verified and sufficiently scoped to replace P1 confirmation. Image-only data remain in the monitoring track, NIST's industrial PC benchmark remains structural-method evidence rather than a consumer PLA/PETG threshold, and summarized studies remain directional.
+
+See `docs/EXTERNAL_EVIDENCE_ARCHITECTURE.md` and `docs/EXTERNAL_EVIDENCE_GAP_REPORT.md`.

@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs::{self, File, OpenOptions},
-    io::{BufReader, Cursor, Read, Write},
+    io::{BufRead, BufReader, Cursor, Read, Write},
     path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
@@ -114,6 +114,16 @@ struct PackageValidationReport {
     valid: bool,
     target: String,
     checks: Vec<PackageValidationCheck>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlanMetrics {
+    source: String,
+    material_grams: f64,
+    filament_length_mm: f64,
+    estimated_time_seconds: f64,
+    material_volume_cm3: f64,
+    warnings: Vec<String>,
 }
 #[derive(Deserialize)]
 struct RecommendationInput {
@@ -567,7 +577,7 @@ async fn analyze_model_with_openai(
         r#"You are Check Make's 3D-print engineering analyst. Identify what the model is likely to be and how it is likely used from the rendered view and deterministic mesh measurements. Treat file names and embedded model names or headers in geometry.metadata.clues as unverified naming clues: use them when relevant, identify their source in evidence, and do not infer material, load, impact, or environment from a name alone. Use unknown whenever the supplied evidence does not establish a decision variable; never fill an unknown with a typical or conservative default. Never claim certainty that the evidence does not support. Ask zero to three concise follow-up questions only when their answers could materially change material, orientation, strength, fit, support, or surface recommendations.
 
 Return ONLY one JSON object with exactly these fields:
-objectName (string), likelyPurpose (string), evidence (string array), assumptions (string array), questions (array of objects with id, question, why), environment (unknown|indoor|outdoor), load (unknown|none|static|cyclic), impact (unknown|none|medium|high), heat (unknown|normal|warm|hot), priority (unknown|strength|accuracy|finish|speed|flexibility), supportsAllowed (boolean or the string unknown), materialHint (unknown|PLA|PETG|ASA|TPU|PA-CF).
+objectName (string), likelyPurpose (string), evidence (string array), assumptions (string array), questions (array of objects with id, question, why), environment (unknown|indoor|outdoor), load (unknown|none|static|cyclic), impact (unknown|none|medium|high), heat (unknown|normal|warm|hot), priority (unknown|strength|accuracy|finish|speed|flexibility), supportsAllowed (boolean or the string unknown), materialHint (unknown|PLA|PETG|ASA|TPU|PA-CF), requirements (object with environment, load, impact, heat, priority, supportsAllowed; each contains status, source, confidence, evidence). Status is confirmed|inferred|assumed|not_applicable|unknown. Source is user|geometry|filename|ai|default. Every inferred or confirmed value must cite concrete evidence. Ask only questions whose answers could change a manufacturing recommendation; group related unknowns into one question.
 
 Mesh context and any prior user answers:
 {}"#,
@@ -1724,6 +1734,44 @@ fn unique_temp_dir() -> Result<PathBuf, String> {
         std::env::temp_dir().join(format!("check-make-export-{}-{stamp}", std::process::id()));
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     Ok(path)
+}
+
+fn gcode_number(line: &str, label: &str) -> Option<f64> {
+    if !line.contains(label) { return None; }
+    let value = line.split_once('=')?.1.trim().split_whitespace().next()?;
+    value.parse().ok()
+}
+
+fn duration_seconds(line: &str) -> Option<f64> {
+    if !line.contains("total estimated time:") { return None; }
+    let value = line.split_once("total estimated time:")?.1.trim();
+    let mut seconds = 0.0;
+    for token in value.split_whitespace() {
+        let (number, multiplier) = if let Some(number) = token.strip_suffix('h') { (number, 3600.0) }
+            else if let Some(number) = token.strip_suffix('m') { (number, 60.0) }
+            else if let Some(number) = token.strip_suffix('s') { (number, 1.0) }
+            else { continue };
+        seconds += number.trim_end_matches(';').parse::<f64>().ok()? * multiplier;
+    }
+    (seconds > 0.0).then_some(seconds)
+}
+
+fn read_gcode_plan_metrics(path: &Path) -> Result<PlanMetrics, String> {
+    let reader = BufReader::new(File::open(path).map_err(|e| format!("Cannot read OrcaSlicer G-code statistics: {e}"))?);
+    let mut material_grams = None; let mut filament_length_mm = None; let mut material_volume_cm3 = None; let mut estimated_time_seconds = None;
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("Cannot read OrcaSlicer G-code statistics: {e}"))?;
+        material_grams = material_grams.or_else(|| gcode_number(&line, "filament used [g]"));
+        filament_length_mm = filament_length_mm.or_else(|| gcode_number(&line, "filament used [mm]"));
+        material_volume_cm3 = material_volume_cm3.or_else(|| gcode_number(&line, "filament used [cm3]"));
+        estimated_time_seconds = estimated_time_seconds.or_else(|| duration_seconds(&line));
+        if material_grams.is_some() && filament_length_mm.is_some() && material_volume_cm3.is_some() && estimated_time_seconds.is_some() { break; }
+    }
+    let material_grams = material_grams.ok_or_else(|| "OrcaSlicer G-code omits filament weight.".to_string())?;
+    let filament_length_mm = filament_length_mm.ok_or_else(|| "OrcaSlicer G-code omits filament length.".to_string())?;
+    let material_volume_cm3 = material_volume_cm3.ok_or_else(|| "OrcaSlicer G-code omits extruded volume.".to_string())?;
+    let estimated_time_seconds = estimated_time_seconds.ok_or_else(|| "OrcaSlicer G-code omits estimated print time.".to_string())?;
+    Ok(PlanMetrics { source: "orca-slicer".into(), material_grams, filament_length_mm, estimated_time_seconds, material_volume_cm3, warnings: Vec::new() })
 }
 
 fn launch_bambu_project(executable: &Path, project: &Path) -> Result<(), String> {
@@ -3196,6 +3244,42 @@ fn create_and_open_bambu_project(
     Ok(result)
 }
 
+#[tauri::command]
+fn estimate_plan_metrics(
+    path: String,
+    orientation_id: String,
+    printer_id: String,
+    recommendations_json: String,
+) -> Result<PlanMetrics, String> {
+    let source = validate_model_path(&path)?;
+    let executable = find_executable("orca").ok_or_else(|| "OrcaSlicer is required for exact cost and weight estimates.".to_string())?;
+    let recommendations: Vec<RecommendationInput> = serde_json::from_str(&recommendations_json)
+        .map_err(|e| format!("Invalid recommendation payload: {e}"))?;
+    let temp = unique_temp_dir()?;
+    let unsliced = temp.join("check-make-estimate.3mf");
+    let output_dir = temp.join("sliced-output");
+    fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+    let result = (|| {
+        export_orca_project(&source, &unsliced, &orientation_id, "{\"purpose\":\"plan-estimate\"}", &printer_id, &recommendations)?;
+        let output = Command::new(&executable)
+            .arg("--slice").arg("0")
+            .arg("--outputdir").arg(&output_dir)
+            .arg(&unsliced)
+            .output()
+            .map_err(|e| format!("Could not start OrcaSlicer estimation: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("OrcaSlicer could not slice the candidate plan ({}). {}{}", output.status, String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)));
+        }
+        let gcode = fs::read_dir(&output_dir).map_err(|e| e.to_string())?
+            .filter_map(Result::ok).map(|entry| entry.path())
+            .find(|path| path.extension().and_then(|value| value.to_str()).map(str::to_ascii_lowercase).as_deref() == Some("gcode"))
+            .ok_or_else(|| "OrcaSlicer completed without creating a G-code file.".to_string())?;
+        read_gcode_plan_metrics(&gcode)
+    })();
+    fs::remove_dir_all(&temp).ok();
+    result
+}
+
 fn package_check(id: &str, label: &str, passed: bool, detail: impl Into<String>) -> PackageValidationCheck {
     PackageValidationCheck { id: id.into(), label: label.into(), passed, detail: detail.into() }
 }
@@ -3267,6 +3351,7 @@ pub fn run() {
             detect_slicer_adapters,
             create_manufacturing_package,
             create_and_open_bambu_project,
+            estimate_plan_metrics,
             validate_manufacturing_package
         ])
         .run(tauri::generate_context!())
@@ -3560,6 +3645,28 @@ mod tests {
             assert_eq!(settings["sparse_infill_pattern"], "gyroid");
             fs::remove_file(target).ok();
         }
+    }
+    #[test]
+    #[ignore = "requires an installed OrcaSlicer application"]
+    fn slices_plan_and_reads_material_and_time_metrics() {
+        if find_executable("orca").is_none() { return; }
+        let recommendations = serde_json::to_string(&vec![
+            json!({"setting":"material","value":"PLA"}),
+            json!({"setting":"layer_height","value":"0.20 mm"}),
+            json!({"setting":"wall_loops","value":3}),
+            json!({"setting":"top_layers","value":5}),
+            json!({"setting":"bottom_layers","value":4}),
+            json!({"setting":"infill_type","value":"Gyroid"}),
+            json!({"setting":"infill_percent","value":15}),
+            json!({"setting":"support","value":"Off"}),
+            json!({"setting":"brim","value":"Off"})
+        ]).unwrap();
+        let metrics = estimate_plan_metrics(
+            "../tests/fixtures/cube.stl".into(), "as-imported".into(), "bambu-x1c".into(), recommendations,
+        ).unwrap();
+        assert!(metrics.material_grams > 0.0);
+        assert!(metrics.estimated_time_seconds > 0.0);
+        assert!(metrics.material_volume_cm3 > 0.0);
     }
     #[test]
     #[ignore = "requires OrcaSlicer's installed system profile library"]

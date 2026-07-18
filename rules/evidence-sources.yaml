@@ -207,3 +207,48 @@
   accessed: 2026-07-14
   supports: Consistent tensile testing and specimen preparation for rigid and semi-rigid plastics, including reinforced grades.
   limitations: FFF process metadata and anisotropic specimen preparation must additionally be controlled and reported.
+
+- id: NIST-AMB2018-03
+  type: public-benchmark-dataset
+  title: AMB2018-03 Material Extrusion Polymer 3D Builds
+  organization: National Institute of Standards and Technology
+  url: https://www.nist.gov/ambench/amb2018-03-description
+  accessed: 2026-07-18
+  supports: Open benchmark data and metadata for mass, shape, voids, and tensile properties of material-extruded polycarbonate with declared equipment and process scope.
+  limitations: Stratasys Fortus 400mc, polycarbonate sheet, proprietary substrate, and benchmark geometry differ materially from Check Make's consumer-printer scope.
+
+- id: METU-FFF-ROUGHNESS-2026
+  type: research-dataset-record
+  title: Surface Roughness Dataset for Fused Filament Fabrication
+  organization: Middle East Technical University
+  url: https://open.metu.edu.tr/handle/11511/118881
+  accessed: 2026-07-18
+  supports: A tabular-data concept linking printing parameters and surface inclination to measured FFF surface roughness.
+  limitations: Check Make has not yet inspected or checksum-verified the raw asset, columns, process scope, or applicability of the recorded CC BY-NC-ND terms.
+
+- id: ZENODO-FFF-DEFECTS-2026
+  type: restricted-research-dataset
+  title: A Multi-Material PLA and ABS Image Dataset for Layerwise Defect Detection
+  organization: Zenodo record by IIITDM Jabalpur researcher
+  url: https://zenodo.org/records/19200472
+  accessed: 2026-07-18
+  supports: Structured FFF image labels for warping, stringing, and cracking under varied process parameters.
+  limitations: Files are restricted and the public record does not provide enough row-level geometry and process linkage for Check Make threshold fitting.
+
+- id: MENDELEY-FDM-DEFECTS-2024
+  type: research-dataset
+  title: Fused Deposition Modeling Defects
+  organization: Mendeley Data
+  url: https://data.mendeley.com/datasets/y74xtkk72z/1
+  accessed: 2026-07-18
+  supports: CC BY 4.0 processed images labeled for warping, layer delamination, and raster gaps.
+  limitations: The public description does not establish material, geometry, printer, or process variables needed for quantitative manufacturing-rule calibration.
+
+- id: FFF-BED-ADHESION-DEVICE-2022
+  type: peer-reviewed-experiment
+  title: Device for measuring part adhesion in FFF process
+  organization: HardwareX publication indexed by PubMed Central
+  url: https://pmc.ncbi.nlm.nih.gov/articles/PMC9058659/
+  accessed: 2026-07-18
+  supports: An open measurement device, specimen geometry, and repeatable approach for quantifying part-to-build-surface adhesion force.
+  limitations: The method improves pilot design but does not itself establish Check Make's geometry-to-brim decision boundary across materials and plates.

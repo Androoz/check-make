@@ -12,6 +12,8 @@
     "p1:record": "node validation/p1/pilot-cli.mjs record",
     "p1:verify": "node validation/p1/pilot-cli.mjs verify",
     "p1:summary": "node validation/p1/pilot-cli.mjs summary",
+    "evidence:report": "vite-node validation/evidence/generate-report.ts",
+    "evidence:import": "vite-node validation/evidence/import-external.ts",
     "tauri": "tauri"
   },
   "dependencies": {

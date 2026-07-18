@@ -8,7 +8,7 @@ Check Make is a local desktop assistant that analyzes a 3D model before asking t
 
 1. Drop or browse to an STL, 3MF, or OBJ model. No use-case questionnaire is required.
 2. Run local preliminary analysis or connect an OpenAI API key for vision-assisted analysis.
-3. Review the likely object, purpose, geometric evidence, evidence status, and any uncertainty-driven questions.
+3. Review the likely object and purpose, then answer only the structured questions that remain necessary to close the deterministic manufacturing requirements.
 4. Select the target printer and review rule-validated material, orientation, and process recommendations.
 5. Export either a portable Core 3MF or a slicer-native project 3MF containing the corrected model and applied settings.
 
@@ -21,7 +21,7 @@ npm install
 npm run tauri dev
 ```
 
-The OpenAI connection is optional. Entering an API key enables a Responses API request with mesh measurements and a rendered model view. The key is held only in application memory for the current session; it is not saved by Check Make.
+The OpenAI connection is optional. Entering an API key enables a Responses API request with mesh measurements and a labelled four-view model montage. The key is held only in application memory for the current session; it is not saved by Check Make.
 
 ## Verify and package
 
@@ -32,7 +32,7 @@ cd src-tauri && cargo test
 npm run tauri build
 ```
 
-The physical P1 geometry pilot can be generated and checked with `npm run p1:generate` and `npm run p1:verify`. See [P1 geometry validation](docs/P1_GEOMETRY_VALIDATION.md) before locking a printer/material scope or recording observations.
+Maintainers can generate and check the optional physical P1 geometry pilot with `npm run p1:generate` and `npm run p1:verify`; ordinary users are not expected to run it. External observations are cataloged and scope-matched with `npm run evidence:report`; see the [external evidence architecture](docs/EXTERNAL_EVIDENCE_ARCHITECTURE.md) and [generated gap report](docs/EXTERNAL_EVIDENCE_GAP_REPORT.md). See [P1 geometry validation](docs/P1_GEOMETRY_VALIDATION.md) before locking a printer/material scope or recording observations.
 
 ## Implemented in 0.2
 
@@ -43,7 +43,7 @@ The physical P1 geometry pilot can be generated and checked with `npm run p1:gen
 - save and reopen `.checkmake` project files that preserve the source model, analysis state, printer, answers, and export target
 - provider-neutral intelligence contract
 - optional OpenAI vision analysis using a session-only user API key
-- uncertainty-driven follow-up questions instead of an up-front object questionnaire
+- adaptive structured follow-up questions instead of an up-front object questionnaire; review and export stay gated until all decision-changing requirements are resolved
 - P1 geometry measurements for normalized bed coverage, leverage proxies, centroid offset, and connected overhang regions
 - P2 mesh topology findings, disconnected-part detection, visual geometry-risk overlays, printer-sized build plate, XYZ axes, fixed camera views, and explainable six-orientation comparison
 - deterministic rules for material, orientation, compatibility, and process validation
@@ -63,7 +63,8 @@ The physical P1 geometry pilot can be generated and checked with `npm run p1:gen
 ## Important boundaries
 
 - An STL does not contain semantics, load direction, environment, or intended use. AI output is therefore presented as a hypothesis with evidence and explicit unknown states.
-- The current AI request uses one rendered view plus mesh measurements. Deterministic topology features are available in the UI, but multi-view AI rendering and arbitrary-angle orientation search remain future analysis milestones.
+- Interpretation v2 uses a four-view montage plus deterministic mesh measurements and records status, source, evidence, and confidence per manufacturing requirement. Arbitrary-angle orientation search remains a future analysis milestone.
+- Lower cost and Lower weight are temporarily removed. Reliable estimates require complete slicer toolpaths for walls, infill, shells, support, and brim; mesh-volume or bounding-box estimates would imply false precision. OrcaSlicer export remains available, but Check Make no longer launches OrcaSlicer to calculate these alternatives.
 - MCP is not a mechanism for a standalone app to reuse a consumer ChatGPT or Claude subscription. Check Make currently supports direct OpenAI API access. A future Check Make MCP server could let ChatGPT or Claude use Check Make as a tool, but that is a different interaction model.
 - Generic Core 3MF export makes geometry, units, transforms, and metadata portable, but its process settings remain advisory. The Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print adapters write native project structures and validate mapped settings before saving.
 - Native project export depends on the target slicer being installed. Bambu export supports X1 Carbon, P1S, A1, and A1 mini; OrcaSlicer supports all twelve 0.4 mm printer profiles shown in the UI; PrusaSlicer supports MK4S and CORE One; UltiMaker Cura supports ELEGOO Neptune 4 Pro and Creality Ender-3 V3 SE/KE; Creality Print supports the Bambu Lab and Creality profiles available in its installed library.

@@ -1,4 +1,4 @@
-import type { DecisionTraceEntry, EvidenceLevel, ModelAnalysis, Questionnaire, Recommendation, Rule, RuleAction, RuleEvidenceRecord } from '../types';
+import type { DecisionTraceEntry, EvidenceLevel, ModelAnalysis, OptimizationObjective, Questionnaire, Recommendation, Rule, RuleAction, RuleEvidenceRecord } from '../types';
 import { analyzePurpose } from '../intent/analyzePurpose';
 import { englishReasons } from './reasons';
 
@@ -47,8 +47,9 @@ export function evaluateRules(
   analysis: ModelAnalysis,
   answers: Questionnaire,
   evidence: Record<string, RuleEvidenceRecord> = {},
+  objective: OptimizationObjective = 'recommended',
 ): Recommendation[] {
-  const ctx = { analysis, answers, intent: analyzePurpose(`${answers.purpose} ${answers.properties}`) };
+  const ctx = { analysis, answers, objective, intent: analyzePurpose(`${answers.purpose} ${answers.properties}`) };
   const selected = new Map<Recommendation['setting'], { action: RuleAction; applied: AppliedRule[] }>();
 
   for (const rule of [...rules].sort((left, right) => left.priority - right.priority)) {

@@ -15,11 +15,15 @@ describe('local model intelligence', () => {
   it('identifies flat model families without pretending to know exact semantics', () => {
     const result = localModelAnalysis(model);
     expect(result.objectName).toContain('plate');
-    expect(result.questions).toHaveLength(3);
+    expect(result.questions).toHaveLength(6);
     expect(result.environment).toBe('unknown');
     expect(result.load).toBe('unknown');
     expect(result.impact).toBe('unknown');
     expect(result.priority).toBe('unknown');
+    expect(result.requirements.priority.status).toBe('assumed');
+    expect(result.requirements.supportsAllowed.status).toBe('not_applicable');
+    expect(result.questions.map(question => question.id)).toEqual(['purpose', 'priority', 'load', 'impact', 'environment', 'heat']);
+    expect(result.questions.every(question => question.kind === 'text' || question.kind === 'single')).toBe(true);
   });
 
   it('uses model naming as an explicitly unverified identity clue', () => {
@@ -49,6 +53,8 @@ describe('local model intelligence', () => {
     expect(questionnaire.priority).toBe('strength');
     expect(questionnaire.supportsAllowed).toBe(false);
     expect(questionnaire.impact).toBe('unknown');
+    expect(refined.requirements.environment.status).toBe('confirmed');
+    expect(refined.requirements.load.source).toBe('user');
   });
 
   it('turns ambiguous mesh topology into evidence and consequential questions', () => {
@@ -59,6 +65,22 @@ describe('local model intelligence', () => {
 
     expect(result.evidence).toContain('2 disconnected mesh component(s) were detected.');
     expect(result.questions.map(question => question.id)).toEqual(expect.arrayContaining(['components', 'mesh-repair']));
-    expect(result.questions.length).toBeLessThanOrEqual(5);
+    expect(result.questions.length).toBeLessThanOrEqual(7);
+  });
+
+  it('closes deterministic requirements from structured answers instead of relying on prose keywords', () => {
+    const refined = refineLocalIntelligence(localModelAnalysis(model), {
+      purpose: 'Protective machine cover', priority: 'finish', load: 'none', impact: 'medium',
+      environment: 'outdoor', heat: 'warm',
+    });
+
+    expect(refined.purposeConfirmed).toBe(true);
+    expect(refined.priority).toBe('finish');
+    expect(refined.load).toBe('none');
+    expect(refined.impact).toBe('medium');
+    expect(refined.environment).toBe('outdoor');
+    expect(refined.heat).toBe('warm');
+    expect(refined.questions).toHaveLength(0);
+    expect(refined.requirements.heat).toMatchObject({ status: 'confirmed', source: 'user', confidence: 1 });
   });
 });

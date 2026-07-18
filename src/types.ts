@@ -1,5 +1,6 @@
 export type Material = 'PLA' | 'PETG' | 'ASA' | 'TPU' | 'PA-CF';
 export type Priority = 'strength' | 'accuracy' | 'finish' | 'speed' | 'flexibility';
+export type OptimizationObjective = 'recommended' | 'time' | 'cost' | 'weight' | 'performance';
 
 export interface Vec3 { x: number; y: number; z: number }
 export type ModelFormat = 'stl' | '3mf' | 'obj';
@@ -117,6 +118,17 @@ export interface PurposeSignals {
 export type ChecklistField = 'environment'|'load'|'impact'|'heat'|'priority'|'supportsAllowed';
 export interface InferenceValue<T> { value: T; confidence: number; evidence: string[] }
 export type BriefInference = { [K in ChecklistField]: InferenceValue<Questionnaire[K]> };
+export type RequirementStatus = 'confirmed'|'inferred'|'assumed'|'not_applicable'|'unknown';
+export type RequirementSource = 'user'|'geometry'|'filename'|'ai'|'default';
+export interface RequirementAssessment<T = Questionnaire[ChecklistField]> {
+  value: T;
+  status: RequirementStatus;
+  confidence: number;
+  evidence: string[];
+  source: RequirementSource;
+  affectsRecommendations: string[];
+}
+export type RequirementAssessments = { [K in ChecklistField]: RequirementAssessment<Questionnaire[K]> };
 export interface CompatibilityNotice { severity: 'info'|'warning'; message: string }
 export type SettingKey = 'material'|'nozzle_temperature'|'bed_temperature'|'orientation'|'layer_height'|'wall_loops'|'top_layers'|'bottom_layers'|'infill_type'|'infill_percent'|'support'|'brim'|'wall_generator'|'wall_order'|'seam'|'speed_preset';
 export type EvidenceLevel = 'A'|'B'|'C'|'D';
@@ -165,6 +177,14 @@ export interface ManufacturingPackageResult {
 }
 export interface PackageValidationCheck { id: string; label: string; passed: boolean; detail: string }
 export interface PackageValidationReport { valid: boolean; target: SlicerTarget; checks: PackageValidationCheck[] }
+export interface PlanMetrics {
+  source: 'orca-slicer';
+  materialGrams: number;
+  filamentLengthMm: number;
+  estimatedTimeSeconds: number;
+  materialVolumeCm3: number;
+  warnings: string[];
+}
 export interface RuleCondition { path: string; op: 'eq'|'gte'|'lte'|'gt'|'lt'; value: string|number|boolean }
 export interface RuleAction { setting: SettingKey; value: string|number|boolean; mode?: 'set'|'min'|'max' }
 export interface Rule { id: string; group: string; priority: number; conditions: RuleCondition[]; actions: RuleAction[]; reason: string; confidence: number }

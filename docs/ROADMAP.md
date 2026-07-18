@@ -1,4 +1,12 @@
-# Printer support roadmap
+# Check Make roadmap
+
+## Product experience
+
+- [ ] Rebuild the entire application GUI after the current Priority 3 result-presentation work. The redesign must preserve the implemented import, analysis, geometry, uncertainty, settings, printer-selection, evidence, and slicer-export capabilities while reorganizing them into a clearer model-first desktop workflow.
+
+The current visual direction is captured in [GUI concept v2](../assets/mockups/check-make-gui-concept-v2.png), with the [original GUI concept v1](../assets/mockups/check-make-gui-concept-v1.png) retained for comparison. These are non-functional mockups for product direction only; controls, navigation, layout, and status presentation are not implemented yet.
+
+## Printer support
 
 Check Make models a printer as a manufacturer, family, and exact variant. Variants may share slicer-profile conventions while retaining their own build volume, temperature limits, enclosure state, nozzle capabilities, and compatible materials.
 

@@ -1,0 +1,193 @@
+# External empirical datasets are reusable only through the scope matcher.
+# A publication record is not equivalent to locally verified raw observations.
+- id: NIST-AMB2018-03-PC-MATEX
+  sourceIds: [NIST-AMB2018-03, ASTM-F2971]
+  title: AMB2018-03 material-extrusion polycarbonate benchmark
+  sourceStrength: public-benchmark
+  dataAccess: raw-open
+  integrity: metadata-verified
+  license: NIST public data; verify terms for each downloaded asset
+  licenseUse: analysis-allowed
+  landingPage: https://www.nist.gov/ambench/amb2018-03-description
+  rawDataUrl: https://www.nist.gov/ambench/direct-am-bench-data-links-and-referencing-guidance
+  scope:
+    process: material-extrusion
+    materialFamilies: [PC]
+    materialProducts: [Stratasys polycarbonate]
+    printerManufacturers: [Stratasys]
+    printerModels: [Fortus 400mc]
+    kinematicClasses: [industrial-enclosed]
+    nozzleDiameterMm: [0.13]
+    layerHeightMm: [1.27]
+    enclosure: unknown
+    geometryClasses: [flat-sheet, tensile-coupon]
+  outcomeDomains: [mass, dimensions, void-fraction, tensile-properties]
+  proxyOutcomeDomains: [structural-strength]
+  variables: [raster-orientation, feedstock-characterization, mass, thickness, voids, tensile-properties]
+  ruleIds: [U01, U06, P02, Q01, Q02]
+  limitations: Industrial PC sheet process, proprietary support substrate, and unusual process dimensions do not transfer quantitatively to consumer PLA/PETG printing.
+  reviewedAt: 2026-07-18
+
+- id: METU-FFF-SURFACE-ROUGHNESS-2026
+  sourceIds: [METU-FFF-ROUGHNESS-2026]
+  title: Surface Roughness Dataset for Fused Filament Fabrication
+  sourceStrength: curated-research-dataset
+  dataAccess: metadata-only
+  integrity: metadata-verified
+  license: CC BY-NC-ND 4.0 on repository record; dataset asset terms require review
+  licenseUse: unknown
+  landingPage: https://open.metu.edu.tr/handle/11511/118881
+  rawDataUrl: https://doi.org/10.5281/zenodo.18827517
+  scope:
+    process: material-extrusion
+    materialFamilies: []
+    materialProducts: []
+    printerManufacturers: []
+    printerModels: []
+    kinematicClasses: []
+    nozzleDiameterMm: []
+    layerHeightMm: []
+    enclosure: unknown
+    geometryClasses: [inclined-surface]
+  outcomeDomains: [surface-roughness]
+  proxyOutcomeDomains: [surface-finish]
+  variables: [surface-inclination, printing-parameters, surface-roughness]
+  ruleIds: [G01, G08, Q03, Q05]
+  limitations: The repository describes a tabular dataset, but Check Make has not inspected its columns, raw asset, license applicability, or process metadata.
+  reviewedAt: 2026-07-18
+
+- id: ZENODO-FFF-DEFECT-IMAGES-2026
+  sourceIds: [ZENODO-FFF-DEFECTS-2026]
+  title: PLA and ABS layerwise defect image dataset
+  sourceStrength: curated-research-dataset
+  dataAccess: raw-restricted
+  integrity: metadata-verified
+  license: Restricted files; terms unavailable without access
+  licenseUse: unknown
+  landingPage: https://zenodo.org/records/19200472
+  scope:
+    process: material-extrusion
+    materialFamilies: [PLA, ABS]
+    materialProducts: []
+    printerManufacturers: []
+    printerModels: []
+    kinematicClasses: [delta]
+    nozzleDiameterMm: []
+    layerHeightMm: []
+    enclosure: false
+    geometryClasses: [defect-provocation-coupon]
+  outcomeDomains: [defect-image-classification]
+  proxyOutcomeDomains: [adhesion-failure, warping, layer-delamination]
+  variables: [nozzle-temperature, bed-temperature, print-speed, cooling, layerwise-images]
+  ruleIds: [G03, G04, G09, P07]
+  limitations: Images are useful for monitoring research, but restricted assets and incomplete tabular geometry/process linkage prevent threshold fitting.
+  reviewedAt: 2026-07-18
+
+- id: MENDELEY-FDM-DEFECT-IMAGES-2024
+  sourceIds: [MENDELEY-FDM-DEFECTS-2024]
+  title: Fused Deposition Modeling Defects image dataset
+  sourceStrength: curated-research-dataset
+  dataAccess: raw-open
+  integrity: metadata-verified
+  license: CC BY 4.0
+  licenseUse: analysis-allowed
+  landingPage: https://data.mendeley.com/datasets/y74xtkk72z/1
+  rawDataUrl: https://data.mendeley.com/datasets/y74xtkk72z/1
+  scope:
+    process: material-extrusion
+    materialFamilies: []
+    materialProducts: []
+    printerManufacturers: []
+    printerModels: []
+    kinematicClasses: []
+    nozzleDiameterMm: []
+    layerHeightMm: []
+    enclosure: unknown
+    geometryClasses: [defect-image]
+  outcomeDomains: [defect-image-classification]
+  proxyOutcomeDomains: [warping, layer-delamination]
+  variables: [processed-images, defect-label]
+  ruleIds: [G03, G04, G09, P07]
+  limitations: Process settings, geometry factors, material scope, and raw quantitative deformation are not sufficiently described for manufacturing-rule calibration.
+  reviewedAt: 2026-07-18
+
+- id: FFF-BED-ADHESION-DEVICE-2022
+  sourceIds: [FFF-BED-ADHESION-DEVICE-2022]
+  title: Open device and method for measuring FFF part adhesion
+  sourceStrength: peer-reviewed-experiment
+  dataAccess: summary-only
+  integrity: metadata-verified
+  license: Article and linked design files have source-specific open licenses
+  licenseUse: analysis-allowed
+  landingPage: https://pmc.ncbi.nlm.nih.gov/articles/PMC9058659/
+  scope:
+    process: material-extrusion
+    materialFamilies: []
+    materialProducts: []
+    printerManufacturers: []
+    printerModels: []
+    kinematicClasses: []
+    nozzleDiameterMm: []
+    layerHeightMm: []
+    enclosure: unknown
+    geometryClasses: [adhesion-test-specimen]
+  outcomeDomains: [bed-adhesion-force]
+  proxyOutcomeDomains: [adhesion-failure]
+  variables: [build-surface, material, adhesion-force, specimen-geometry]
+  ruleIds: [G03, G04, G09, P07]
+  limitations: The measurement method can improve Check Make's pilot, but summarized results without normalized raw observations cannot set brim thresholds.
+  reviewedAt: 2026-07-18
+
+- id: OVERHANG-PLA-2025-SUMMARY
+  sourceIds: [OVERHANG-PLA-2025]
+  title: PLA overhang angle and nozzle-temperature experiment
+  sourceStrength: peer-reviewed-experiment
+  dataAccess: summary-only
+  integrity: metadata-verified
+  license: Article access; raw-data reuse terms not recorded
+  licenseUse: unknown
+  landingPage: https://doi.org/10.56862/irajtma.v4i2.248
+  scope:
+    process: material-extrusion
+    materialFamilies: [PLA]
+    materialProducts: []
+    printerManufacturers: []
+    printerModels: []
+    kinematicClasses: []
+    nozzleDiameterMm: []
+    layerHeightMm: []
+    enclosure: unknown
+    geometryClasses: [inclined-overhang]
+  outcomeDomains: [overhang-surface-roughness]
+  proxyOutcomeDomains: [support-need, surface-finish]
+  variables: [overhang-angle, nozzle-temperature, surface-roughness]
+  ruleIds: [G05, G06, G07, Q05, Q09, Q10]
+  limitations: Nine PLA conditions support parameter interaction directionally; no imported raw table, universal failure boundary, bridge span, or printer transfer is established.
+  reviewedAt: 2026-07-18
+
+- id: DAVE-PLA-TENSILE-2021-SUMMARY
+  sourceIds: [DAVE-2021]
+  title: PLA infill, density, and orientation tensile experiment
+  sourceStrength: peer-reviewed-experiment
+  dataAccess: summary-only
+  integrity: metadata-verified
+  license: Publication terms; raw-data reuse terms not recorded
+  licenseUse: unknown
+  landingPage: https://doi.org/10.1177/0954406219856383
+  scope:
+    process: material-extrusion
+    materialFamilies: [PLA]
+    materialProducts: []
+    printerManufacturers: []
+    printerModels: []
+    kinematicClasses: []
+    nozzleDiameterMm: []
+    layerHeightMm: []
+    enclosure: unknown
+    geometryClasses: [tensile-coupon]
+  outcomeDomains: [tensile-properties]
+  proxyOutcomeDomains: [structural-strength]
+  variables: [infill-pattern, infill-density, build-orientation, tensile-properties]
+  ruleIds: [U01, U06, P02, Q01, Q02]
+  limitations: Published PLA coupon results support factor selection but cannot set family-wide wall or infill rules without raw normalized observations and scope matching.
+  reviewedAt: 2026-07-18

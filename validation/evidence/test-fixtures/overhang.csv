@@ -1,0 +1,4 @@
+id,material,angle_deg,temp_c,roughness_mm
+obs-1,PLA,35,210,0.012
+obs-2,PLA,45,220,0.026
+

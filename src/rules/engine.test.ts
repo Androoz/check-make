@@ -27,3 +27,13 @@ it('reports an overwritten set action as a conflict and explains only the final 
   expect(result.trace[0]).toMatchObject({ ruleId: 'base', state: 'superseded', conflictsWithFinal: true });
   expect(result.trace[1]).toMatchObject({ ruleId: 'outdoor', state: 'active', conflictsWithFinal: false });
 });
+
+it('applies an optimization objective without replacing the original user priority', () => {
+  const objectiveRules: Rule[] = [
+    {id:'strength-base',group:'quality',priority:1,conditions:[{path:'answers.priority',op:'eq',value:'strength'}],actions:[{setting:'wall_loops',value:4,mode:'min'}],reason:'strength',confidence:.8},
+    {id:'time-objective',group:'optimization',priority:2,conditions:[{path:'objective',op:'eq',value:'time'}],actions:[{setting:'layer_height',value:'0.24 mm',mode:'set'}],reason:'time',confidence:.7},
+  ];
+  const result = evaluateRules(objectiveRules, analysis, { ...answers, priority: 'strength' }, {}, 'time');
+  expect(result.find(item => item.setting === 'wall_loops')?.value).toBe(4);
+  expect(result.find(item => item.setting === 'layer_height')?.value).toBe('0.24 mm');
+});

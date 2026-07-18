@@ -1,0 +1,60 @@
+# Reference scopes expose evidence gaps before a real printer/material lot is locked.
+- id: P1-X1C-PLA-ADHESION
+  label: Consumer PLA adhesion screening on the default X1 Carbon reference profile
+  ruleIds: [G03, G04, G09, P07]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    geometryClass: adhesion-test-specimen
+    outcomeDomain: adhesion-failure
+
+- id: P1-X1C-PLA-OVERHANG
+  label: Consumer PLA unsupported-overhang screening on the default X1 Carbon reference profile
+  ruleIds: [G05, G06, G07, Q09, Q10]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    geometryClass: inclined-overhang
+    outcomeDomain: support-need
+
+- id: P3-X1C-PLA-SURFACE
+  label: Consumer PLA inclined-surface quality on the default X1 Carbon reference profile
+  ruleIds: [G01, G08, Q03, Q05]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    geometryClass: inclined-surface
+    outcomeDomain: surface-roughness
+
+- id: P2-X1C-PLA-TENSILE
+  label: Consumer PLA tensile behavior on the default X1 Carbon reference profile
+  ruleIds: [U01, U06, P02, Q01, Q02]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    geometryClass: tensile-coupon
+    outcomeDomain: tensile-properties

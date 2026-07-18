@@ -12,23 +12,20 @@ import { evaluateRules } from './rules/engine';
 import { ruleEvidenceById, rules } from './rules/load';
 import { checkBuildVolume, checkMaterialCompatibility } from './material/compatibility';
 import { getPrinter, printerFamilies } from './printers/profiles';
-import { analyzeWithOpenAI, localModelAnalysis, questionnaireFromIntelligence, refineLocalIntelligence } from './ai/modelIntelligence';
+import { analyzeWithOpenAI, localModelAnalysis, prepareIntelligenceForReview, questionnaireFromIntelligence, refineLocalIntelligence } from './ai/modelIntelligence';
 import { packageFileName, serializeRecommendations } from './export/manufacturing';
 import { adapterPlaceholders, mergeDetectedAdapters, suggestSlicerTarget, supportsPrinter } from './export/adapters';
+import { RecommendationResults } from './results/RecommendationResults';
+import { buildPlanAlternatives } from './results/alternatives';
+import type { PlanObjective } from './results/alternatives';
+import { assessDecisionReadiness } from './decision/readiness';
 import type { AIConnection, ModelIntelligence } from './ai/modelIntelligence';
-import type { ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, Recommendation, SlicerAdapterStatus, SlicerTarget } from './types';
+import type { ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, SlicerAdapterStatus, SlicerTarget } from './types';
 import './styles.css';
 import './desktop-mvp.css';
 
 type View = 'import' | 'analysis' | 'export';
 type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare';
-const labels: Record<string, string> = {
-  material: 'Material', nozzle_temperature: 'Nozzle temperature', bed_temperature: 'Build plate temperature',
-  orientation: 'Build orientation', layer_height: 'Layer height', wall_loops: 'Wall loops', top_layers: 'Top shell layers',
-  bottom_layers: 'Bottom shell layers', infill_type: 'Infill pattern', infill_percent: 'Infill density', support: 'Supports',
-  brim: 'Brim', wall_generator: 'Wall generator', wall_order: 'Wall order', seam: 'Seam position', speed_preset: 'Speed preset',
-};
-
 function PreparedModel({ geometry, orientationId, risk = false, color = '#35c98b', position = [0, 0, 0], opacity = 1 }: { geometry: THREE.BufferGeometry; orientationId: string; risk?: boolean; color?: string; position?: [number, number, number]; opacity?: number }) {
   const prepared = useMemo(() => risk ? riskVisualizationGeometry(geometry, orientationId) : geometryForOrientation(geometry, orientationId), [geometry, orientationId, risk]);
   const centeredPosition = useMemo(() => {
@@ -70,15 +67,28 @@ function PrinterAxes({ width, depth }: { width: number; depth: number }) {
   </group>;
 }
 
-function CapturePreview({ captureKey, onCapture }: { captureKey: string; onCapture: (image: string) => void }) {
+function CapturePreview({ captureKey, onCapture, distance, targetY }: { captureKey: string; onCapture: (image: string) => void; distance: number; targetY: number }) {
   const { gl, scene, camera } = useThree();
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      gl.render(scene, camera);
-      onCapture(gl.domElement.toDataURL('image/png'));
+      const position = camera.position.clone(); const quaternion = camera.quaternion.clone(); const up = camera.up.clone();
+      const views: CameraView[] = ['isometric', 'front', 'right', 'top'];
+      const tileWidth = gl.domElement.width; const tileHeight = gl.domElement.height;
+      const montage = document.createElement('canvas'); montage.width = tileWidth * 2; montage.height = tileHeight * 2;
+      const context = montage.getContext('2d');
+      views.forEach((view, index) => {
+        const pose = cameraPose(view, distance, targetY);
+        camera.position.set(...pose.position); camera.up.set(...pose.up); camera.lookAt(...pose.target); camera.updateProjectionMatrix();
+        gl.render(scene, camera);
+        const x = (index % 2) * tileWidth; const y = Math.floor(index / 2) * tileHeight;
+        context?.drawImage(gl.domElement, x, y);
+        if (context) { context.fillStyle = 'rgba(10,18,24,.72)'; context.fillRect(x + 12, y + 12, 92, 28); context.fillStyle = '#fff'; context.font = '16px sans-serif'; context.fillText(view, x + 22, y + 32); }
+      });
+      camera.position.copy(position); camera.quaternion.copy(quaternion); camera.up.copy(up); camera.updateProjectionMatrix(); gl.render(scene, camera);
+      onCapture(montage.toDataURL('image/png'));
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [captureKey, gl, scene, camera, onCapture]);
+  }, [captureKey, gl, scene, camera, onCapture, distance, targetY]);
   return null;
 }
 
@@ -107,13 +117,13 @@ function Preview({ geometry, orientationId = 'as-imported', mode = 'original', p
       {mode === 'compare' ? <><PreparedModel geometry={geometry} orientationId="as-imported" color="#8a969c" opacity={0.72} position={[-comparisonOffset, 0, 0]}/><PreparedModel geometry={geometry} orientationId={orientationId} position={[comparisonOffset, 0, 0]}/></> : <PreparedModel geometry={geometry} orientationId={mode === 'original' ? 'as-imported' : orientationId} risk={mode === 'risk'}/>}
     </group>}
     <OrbitControls makeDefault target={[0, targetY, 0]}/>
-    {geometry && captureKey && onCapture && <CapturePreview captureKey={captureKey} onCapture={onCapture}/>}
+    {geometry && captureKey && onCapture && <CapturePreview captureKey={captureKey} onCapture={onCapture} distance={cameraDistance} targetY={targetY}/>}
   </Canvas><div className="scene-controls"><div><button className={showPlate ? 'active' : ''} aria-pressed={showPlate} onClick={() => setShowPlate(current => !current)}>Build plate</button><button className={showAxes ? 'active' : ''} aria-pressed={showAxes} onClick={() => setShowAxes(current => !current)}>XYZ axes</button></div><label>View<select value={cameraView} onChange={event => setCameraView(event.target.value as CameraView)}><option value="isometric">Isometric</option><option value="top">Top</option><option value="front">Front</option><option value="back">Back</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option></select></label></div>{mode === 'risk' && <div className="risk-legend"><span><i className="risk-normal"/>Regular surface</span><span><i className="risk-bed"/>Bed contact</span><span><i className="risk-overhang"/>Overhang</span><span><i className="risk-severe"/>Downward face</span></div>}{mode === 'compare' && <div className="comparison-legend"><span>Original</span><span>Selected orientation</span></div>}{showPlate && <div className="plate-size-label">Build plate {plateSize.x} × {plateSize.y} mm</div>}</div>;
 }
 
 function StepBar({ view, onSave, onOpen, canSave }: { view: View; onSave: () => void; onOpen: () => void; canSave: boolean }) {
   const views: View[] = ['import', 'analysis', 'export'];
-  return <nav className="stepbar"><div className="app-identity"><img src="/check-make-logo.svg" alt="Check Make app icon"/><span>Check Make</span></div><div className="project-actions"><button className="quiet" onClick={onOpen}>Open project…</button><button className="quiet" disabled={!canSave} onClick={onSave}>Save project…</button></div><div className="steps">{[
+  return <nav className="stepbar"><div className="app-identity"><img src="/check-make-symbol.png" alt=""/><span>Check Make</span></div><div className="project-actions"><button className="quiet" onClick={onOpen}>Open project…</button><button className="quiet" disabled={!canSave} onClick={onSave}>Save project…</button></div><div className="steps">{[
     ['import', '1', 'Import model'], ['analysis', '2', 'AI analysis'], ['export', '3', 'Create 3MF'],
   ].map(([id, number, label]) => <div className={`${view === id ? 'active ' : ''}${views.indexOf(view) > views.indexOf(id as View) ? 'done' : ''}`} key={id}>
     <b>{number}</b><span>{label}</span>
@@ -141,15 +151,26 @@ export default function App() {
   const [adapters, setAdapters] = useState<SlicerAdapterStatus[]>(adapterPlaceholders);
   const [previewMode, setPreviewMode] = useState<PreviewMode>('recommended');
   const [previewOrientationId, setPreviewOrientationId] = useState('as-imported');
+  const [planObjective, setPlanObjective] = useState<PlanObjective>('recommended');
   const fileInput = useRef<HTMLInputElement>(null);
   const printer = getPrinter(printerId);
   const suggestedPackageTarget = useMemo(() => suggestSlicerTarget(adapters, printerId), [adapters, printerId]);
   const suggestedPackageAdapter = adapters.find(adapter => adapter.target === suggestedPackageTarget) ?? adapterPlaceholders[0];
   const questionnaire = useMemo(() => intelligence ? questionnaireFromIntelligence(intelligence, printer) : undefined, [intelligence, printer]);
-  const orientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, questionnaire.priority) : undefined, [analysis, questionnaire]);
-  const orientationComparisons = useMemo(() => analysis && questionnaire ? compareOrientations(analysis, questionnaire.priority) : [], [analysis, questionnaire]);
-  const evaluated = useMemo(() => analysis ? { ...analysis, orientationLabel: orientation?.label ?? 'As imported' } : undefined, [analysis, orientation]);
-  const recommendations = useMemo(() => evaluated && questionnaire ? evaluateRules(rules, evaluated, questionnaire, ruleEvidenceById) : [], [evaluated, questionnaire]);
+  const recommendedOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, questionnaire.priority) : undefined, [analysis, questionnaire]);
+  const fasterOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, 'speed') : undefined, [analysis, questionnaire]);
+  const performanceOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, 'strength') : undefined, [analysis, questionnaire]);
+  const orientation = planObjective === 'time' ? fasterOrientation : planObjective === 'performance' ? performanceOrientation : recommendedOrientation;
+  const orientationPriority = planObjective === 'time' ? 'speed' : planObjective === 'performance' ? 'strength' : questionnaire?.priority;
+  const orientationComparisons = useMemo(() => analysis && orientationPriority ? compareOrientations(analysis, orientationPriority) : [], [analysis, orientationPriority]);
+  const recommendedEvaluated = useMemo(() => analysis ? { ...analysis, orientationLabel: recommendedOrientation?.label ?? 'As imported' } : undefined, [analysis, recommendedOrientation]);
+  const fasterEvaluated = useMemo(() => analysis ? { ...analysis, orientationLabel: fasterOrientation?.label ?? 'As imported' } : undefined, [analysis, fasterOrientation]);
+  const performanceEvaluated = useMemo(() => analysis ? { ...analysis, orientationLabel: performanceOrientation?.label ?? 'As imported' } : undefined, [analysis, performanceOrientation]);
+  const recommendedPlan = useMemo(() => recommendedEvaluated && questionnaire ? evaluateRules(rules, recommendedEvaluated, questionnaire, ruleEvidenceById, 'recommended') : [], [questionnaire, recommendedEvaluated]);
+  const fasterPlan = useMemo(() => fasterEvaluated && questionnaire ? evaluateRules(rules, fasterEvaluated, questionnaire, ruleEvidenceById, 'time') : [], [fasterEvaluated, questionnaire]);
+  const performancePlan = useMemo(() => performanceEvaluated && questionnaire ? evaluateRules(rules, performanceEvaluated, questionnaire, ruleEvidenceById, 'performance') : [], [performanceEvaluated, questionnaire]);
+  const planAlternatives = useMemo(() => buildPlanAlternatives(recommendedPlan, fasterPlan, performancePlan), [fasterPlan, performancePlan, recommendedPlan]);
+  const recommendations = planObjective === 'time' ? fasterPlan : planObjective === 'performance' ? performancePlan : recommendedPlan;
   const material = recommendations.find(item => item.setting === 'material')?.value as Material | undefined;
   const notices = useMemo(() => material && analysis ? [...checkMaterialCompatibility(material, printer), ...checkBuildVolume(analysis, printer)] : [], [material, printer, analysis]);
   const nativeProjectTarget = packageTarget === 'bambu' || packageTarget === 'orca' || packageTarget === 'prusa' || packageTarget === 'cura' || packageTarget === 'creality';
@@ -158,10 +179,8 @@ export default function App() {
   const selectedAdapter = adapters.find(item => item.target === packageTarget);
   const selectedPrinterSupported = supportsPrinter(selectedAdapter, printerId);
   const supportedPrinterNames = selectedAdapter?.supportedPrinterIds?.map(id => getPrinter(id).model).join(', ') ?? '';
-  const unknownRequirements = questionnaire ? [
-    ['environment', questionnaire.environment], ['load', questionnaire.load], ['impact', questionnaire.impact],
-    ['heat', questionnaire.heat], ['priority', questionnaire.priority], ['support allowance', questionnaire.supportsAllowed],
-  ].filter(([, value]) => value === 'unknown').map(([label]) => label) : [];
+  const readiness = useMemo(() => intelligence ? assessDecisionReadiness(intelligence) : undefined, [intelligence]);
+  const decisionGaps = readiness?.gaps.map(gap => ({ id: gap.id, label: gap.label, why: gap.reason })) ?? [];
   const importedBuildVolumeNotice = analysis ? checkBuildVolume(analysis, printer)[0] : undefined;
 
   useEffect(() => {
@@ -173,12 +192,16 @@ export default function App() {
     if (!packageTargetManuallySelected) setPackageTarget(suggestedPackageTarget);
   }, [packageTargetManuallySelected, suggestedPackageTarget]);
 
+  useEffect(() => {
+    if (planObjective !== 'recommended' && !planAlternatives.find(item => item.id === planObjective)?.available) setPlanObjective('recommended');
+  }, [planAlternatives, planObjective]);
+
   const selectPrinter = (id: string) => {
     setPrinterId(id); setPackageTargetManuallySelected(false);
     setPackageTarget(suggestSlicerTarget(adapters, id));
   };
 
-  const resetAnalysis = () => { setIntelligence(undefined); setFollowUps({}); setStatus(''); setValidationReport(undefined); };
+  const resetAnalysis = () => { setIntelligence(undefined); setFollowUps({}); setStatus(''); setValidationReport(undefined); setPlanObjective('recommended'); };
   const loadBrowserFile = async (file?: File) => {
     if (!file) return;
     setBusy(true); setError(''); resetAnalysis();
@@ -214,7 +237,7 @@ export default function App() {
 
   const saveProject = async () => {
     if (!analysis || !sourceModelPath) return;
-    const contents = JSON.stringify({ product: 'Check Make', schemaVersion: 1, savedAt: new Date().toISOString(), sourcePath: sourceModelPath, view, intelligence, printerId, followUps, packageTarget }, null, 2);
+    const contents = JSON.stringify({ product: 'Check Make', schemaVersion: 2, savedAt: new Date().toISOString(), sourcePath: sourceModelPath, view, intelligence, printerId, followUps, packageTarget, planObjective }, null, 2);
     const stem = analysis.fileName.replace(/\.(?:stl|3mf|obj)$/i, '');
     try {
       const saved = await invoke<string | null>('save_check_make_project', { defaultName: `${stem}.checkmake`, contents });
@@ -227,10 +250,10 @@ export default function App() {
     try {
       const contents = await invoke<string | null>('open_check_make_project');
       if (!contents) return;
-      const project = JSON.parse(contents) as { sourcePath?: string; view?: View; intelligence?: ModelIntelligence; printerId?: string; followUps?: Record<string, string>; packageTarget?: SlicerTarget };
+      const project = JSON.parse(contents) as { sourcePath?: string; view?: View; intelligence?: ModelIntelligence; printerId?: string; followUps?: Record<string, string>; packageTarget?: SlicerTarget; planObjective?: PlanObjective };
       if (!project.sourcePath) throw new Error('The project does not reference its source model.');
       if (!await loadPath(project.sourcePath)) return;
-      setIntelligence(project.intelligence); setPrinterId(project.printerId ?? 'bambu-x1c'); setFollowUps(project.followUps ?? {}); setPackageTarget(project.packageTarget ?? 'generic'); setPackageTargetManuallySelected(Boolean(project.packageTarget)); setView(project.intelligence ? project.view ?? 'analysis' : 'import');
+      setIntelligence(project.intelligence ? prepareIntelligenceForReview(project.intelligence) : undefined); setPrinterId(project.printerId ?? 'bambu-x1c'); setFollowUps(project.followUps ?? {}); setPackageTarget(project.packageTarget ?? 'generic'); setPackageTargetManuallySelected(Boolean(project.packageTarget)); setPlanObjective(project.planObjective === 'time' || project.planObjective === 'performance' ? project.planObjective : 'recommended'); setView(project.intelligence ? project.view ?? 'analysis' : 'import');
       setStatus('Check Make project reopened.');
     } catch (reason) { setError(`Could not open project. ${String(reason)}`); }
   };
@@ -274,9 +297,10 @@ export default function App() {
   };
   const createPackage = async (mode: 'save' | 'open' = 'save') => {
     if (!sourcePath || !analysis || !intelligence || !orientation) { setError('3MF creation requires a model imported by the desktop app.'); return; }
+    if (readiness?.conservativePlan !== 'ready') { setError('Check Make cannot export until every decision-changing requirement has been resolved.'); setView('analysis'); return; }
     setBusy(true); setError('');
     try {
-      const metadata = JSON.stringify({ product: 'Check Make', schemaVersion: 2, intelligence, printer, recommendations, notices }, null, 2);
+      const metadata = JSON.stringify({ product: 'Check Make', schemaVersion: 2, intelligence, printer, planObjective, recommendations, notices }, null, 2);
       const args = {
         path: sourcePath, orientationId: orientation.id, metadataJson: metadata,
         defaultName: packageFileName(analysis.fileName, packageTarget), printerId,
@@ -298,7 +322,7 @@ export default function App() {
   return <div className="window">
     <StepBar view={view} onSave={() => void saveProject()} onOpen={() => void openProject()} canSave={Boolean(analysis && sourceModelPath)}/>
     {view === 'import' && <main className="import-view">
-      <section className="brand-hero"><img className="brand-wordmark" src="/check-make-wordmark.svg" alt="CHECK / MAKE"/><div><h1>Let the model explain itself.</h1><p>Import a part first. Geometry analysis and optional AI will identify likely object types, intended use, uncertainties, and the parameters that matter.</p></div></section>
+      <section className="brand-hero"><img className="brand-wordmark" src="/check-make-wordmark.png" alt="CHECK / MAKE"/><div><h1>Let the model explain itself.</h1><p>Import a part first. Geometry analysis and optional AI will identify likely object types, intended use, uncertainties, and the parameters that matter.</p></div></section>
       <section className="import-grid">
         <div className={`dropzone ${analysis ? 'loaded' : ''} ${dropActive ? 'drag-active' : ''}`} onDragOver={event => { event.preventDefault(); setDropActive(true); }} onDragLeave={() => setDropActive(false)} onDrop={event => { event.preventDefault(); setDropActive(false); void loadBrowserFile(event.dataTransfer.files[0]); }}>
           {analysis ? <><div className="file-icon">{analysis.metadata.format.toUpperCase()}</div><h2>{analysis.fileName}</h2><p>{analysis.boundingBox.size.x.toFixed(1)} × {analysis.boundingBox.size.y.toFixed(1)} × {analysis.heightMm.toFixed(1)} mm · {analysis.triangleCount.toLocaleString()} triangles</p><button className="secondary" onClick={() => void browse()}>Choose another model</button></>
@@ -307,7 +331,7 @@ export default function App() {
         </div>
         <aside className="analysis-engine"><section className="printer-setup"><span className="kicker">PRINT SETUP</span><h2>Choose your target printer</h2><label>3D printer<select value={printerId} onChange={event => selectPrinter(event.target.value)}>{printerFamilies.map(group => <optgroup key={group.id} label={`${group.manufacturer} · ${group.family}`}>{group.profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.model}</option>)}</optgroup>)}</select></label><div className="printer-facts"><span><b>{printer.buildVolume.x} × {printer.buildVolume.y} × {printer.buildVolume.z} mm</b>Build volume</span><span><b>{printer.enclosed ? 'Enclosed' : 'Open frame'}</b>Printer type</span></div><div className="export-suggestion"><span>Suggested export</span><b>{suggestedPackageAdapter.label}</b><p>{suggestedPackageTarget === 'generic' ? 'No compatible installed native slicer was detected. Core 3MF remains portable.' : `Installed and compatible with ${printer.model}. You can change this in the export step.`}</p></div>{importedBuildVolumeNotice ? <div className="printer-fit warning">{importedBuildVolumeNotice.message}</div> : analysis ? <div className="printer-fit good">The imported orientation fits the selected printer's build volume.</div> : <p className="printer-help">This selection controls compatibility recommendations, export defaults, and the preview build plate.</p>}</section><div className="engine-divider"/><span className="kicker">ANALYSIS ENGINE</span><h2>Choose how deeply to analyze</h2>
           <label className="provider-option"><input type="radio" checked={connection.provider === 'local'} onChange={() => setConnection(current => ({ ...current, provider: 'local' }))}/><span><b>Local preliminary analysis</b><small>Private and instant. Uses deterministic geometry heuristics and asks for clarification.</small></span></label>
-          <label className="provider-option"><input type="radio" checked={connection.provider === 'openai'} onChange={() => setConnection(current => ({ ...current, provider: 'openai' }))}/><span><b>OpenAI vision analysis</b><small>Sends one rendered view and mesh measurements for deeper object and purpose analysis.</small></span></label>
+          <label className="provider-option"><input type="radio" checked={connection.provider === 'openai'} onChange={() => setConnection(current => ({ ...current, provider: 'openai' }))}/><span><b>OpenAI vision analysis</b><small>Sends a four-view model montage and deterministic mesh measurements for deeper object and purpose analysis.</small></span></label>
           {connection.provider === 'openai' && <div className="api-fields"><label>OpenAI API key<input type="password" autoComplete="off" value={connection.apiKey} onChange={event => setConnection(current => ({ ...current, apiKey: event.target.value }))} placeholder="sk-…"/></label><label>Model<input value={connection.model} onChange={event => setConnection(current => ({ ...current, model: event.target.value }))}/></label><p>The key stays in memory for this session and is sent only to OpenAI when you analyze.</p></div>}
           <div className="engine-note"><b>No up-front questionnaire</b><p>Check Make asks questions only when missing information could materially change the result.</p></div>
         </aside>
@@ -329,22 +353,28 @@ export default function App() {
       <section className="intelligence-pane"><span className="kicker">{busy ? 'ANALYZING MODEL' : intelligence?.provider === 'openai' ? 'AI INTERPRETATION' : 'LOCAL PRELIMINARY INTERPRETATION'}</span>
         {busy && <div className="analysis-progress"><i/><h1>Looking for form, function, and uncertainty…</h1><p>Combining mesh measurements with the rendered model view.</p></div>}
         {!busy && intelligence && <><div className="finding-title"><div><h1>{intelligence.objectName}</h1><p>{intelligence.likelyPurpose}</p></div><strong>{intelligence.provider === 'local' ? 'PRELIMINARY' : 'AI HYPOTHESIS'}<small>status</small></strong></div>
-          <details className="disclosure"><summary>Why Check Make thinks this</summary><ul className="evidence-list">{intelligence.evidence.map(item => <li key={item}>{item}</li>)}</ul></details>{unknownRequirements.length > 0 && <div className="notice warning">Unconfirmed requirements: {unknownRequirements.join(', ')}. Check Make will apply neutral baseline rules until you provide explicit evidence.</div>}
-          {intelligence.questions.length > 0 && <div className="uncertainty"><span className="kicker">NEEDS YOUR INPUT</span><h2>{intelligence.questions.length} answer{intelligence.questions.length === 1 ? '' : 's'} could change the result</h2>{intelligence.questions.map(question => <label key={question.id}><b>{question.question}</b><small>{question.why}</small><textarea value={followUps[question.id] ?? ''} onChange={event => setFollowUps(current => ({ ...current, [question.id]: event.target.value }))} placeholder="Answer only what you know…"/></label>)}<button className="secondary" onClick={() => void refine()}>Refine analysis</button></div>}
+          <details className="disclosure"><summary>Why Check Make thinks this</summary><ul className="evidence-list">{intelligence.evidence.map(item => <li key={item}>{item}</li>)}</ul></details>{decisionGaps.length > 0 && <div className="notice warning"><b>{decisionGaps.length} decision{decisionGaps.length === 1 ? '' : 's'} could change the plan.</b> {decisionGaps.map(item => item.label).join(' · ')}</div>}
+          {intelligence.questions.length > 0 && <div className="uncertainty">
+            <span className="kicker">NEEDS YOUR INPUT</span><h2>{intelligence.questions.length} detail{intelligence.questions.length === 1 ? '' : 's'} must be resolved</h2>
+            {intelligence.questions.map(question => <label key={question.id}><b>{question.question}</b><small>{question.why}</small>{question.kind === 'single' && question.options
+              ? <select value={followUps[question.id] ?? ''} onChange={event => setFollowUps(current => ({ ...current, [question.id]: event.target.value }))}><option value="">Choose…</option>{question.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+              : <textarea value={followUps[question.id] ?? ''} onChange={event => setFollowUps(current => ({ ...current, [question.id]: event.target.value }))} placeholder="Describe only what you know…"/>}</label>)}
+            <button className="secondary" disabled={intelligence.questions.some(question => !(followUps[question.id] ?? '').trim())} onClick={() => void refine()}>Apply answers and re-check</button>
+          </div>}
           <div className="analysis-controls"><label>Target printer<select value={printerId} onChange={event => selectPrinter(event.target.value)}>{printerFamilies.map(group => <optgroup key={group.id} label={`${group.manufacturer} · ${group.family}`}>{group.profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.model}</option>)}</optgroup>)}</select></label><label>Recommended orientation<select value={orientation?.id ?? 'as-imported'} onChange={() => undefined} disabled>{orientation?.label ?? 'As imported'}</select></label></div>
           {error && <p className="page-error">{error}</p>}
-          <footer className="actions"><button className="secondary" onClick={() => setView('import')}>Back</button><span>{intelligence.questions.length ? 'You can continue with explicit assumptions or answer first' : 'Analysis is ready'}</span><button className="primary" onClick={() => setView('export')}>Review manufacturing package</button></footer></>}
+          <footer className="actions"><button className="secondary" onClick={() => setView('import')}>Back</button><span>{readiness?.conservativePlan === 'ready' ? 'All decision-changing requirements are resolved' : 'Answer the required details before review'}</span><button className="primary" disabled={readiness?.conservativePlan !== 'ready'} onClick={() => setView('export')}>Review manufacturing package</button></footer></>}
       </section>
     </main>}
 
     {view === 'export' && analysis && intelligence && <main className="package-view">
-      <header className="package-head"><div><span className="kicker">MANUFACTURING PACKAGE</span><h1>{analysis.fileName.replace(/\.(?:stl|3mf|obj)$/i, '')}</h1><p>Corrected, reoriented geometry plus a canonical Check Make print plan. Choose a portable file or a slicer-native project.</p></div><div><button className="secondary" onClick={() => setView('analysis')}>Edit analysis</button>{packageTarget === 'bambu' && <button className="secondary" disabled={busy || !sourcePath} onClick={() => void createPackage('save')}>Save project…</button>}<button className="primary" disabled={busy || !sourcePath || !selectedAdapter?.available || !selectedPrinterSupported} onClick={() => void createPackage(packageTarget === 'bambu' ? 'open' : 'save')}>{busy ? 'Creating…' : packageTarget === 'generic' ? 'Create Core 3MF…' : packageTarget === 'bambu' ? 'Open in Bambu Studio' : `Export for ${selectedAdapter?.label ?? packageTarget}…`}</button></div></header>
+      <header className="package-head"><div><span className="kicker">MANUFACTURING PACKAGE</span><h1>{analysis.fileName.replace(/\.(?:stl|3mf|obj)$/i, '')}</h1><p>Corrected, reoriented geometry plus a canonical Check Make print plan. Choose a portable file or a slicer-native project.</p></div><div><button className="secondary" onClick={() => setView('analysis')}>Edit analysis</button>{packageTarget === 'bambu' && <button className="secondary" disabled={busy || !sourcePath || readiness?.conservativePlan !== 'ready'} onClick={() => void createPackage('save')}>Save project…</button>}<button className="primary" disabled={busy || !sourcePath || !selectedAdapter?.available || !selectedPrinterSupported || readiness?.conservativePlan !== 'ready'} onClick={() => void createPackage(packageTarget === 'bambu' ? 'open' : 'save')}>{busy ? 'Creating…' : packageTarget === 'generic' ? 'Create Core 3MF…' : packageTarget === 'bambu' ? 'Open in Bambu Studio' : `Export for ${selectedAdapter?.label ?? packageTarget}…`}</button></div></header>
       <section className="adapter-picker">
         <div className="adapter-main"><span className="kicker">EXPORT FORMAT</span><h2>Where will you slice it?</h2><p>A project adapter applies settings in that slicer's own schema. Generic Core 3MF keeps recommendations as metadata.</p><label className="export-printer">Target printer<select value={printerId} onChange={event => selectPrinter(event.target.value)}>{printerFamilies.map(group => <optgroup key={group.id} label={`${group.manufacturer} · ${group.family}`}>{group.profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.model}</option>)}</optgroup>)}</select></label></div>
         <div className="adapter-options">{adapters.map(adapter => { const compatible = supportsPrinter(adapter, printerId); return <button key={adapter.target} aria-pressed={packageTarget === adapter.target} className={`${packageTarget === adapter.target ? 'selected ' : ''}${!compatible ? 'needs-printer' : ''}`} disabled={!adapter.available} onClick={() => { setPackageTarget(adapter.target); setPackageTargetManuallySelected(true); }}><span><b>{adapter.label}</b><small>{adapter.capability === 'project-3mf' ? 'Project 3MF' : adapter.capability === 'core-3mf' ? 'Portable 3MF' : 'Adapter unavailable'}</small></span><em>{!adapter.available ? 'Not installed' : compatible ? 'Ready' : 'Choose printer'}</em><p>{adapter.detail}</p></button>; })}</div>
         {selectedAdapter?.available && !selectedPrinterSupported && <div className="adapter-warning"><b>{selectedAdapter.label} is installed, but the {printer.model} export profile is not implemented yet.</b><p>Choose a supported target printer above to use this native adapter: {supportedPrinterNames}.</p></div>}
       </section>
-      <div className="package-grid"><section className="settings"><div className="object-summary"><img src="/check-make-symbol.svg" alt="Check Make verified model symbol"/><div><span>Identified as</span><b>{intelligence.objectName}</b><p>{intelligence.likelyPurpose}</p></div></div>{unknownRequirements.length > 0 && <div className="notice warning">Baseline only for unconfirmed requirements: {unknownRequirements.join(', ')}.</div>}{notices.map((notice, index) => <div className={`notice ${notice.severity}`} key={index}>{notice.severity === 'warning' ? '⚠' : '✓'} {notice.message}</div>)}<h2>Recommended manufacturing parameters</h2>{recommendations.map((item: Recommendation) => <details className="setting-row" key={item.setting}><summary><b>{labels[item.setting]}</b><strong>{String(item.value)}</strong></summary><div><p>{item.reason}</p><small>{item.ruleIds.join(' · ')} · Evidence {item.evidenceLevel} · {item.validationStatus}</small><small>Decision trace: {item.trace.map(entry => `${entry.ruleId} ${entry.state}${entry.conflictsWithFinal ? ' conflict' : ''}`).join(' · ')}</small></div></details>)}</section><aside><Preview geometry={geometry} orientationId={orientation?.id} mode="recommended" plateSize={printer.buildVolume}/><h3>Package contents</h3><ul><li>Core 3MF mesh in millimetres</li><li>Selected build orientation baked into geometry</li><li>Degenerate triangles removed</li><li>Check Make analysis and canonical settings metadata</li>{nativeProjectTarget && <li>{nativeTargetLabel} machine, process, and filament profiles with mapped settings</li>}</ul><div className="compatibility-note"><b>{nativeProjectTarget ? 'Native project validation' : 'Cross-slicer boundary'}</b><p>{nativeValidationText}</p></div></aside></div>
+      <div className="package-grid"><section className="settings"><RecommendationResults objectName={intelligence.objectName} likelyPurpose={intelligence.likelyPurpose} recommendations={recommendations} decisionGaps={decisionGaps} notices={notices} alternatives={planAlternatives} objective={planObjective} onObjectiveChange={setPlanObjective}/></section><aside><Preview geometry={geometry} orientationId={orientation?.id} mode="recommended" plateSize={printer.buildVolume}/><h3>Package contents</h3><ul><li>Core 3MF mesh in millimetres</li><li>Selected build orientation baked into geometry</li><li>Degenerate triangles removed</li><li>Check Make analysis and canonical settings metadata</li>{nativeProjectTarget && <li>{nativeTargetLabel} machine, process, and filament profiles with mapped settings</li>}</ul><div className="compatibility-note"><b>{nativeProjectTarget ? 'Native project validation' : 'Cross-slicer boundary'}</b><p>{nativeValidationText}</p></div></aside></div>
       {status && <p className="save-status">{status}</p>}{validationReport && <details className="validation-report"><summary>{validationReport.checks.length} export checks passed</summary><ul>{validationReport.checks.map(check => <li key={check.id}>{check.passed ? '✓' : '✕'} {check.label} — {check.detail}</li>)}</ul></details>}{error && <p className="page-error">{error}</p>}
     </main>}
   </div>;

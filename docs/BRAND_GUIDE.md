@@ -30,10 +30,21 @@ Make Green is the profile color, but it is not used for small text on white. Act
 
 ## Assets
 
-- `assets/check-make-symbol.svg` — transparent symbol for light backgrounds
-- `assets/check-make-icon.svg` — app-icon master with a dark field
-- `assets/check-make-wordmark.svg` — horizontal display lockup
-- `public/` — browser-ready copies used by the React application
+- `assets/check-make-icon.png` — canonical 1024 × 1024 app-icon master; preserve this approved raster artwork exactly
+- `assets/check-make-icon.svg` — editable vector approximation, not the source used for platform icons
+- `assets/check-make-brand-reference.png` — supplied raster artwork containing the approved symbol and wordmark
+- `assets/check-make-symbol.png` — canonical interface symbol, cropped without redrawing from the approved raster artwork
+- `assets/check-make-wordmark.png` — canonical horizontal `CHECK / MAKE` display lockup, cropped without redrawing from the approved raster artwork
+- `assets/check-make-symbol.svg` and `assets/check-make-wordmark.svg` — editable vector approximations retained as alternatives; they are not used by the application
+- `assets/check-make-favicon.svg` — simplified source artwork for small raster icons
+- `public/favicon-32.png` and `public/favicon-64.png` — raster browser icons generated from the simplified source
+- `public/` — browser-ready PNG copies of the canonical symbol and wordmark assets
 - `src-tauri/icons/` — generated platform assets used by Tauri bundles
+
+Generate the native platform icon set from the approved PNG master:
+
+```sh
+npm run tauri icon assets/check-make-icon.png
+```
 
 Keep clear space around the symbol equal to at least half the width of the check-mark stroke. Do not recolor the cube green, rotate the mark, add gradients, or separate the check from the cube.
