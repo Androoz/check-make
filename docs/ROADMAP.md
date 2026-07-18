@@ -1,5 +1,19 @@
 # Check Make roadmap
 
+## Priority 3 — clearer and smarter results
+
+Check Make 0.2.5 ships the completed release slice: one coherent Recommended plan, adaptive requirement questions, deterministic readiness gating, compact key/all-settings presentation, technical evidence on demand, and rule-backed Faster and Strength / performance alternatives.
+
+The following work is deliberately deferred beyond 0.2.5 rather than blocking the release:
+
+- [ ] Add printer-compatible material upgrade candidates to Strength / performance, supported by reviewed product-specific material profiles.
+- [ ] Reintroduce Lower cost and Lower weight only with a stable toolpath-aware estimator that accounts for walls, infill, shells, support, and brim without launching an external slicer in the background.
+- [ ] Compare every alternative against Recommended with consistent deltas for print time, material use, finished mass, estimated cost, and the affected performance assumptions.
+- [ ] Add scoped external evidence before allowing an optimization to reduce walls, infill, or shell thickness while claiming equivalent performance.
+- [ ] Complete the final result-view usability pass and automated smoke coverage for the full import → interpretation → recommendation → export path.
+
+These are retained as Priority 3 follow-up items. They are not represented as implemented capabilities in 0.2.5.
+
 ## Product experience
 
 - [ ] Rebuild the entire application GUI after the current Priority 3 result-presentation work. The redesign must preserve the implemented import, analysis, geometry, uncertainty, settings, printer-selection, evidence, and slicer-export capabilities while reorganizing them into a clearer model-first desktop workflow.

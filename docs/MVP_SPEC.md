@@ -29,7 +29,7 @@ The AI layer may infer object class, likely purpose, relevant loads, uncertainty
 
 - Priority 1 complete: broader STL, 3MF, and OBJ import handling plus slicer export adapters.
 - Priority 2 complete for the current scope: connected mesh regions, topology findings, overhang regions, orientation comparison, and risk visualization.
-- Priority 3 in progress: clearer and smarter result presentation.
+- Priority 3 release slice complete for 0.2.5: clearer and smarter result presentation. Material upgrades, toolpath-aware cost/weight estimates, quantified alternative deltas, and final result-view polish are explicitly deferred in the roadmap.
 
 The first Priority 3 vertical slice provides one review-required recommendation, a key-settings view, grouped full settings, visible assumptions, and opt-in technical evidence. It intentionally avoids presenting a second summary plan that can drift from the detailed settings.
 
