@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import type { GeometryRiskMetrics, ModelAnalysis, ModelClue, ModelMetadata, OverhangRegion, Questionnaire } from '../types';
+import type { AnalysisLimit, GeometryFinding, GeometryRiskMetrics, MeshComponent, MeshTopology, ModelAnalysis, ModelClue, ModelMetadata, OrientationComparison, OverhangRegion, Questionnaire, Vec3 } from '../types';
 
 const genericNameTokens = new Set([
   'ascii', 'binary', 'stl', 'mesh', 'model', 'part', 'object', 'solid', 'untitled',
@@ -190,11 +190,89 @@ function measureGeometry(
   };
 }
 
+function vectorValue(vector: THREE.Vector3): Vec3 {
+  return { x: vector.x, y: vector.y, z: vector.z };
+}
+
+function analyzeMeshTopology(positions: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): { topology: MeshTopology; components: MeshComponent[] } {
+  const triangleCount = Math.floor(positions.count / 3);
+  const parents = Array.from({ length: triangleCount }, (_, index) => index);
+  const ranks = Array.from({ length: triangleCount }, () => 0);
+  const find = (index: number) => {
+    let root = index;
+    while (parents[root] !== root) root = parents[root];
+    while (parents[index] !== index) { const next = parents[index]; parents[index] = root; index = next; }
+    return root;
+  };
+  const join = (left: number, right: number) => {
+    const leftRoot = find(left); const rightRoot = find(right);
+    if (leftRoot === rightRoot) return;
+    if (ranks[leftRoot] < ranks[rightRoot]) parents[leftRoot] = rightRoot;
+    else if (ranks[leftRoot] > ranks[rightRoot]) parents[rightRoot] = leftRoot;
+    else { parents[rightRoot] = leftRoot; ranks[leftRoot] += 1; }
+  };
+  const bounds = new THREE.Box3(); const boundsVertex = new THREE.Vector3();
+  for (let index = 0; index < positions.count; index += 1) bounds.expandByPoint(boundsVertex.fromBufferAttribute(positions, index));
+  const size = new THREE.Vector3(); bounds.getSize(size);
+  const quantization = Math.max(1e-6, Math.max(size.x, size.y, size.z, 1) * 1e-6);
+  const vertexKey = (vertex: THREE.Vector3) => [vertex.x, vertex.y, vertex.z].map(value => Math.round(value / quantization)).join(',');
+  const edgeOwners = new Map<string, number[]>();
+  const faces: Array<{ triangleIndex: number; area: number; min: THREE.Vector3; max: THREE.Vector3 }> = [];
+  let degenerateTriangleCount = 0;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), normal = new THREE.Vector3();
+  for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
+    const offset = triangleIndex * 3;
+    a.fromBufferAttribute(positions, offset); b.fromBufferAttribute(positions, offset + 1); c.fromBufferAttribute(positions, offset + 2);
+    const area = normal.crossVectors(new THREE.Vector3().subVectors(b, a), new THREE.Vector3().subVectors(c, a)).length() / 2;
+    if (area <= 1e-12) { degenerateTriangleCount += 1; continue; }
+    const keys = [vertexKey(a), vertexKey(b), vertexKey(c)];
+    for (const [left, right] of [[0, 1], [1, 2], [2, 0]] as const) {
+      const edge = [keys[left], keys[right]].sort().join('|');
+      const owners = edgeOwners.get(edge) ?? [];
+      owners.forEach(owner => join(triangleIndex, owner)); owners.push(triangleIndex); edgeOwners.set(edge, owners);
+    }
+    faces.push({ triangleIndex, area, min: new THREE.Vector3().copy(a).min(b).min(c), max: new THREE.Vector3().copy(a).max(b).max(c) });
+  }
+  const componentFaces = new Map<number, typeof faces>();
+  faces.forEach(face => { const root = find(face.triangleIndex); componentFaces.set(root, [...(componentFaces.get(root) ?? []), face]); });
+  const components = [...componentFaces.values()].map(group => {
+    const min = new THREE.Vector3(Infinity, Infinity, Infinity); const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+    let surfaceAreaMm2 = 0;
+    group.forEach(face => { min.min(face.min); max.max(face.max); surfaceAreaMm2 += face.area; });
+    return { id: 0, triangleCount: group.length, surfaceAreaMm2, boundingBox: { min: vectorValue(min), max: vectorValue(max), size: vectorValue(new THREE.Vector3().subVectors(max, min)) } };
+  }).sort((left, right) => right.surfaceAreaMm2 - left.surfaceAreaMm2).map((component, index) => ({ ...component, id: index + 1 }));
+  const boundaryEdgeCount = [...edgeOwners.values()].filter(owners => owners.length === 1).length;
+  const nonManifoldEdgeCount = [...edgeOwners.values()].filter(owners => owners.length > 2).length;
+  return {
+    topology: { componentCount: components.length, boundaryEdgeCount, nonManifoldEdgeCount, degenerateTriangleCount, watertight: boundaryEdgeCount === 0 && nonManifoldEdgeCount === 0 && components.length > 0 },
+    components,
+  };
+}
+
+function geometryFindings(measured: GeometryMeasurement, topology: MeshTopology): GeometryFinding[] {
+  const findings: GeometryFinding[] = [];
+  if (topology.componentCount > 1) findings.push({ id: 'multiple-components', severity: 'warning', label: `${topology.componentCount} disconnected parts detected`, detail: 'The parts may need separate orientations or process settings. Check Make currently exports them as one combined mesh.', confidence: 0.98 });
+  if (topology.boundaryEdgeCount > 0) findings.push({ id: 'open-mesh', severity: 'warning', label: 'Open mesh boundaries detected', detail: `${topology.boundaryEdgeCount} boundary edges indicate holes or non-closed surfaces. Slicer repair may change the result.`, confidence: 0.95 });
+  if (topology.nonManifoldEdgeCount > 0) findings.push({ id: 'non-manifold', severity: 'warning', label: 'Non-manifold edges detected', detail: `${topology.nonManifoldEdgeCount} edges belong to more than two triangles. The intended solid is ambiguous.`, confidence: 0.97 });
+  if (topology.degenerateTriangleCount > 0) findings.push({ id: 'degenerate', severity: 'info', label: 'Degenerate triangles detected', detail: `${topology.degenerateTriangleCount} zero-area triangles will be removed during export.`, confidence: 1 });
+  if (measured.risk.overhangRegionCount > 0) findings.push({ id: 'overhang-regions', severity: 'info', label: `${measured.risk.overhangRegionCount} connected overhang region(s)`, detail: `Largest region is ${measured.risk.largestOverhangRegionAreaMm2.toFixed(0)} mm² with a ${measured.risk.largestOverhangRegionSpanMm.toFixed(1)} mm projected span.`, confidence: 0.78 });
+  findings.push({ id: 'bed-contact', severity: 'info', label: `${(measured.risk.bedCoverageRatio * 100).toFixed(1)}% base coverage`, detail: measured.risk.heightToContactWidthRatio === null ? 'No reliable planar bed contact was measured.' : `Height-to-contact-width proxy: ${measured.risk.heightToContactWidthRatio.toFixed(2)}. This is a geometric observation, not a failure probability.`, confidence: 0.68 });
+  return findings;
+}
+
+const analysisLimits: AnalysisLimit[] = [
+  { id: 'wall-thickness', label: 'Local wall thickness', status: 'not-evaluated', detail: 'Requires ray casting or a volumetric thickness field.' },
+  { id: 'load-path', label: 'Load direction and structural stress', status: 'requires-input', detail: 'Geometry alone cannot establish where force is applied.' },
+  { id: 'bridges', label: 'True bridge classification', status: 'not-evaluated', detail: 'Requires layer direction, attachment, material, cooling, and process context.' },
+  { id: 'surface-priority', label: 'Critical visible or mating surfaces', status: 'requires-input', detail: 'The user or AI interpretation must identify which surfaces matter.' },
+];
+
 export function analyzeGeometry(geometry: THREE.BufferGeometry, fileName: string, metadata: ModelMetadata): { analysis: ModelAnalysis; geometry: THREE.BufferGeometry } {
   if (geometry.index) geometry = geometry.toNonIndexed();
   geometry.computeBoundingBox(); geometry.computeVertexNormals();
   const positions = geometry.getAttribute('position');
   const measured = measureGeometry(positions);
+  const { topology, components } = analyzeMeshTopology(positions);
   const orientations = analyzeOrientations(geometry);
   const analysis: ModelAnalysis = {
     fileName, triangleCount: positions.count / 3,
@@ -207,6 +285,10 @@ export function analyzeGeometry(geometry: THREE.BufferGeometry, fileName: string
     overhangRatio: measured.totalArea ? measured.overhangArea / measured.totalArea : 0,
     confidence: { bedContact: 0.55, overhang: 0.72 }, orientations, orientationLabel: 'As imported', metadata,
     geometryRisk: measured.risk,
+    topology,
+    components,
+    findings: geometryFindings(measured, topology),
+    analysisLimits,
   };
   return { analysis, geometry };
 }
@@ -224,6 +306,38 @@ const transforms: Array<{id:string;label:string;map:(v:THREE.Vector3)=>THREE.Vec
   {id:'back-side',label:'Place back side down',map:v=>new THREE.Vector3(v.x,-v.z,v.y)}
 ];
 
+function orientationTransform(id: string) {
+  return transforms.find(candidate => candidate.id === id) ?? transforms[0];
+}
+
+export function geometryForOrientation(geometry: THREE.BufferGeometry, orientationId: string) {
+  let result = geometry.index ? geometry.toNonIndexed() : geometry.clone();
+  const positions = result.getAttribute('position'); const source = new THREE.Vector3(); const mapped = new THREE.Vector3();
+  const transform = orientationTransform(orientationId).map;
+  let minZ = Infinity;
+  for (let index = 0; index < positions.count; index += 1) { source.fromBufferAttribute(positions, index); mapped.copy(transform(source)); positions.setXYZ(index, mapped.x, mapped.y, mapped.z); minZ = Math.min(minZ, mapped.z); }
+  result.translate(0, 0, -minZ); result.computeBoundingBox(); result.computeVertexNormals();
+  return result;
+}
+
+export function riskVisualizationGeometry(geometry: THREE.BufferGeometry, orientationId: string) {
+  const result = geometryForOrientation(geometry, orientationId);
+  const positions = result.getAttribute('position'); const colors = new Float32Array(positions.count * 3);
+  const box = result.boundingBox?.clone() ?? new THREE.Box3(); const size = new THREE.Vector3(); box.getSize(size);
+  const bedEpsilon = Math.max(0.05, size.z * 0.002);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), normal = new THREE.Vector3();
+  const regular = new THREE.Color('#35c98b'), bed = new THREE.Color('#4e8cff'), overhang = new THREE.Color('#ff9f43'), severe = new THREE.Color('#ef4b4b');
+  for (let index = 0; index < positions.count; index += 3) {
+    a.fromBufferAttribute(positions, index); b.fromBufferAttribute(positions, index + 1); c.fromBufferAttribute(positions, index + 2);
+    normal.crossVectors(new THREE.Vector3().subVectors(b, a), new THREE.Vector3().subVectors(c, a)).normalize();
+    const touchesBed = Math.max(a.z, b.z, c.z) <= box.min.z + bedEpsilon && Math.abs(normal.z) > 0.9;
+    const color = touchesBed ? bed : normal.z < -0.9 ? severe : normal.z < -Math.SQRT1_2 ? overhang : regular;
+    for (let vertex = 0; vertex < 3; vertex += 1) colors.set(color.toArray(), (index + vertex) * 3);
+  }
+  result.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return result;
+}
+
 function analyzeOrientations(geometry: THREE.BufferGeometry) {
   const positions = geometry.getAttribute('position');
   return transforms.map(candidate => {
@@ -240,13 +354,25 @@ function analyzeOrientations(geometry: THREE.BufferGeometry) {
 }
 
 export function chooseOrientation(analysis: ModelAnalysis, priority: Questionnaire['priority']) {
-  const maxContact=Math.max(...analysis.orientations.map(o=>o.bedContactAreaMm2),1);const maxHeight=Math.max(...analysis.orientations.map(o=>o.heightMm),1);
-  const score=(o:ModelAnalysis['orientations'][number])=>{const contact=o.bedContactAreaMm2/maxContact,height=o.heightMm/maxHeight,clean=1-o.overhangRatio;
-    if(priority==='finish')return clean*.65+contact*.2+(1-height)*.15;
-    if(priority==='speed')return (1-height)*.5+clean*.35+contact*.15;
-    if(priority==='accuracy')return contact*.5+clean*.35+(1-height)*.15;
-    if(priority==='unknown')return contact*.4+clean*.4+(1-height)*.2;
-    return contact*.45+clean*.3+(1-height)*.25;
-  };
-  return [...analysis.orientations].sort((a,b)=>score(b)-score(a))[0];
+  return compareOrientations(analysis, priority)[0]?.candidate ?? analysis.orientations[0];
+}
+
+export function compareOrientations(analysis: ModelAnalysis, priority: Questionnaire['priority']): OrientationComparison[] {
+  const maxHeight = Math.max(...analysis.orientations.map(candidate => candidate.heightMm), 1);
+  const maxContact = Math.max(...analysis.orientations.map(candidate => candidate.bedContactAreaMm2), 1);
+  const weights = priority === 'finish' ? [0.2, 0.65, 0.15] : priority === 'speed' ? [0.2, 0.3, 0.5] : priority === 'accuracy' ? [0.5, 0.35, 0.15] : priority === 'strength' ? [0.45, 0.3, 0.25] : [0.4, 0.4, 0.2];
+  return analysis.orientations.map(candidate => {
+    const leverage = candidate.geometryRisk?.heightToContactWidthRatio;
+    const offset = candidate.geometryRisk?.surfaceCentroidOffsetRatio;
+    const stability = candidate.geometryRisk
+      ? (candidate.geometryRisk.bedCoverageRatio + 1 / (1 + (leverage ?? 20)) + 1 / (1 + (offset ?? 10))) / 3
+      : candidate.bedContactAreaMm2 / maxContact;
+    const support = candidate.geometryRisk
+      ? ((1 - candidate.overhangRatio) + 1 / (1 + candidate.geometryRisk.overhangRegionCount * 0.1)) / 2
+      : 1 - candidate.overhangRatio;
+    const height = 1 - candidate.heightMm / maxHeight;
+    const overall = stability * weights[0] + support * weights[1] + height * weights[2];
+    const metrics = [{ label: 'stability', value: stability }, { label: 'support exposure', value: support }, { label: 'height', value: height }].sort((left, right) => right.value - left.value);
+    return { candidate, overallScore: overall * 100, stabilityScore: stability * 100, supportScore: support * 100, heightScore: height * 100, reason: `Best relative contribution: ${metrics[0].label}. Scores compare only the six axis-aligned candidates.` };
+  }).sort((left, right) => right.overallScore - left.overallScore);
 }

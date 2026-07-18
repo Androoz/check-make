@@ -45,6 +45,7 @@ The physical P1 geometry pilot can be generated and checked with `npm run p1:gen
 - optional OpenAI vision analysis using a session-only user API key
 - uncertainty-driven follow-up questions instead of an up-front object questionnaire
 - P1 geometry measurements for normalized bed coverage, leverage proxies, centroid offset, and connected overhang regions
+- P2 mesh topology findings, disconnected-part detection, visual geometry-risk overlays, printer-sized build plate, XYZ axes, fixed camera views, and explainable six-orientation comparison
 - deterministic rules for material, orientation, compatibility, and process validation
 - Core 3MF generation with millimetre units, baked orientation, removal of degenerate triangles, and Check Make analysis metadata
 - export targets for OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print, plus installed-slicer detection
@@ -62,7 +63,7 @@ The physical P1 geometry pilot can be generated and checked with `npm run p1:gen
 ## Important boundaries
 
 - An STL does not contain semantics, load direction, environment, or intended use. AI output is therefore presented as a hypothesis with evidence and explicit unknown states.
-- The current AI request uses one rendered view plus mesh measurements. Multi-view rendering and richer topology features are the next analysis milestone.
+- The current AI request uses one rendered view plus mesh measurements. Deterministic topology features are available in the UI, but multi-view AI rendering and arbitrary-angle orientation search remain future analysis milestones.
 - MCP is not a mechanism for a standalone app to reuse a consumer ChatGPT or Claude subscription. Check Make currently supports direct OpenAI API access. A future Check Make MCP server could let ChatGPT or Claude use Check Make as a tool, but that is a different interaction model.
 - Generic Core 3MF export makes geometry, units, transforms, and metadata portable, but its process settings remain advisory. The Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print adapters write native project structures and validate mapped settings before saving.
 - Native project export depends on the target slicer being installed. Bambu export supports X1 Carbon, P1S, A1, and A1 mini; OrcaSlicer supports all twelve 0.4 mm printer profiles shown in the UI; PrusaSlicer supports MK4S and CORE One; UltiMaker Cura supports ELEGOO Neptune 4 Pro and Creality Ender-3 V3 SE/KE; Creality Print supports the Bambu Lab and Creality profiles available in its installed library.
@@ -70,7 +71,7 @@ The physical P1 geometry pilot can be generated and checked with `npm run p1:gen
 - Basic export correction currently removes degenerate triangles and bakes the selected orientation. Full manifold repair, hole closing, self-intersection repair, and dimensional geometry changes remain future work.
 - STEP/STP import is intentionally deferred because CAD boundary-representation data requires a separately evaluated tessellation engine; it is not treated as a mesh-format variation.
 
-See [the printer support roadmap](docs/ROADMAP.md), [the AI and 3MF architecture](docs/AI_3MF_ARCHITECTURE.md), and [Desktop MVP specification](docs/MVP_SPEC.md).
+See [P2 model analysis](docs/P2_MODEL_ANALYSIS.md), [the printer support roadmap](docs/ROADMAP.md), [the AI and 3MF architecture](docs/AI_3MF_ARCHITECTURE.md), and [Desktop MVP specification](docs/MVP_SPEC.md).
 
 Manufacturing rules are currently provisional. See the [rule evidence audit and validation plan](docs/RULE_EVIDENCE_AUDIT.md), [P1 geometry validation](docs/P1_GEOMETRY_VALIDATION.md), the [per-rule evidence mapping](rules/rule-evidence.yaml), and the [source catalog](rules/evidence-sources.yaml).
 

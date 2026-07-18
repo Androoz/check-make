@@ -25,3 +25,20 @@ export function mergeDetectedAdapters(detected: SlicerAdapterStatus[]) {
   const byTarget = new Map(detected.map(adapter => [adapter.target, adapter]));
   return adapterPlaceholders.map(adapter => byTarget.get(adapter.target) ?? adapter);
 }
+
+const targetPreference: Array<{ matches: (printerId: string) => boolean; targets: SlicerTarget[] }> = [
+  { matches: printerId => printerId.startsWith('bambu-'), targets: ['bambu', 'orca', 'creality'] },
+  { matches: printerId => printerId.startsWith('prusa-'), targets: ['prusa', 'orca'] },
+  { matches: printerId => printerId.startsWith('creality-'), targets: ['creality', 'cura', 'orca'] },
+  { matches: printerId => printerId.startsWith('elegoo-'), targets: ['cura', 'orca'] },
+  { matches: printerId => printerId.startsWith('anycubic-'), targets: ['orca'] },
+];
+
+export function suggestSlicerTarget(adapters: SlicerAdapterStatus[], printerId: string): SlicerTarget {
+  const preferred = targetPreference.find(entry => entry.matches(printerId))?.targets ?? [];
+  const compatible = (target: SlicerTarget) => {
+    const adapter = adapters.find(candidate => candidate.target === target);
+    return Boolean(adapter?.available && supportsPrinter(adapter, printerId));
+  };
+  return preferred.find(compatible) ?? adapters.find(adapter => adapter.target !== 'generic' && compatible(adapter.target))?.target ?? 'generic';
+}

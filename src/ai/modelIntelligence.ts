@@ -65,6 +65,21 @@ export function localModelAnalysis(model: ModelAnalysis): ModelIntelligence {
     `Bed contact covers ${(model.geometryRisk.bedCoverageRatio * 100).toFixed(1)}% of the XY bounding footprint.`,
     `${model.geometryRisk.overhangRegionCount} connected overhang region(s) were measured; the largest projected span is ${model.geometryRisk.largestOverhangRegionSpanMm.toFixed(1)} mm.`,
   ] : [];
+  const topologyEvidence = model.topology ? [
+    `${model.topology.componentCount} disconnected mesh component(s) were detected.`,
+    model.topology.watertight
+      ? 'The measured edge topology is closed and manifold.'
+      : `${model.topology.boundaryEdgeCount} boundary edge(s) and ${model.topology.nonManifoldEdgeCount} non-manifold edge(s) were detected.`,
+  ] : [];
+  const topologyQuestions: FollowUpQuestion[] = [];
+  if ((model.topology?.componentCount ?? 1) > 1) topologyQuestions.push({
+    id: 'components', question: 'Are the disconnected parts meant to be printed together or handled as separate objects?',
+    why: 'Separate parts can require different orientations or process settings.',
+  });
+  if (model.topology && !model.topology.watertight) topologyQuestions.push({
+    id: 'mesh-repair', question: 'Are the open or non-manifold surfaces intentional, or should this be a closed solid?',
+    why: 'A slicer may repair ambiguous geometry differently from the intended design.',
+  });
 
   return {
     provider: 'local', objectName, likelyPurpose,
@@ -73,14 +88,15 @@ export function localModelAnalysis(model: ModelAnalysis): ModelIntelligence {
       `${(model.overhangRatio * 100).toFixed(1)}% of the surface is estimated as critical overhang.`,
       `${model.bedContactAreaMm2.toFixed(0)} mm² estimated contact in the imported orientation.`,
       ...geometryRiskEvidence,
+      ...topologyEvidence,
       ...clueEvidence,
     ],
     assumptions: ['File names and STL header or solid names are unverified labels, not proof of function.', 'STL geometry does not establish material, load direction, operating environment, or whether a downward region can bridge successfully.'],
-    questions: [
+    questions: [...topologyQuestions,
       { id: 'purpose', question: 'What does this object connect, hold, protect, display, or move?', why: 'Geometry alone cannot establish function reliably.' },
       { id: 'load', question: 'Where is force applied, and is strength, fit, or visible surface quality most important?', why: 'This determines orientation and shell strategy.' },
       { id: 'environment', question: 'Will it face heat, sunlight, moisture, chemicals, or repeated impact?', why: 'This determines the material family.' },
-    ],
+    ].slice(0, 5),
     environment: 'unknown', load: 'unknown', impact: 'unknown', heat: 'unknown',
     priority: 'unknown', supportsAllowed: 'unknown', materialHint: 'unknown', userEvidence: [],
   };
@@ -95,7 +111,7 @@ function normalizeAI(value: Record<string, unknown>, fallback: ModelIntelligence
     const q = item as Record<string, unknown>;
     if (typeof q.question !== 'string') return [];
     return [{ id: typeof q.id === 'string' ? q.id : `question-${index + 1}`, question: q.question, why: typeof q.why === 'string' ? q.why : 'Needed to reduce uncertainty.' }];
-  }).slice(0, 3) : [];
+  }).slice(0, 5) : [];
   return {
     provider: 'openai',
     objectName: typeof value.objectName === 'string' ? value.objectName : fallback.objectName,

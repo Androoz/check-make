@@ -31,6 +31,32 @@ export interface GeometryRiskMetrics {
   overhangRegions: OverhangRegion[];
   bridgeClassification: 'not-evaluated';
 }
+export interface MeshComponent {
+  id: number;
+  triangleCount: number;
+  surfaceAreaMm2: number;
+  boundingBox: { min: Vec3; max: Vec3; size: Vec3 };
+}
+export interface MeshTopology {
+  componentCount: number;
+  boundaryEdgeCount: number;
+  nonManifoldEdgeCount: number;
+  degenerateTriangleCount: number;
+  watertight: boolean;
+}
+export interface GeometryFinding {
+  id: string;
+  severity: 'info' | 'warning';
+  label: string;
+  detail: string;
+  confidence: number;
+}
+export interface AnalysisLimit {
+  id: string;
+  label: string;
+  status: 'evaluated' | 'not-evaluated' | 'requires-input';
+  detail: string;
+}
 export interface ModelAnalysis {
   fileName: string; triangleCount: number; boundingBox: { min: Vec3; max: Vec3; size: Vec3 };
   heightMm: number; bedContactAreaMm2: number; overhangAreaMm2: number;
@@ -39,6 +65,18 @@ export interface ModelAnalysis {
   orientationLabel: string;
   metadata: ModelMetadata;
   geometryRisk: GeometryRiskMetrics;
+  topology?: MeshTopology;
+  components?: MeshComponent[];
+  findings?: GeometryFinding[];
+  analysisLimits?: AnalysisLimit[];
+}
+export interface OrientationComparison {
+  candidate: OrientationCandidate;
+  overallScore: number;
+  stabilityScore: number;
+  supportScore: number;
+  heightScore: number;
+  reason: string;
 }
 export interface OrientationCandidate {
   id: string;

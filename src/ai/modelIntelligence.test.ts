@@ -50,4 +50,15 @@ describe('local model intelligence', () => {
     expect(questionnaire.supportsAllowed).toBe(false);
     expect(questionnaire.impact).toBe('unknown');
   });
+
+  it('turns ambiguous mesh topology into evidence and consequential questions', () => {
+    const result = localModelAnalysis({
+      ...model,
+      topology: { componentCount: 2, boundaryEdgeCount: 3, nonManifoldEdgeCount: 0, degenerateTriangleCount: 0, watertight: false },
+    });
+
+    expect(result.evidence).toContain('2 disconnected mesh component(s) were detected.');
+    expect(result.questions.map(question => question.id)).toEqual(expect.arrayContaining(['components', 'mesh-repair']));
+    expect(result.questions.length).toBeLessThanOrEqual(5);
+  });
 });
