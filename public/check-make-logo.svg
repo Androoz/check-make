@@ -1,10 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
-  <title id="title">Check Make</title>
-  <desc id="description">A light green check mark completing a white isometric cube on a black rounded square.</desc>
-  <rect width="1024" height="1024" rx="224" fill="#171A19"/>
-  <g fill="none" stroke="#FFFFFF" stroke-width="52" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M512 188 794 351v322L512 836 230 673V351Z"/>
-    <path d="m230 351 282 163 282-163M512 514v322"/>
+  <title id="title">Check Make</title><desc id="description">A checked model transitioning from blueprint to manufactured part.</desc>
+  <defs>
+    <clipPath id="app"><rect width="1024" height="1024" rx="224"/></clipPath>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#8DDCFF" stroke-width="2" opacity=".14"/></pattern>
+    <clipPath id="left"><rect width="512" height="1024"/></clipPath><clipPath id="right"><rect x="512" width="512" height="1024"/></clipPath>
+  </defs>
+  <g clip-path="url(#app)">
+    <rect width="1024" height="1024" fill="#171A19"/><rect width="512" height="1024" fill="#073A60"/><rect width="512" height="1024" fill="url(#grid)"/><path d="M512 0V1024" stroke="#8DDCFF" stroke-width="4" opacity=".7"/>
+    <g fill="none" stroke="#8DDCFF" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#left)"><path d="M512 188 794 351v322L512 836 230 673V351Z"/><path d="m230 351 282 163 282-163M512 514v322"/></g>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#right)"><path d="M512 188 794 351v322L512 836 230 673V351Zm-282 163 282 163 282-163M512 514v322" stroke="#8D9491" stroke-width="70" opacity=".28" transform="translate(9 10)"/><path d="M512 188 794 351v322L512 836 230 673V351Zm-282 163 282 163 282-163M512 514v322" stroke="#FFFFFF" stroke-width="54"/></g>
+    <g fill="none" stroke="#C9F1FF" stroke-width="8" opacity=".9"><path d="M158 226V732M134 226h48M134 732h48M204 816H458M204 792v48M458 792v48"/><circle cx="158" cy="184" r="18"/><path d="M126 184h64M158 152v64"/><circle cx="204" cy="816" r="14"/><path d="M180 816h48M204 792v48"/></g>
   </g>
-  <path d="m264 548 174 168 326-318" fill="none" stroke="#35C98B" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m270 535 220 181 274-318" fill="none" stroke="#176B50" stroke-width="108" stroke-linecap="round" stroke-linejoin="round" opacity=".34" transform="translate(0 10)"/><path d="m270 535 220 181 274-318" fill="none" stroke="#35C98B" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

@@ -1,6 +1,6 @@
 [package]
 name = "check-make"
-version = "0.2.0"
+version = "0.2.4"
 edition = "2021"
 [lib]
 name = "check_make_lib"

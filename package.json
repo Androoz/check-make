@@ -1,12 +1,17 @@
 {
   "name": "check-make",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "vitest run",
+    "p1:generate": "node validation/p1/generate-coupons.mjs && vite-node validation/p1/analyze-coupons.ts",
+    "p1:prepare": "node validation/p1/pilot-cli.mjs prepare",
+    "p1:record": "node validation/p1/pilot-cli.mjs record",
+    "p1:verify": "node validation/p1/pilot-cli.mjs verify",
+    "p1:summary": "node validation/p1/pilot-cli.mjs summary",
     "tauri": "tauri"
   },
   "dependencies": {

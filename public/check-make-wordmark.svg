@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 256" role="img" aria-labelledby="title">
-  <title id="title">CHECK / MAKE</title>
-  <g transform="translate(8)">
-    <g fill="none" stroke="#171A19" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M128 27 218 79v102l-90 52-90-52V79Z"/>
-      <path d="m38 79 90 52 90-52M128 131v102"/>
-    </g>
-    <path d="m49 142 55 53 104-101" fill="none" stroke="#35C98B" stroke-width="23" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-  <text x="278" y="114" fill="#171A19" font-family="Arial Black, Arial, sans-serif" font-size="86" font-weight="900" letter-spacing="-4">CHECK</text>
-  <text x="278" y="212" fill="#171A19" font-family="Arial Black, Arial, sans-serif" font-size="86" font-weight="900" letter-spacing="-4">/ MAKE</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 256" role="img" aria-labelledby="title"><title id="title">CHECK / MAKE</title><defs><clipPath id="left"><rect width="128" height="256"/></clipPath><clipPath id="right"><rect x="128" width="128" height="256"/></clipPath></defs><g transform="translate(4)" fill="none" stroke-linecap="round" stroke-linejoin="round"><g clip-path="url(#left)" stroke="#155A8A" stroke-width="5"><path d="M128 25 219 78v102l-91 53-91-53V78Z"/><path d="m37 78 91 53 91-53M128 131v102"/></g><g clip-path="url(#right)"><path d="M128 25 219 78v102l-91 53-91-53V78Zm-91 53 91 53 91-53M128 131v102" stroke="#171A19" stroke-width="11"/></g><path d="m52 136 71 58 88-102" stroke="#35C98B" stroke-width="23"/></g><g font-family="Arial Black, Arial, sans-serif" font-size="94" font-weight="900" letter-spacing="-4"><text x="286" y="164" fill="#171A19">CHECK</text><text x="646" y="164" fill="#35C98B">/</text><text x="716" y="164" fill="#171A19">MAKE</text></g></svg>

@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import type { Material, ModelAnalysis, Priority, Questionnaire } from '../types';
+import type { Material, ModelAnalysis, Questionnaire } from '../types';
+import { inferBrief } from '../intent/inferBrief';
 
 export type IntelligenceProvider = 'local' | 'openai';
 
@@ -13,7 +14,6 @@ export interface ModelIntelligence {
   provider: IntelligenceProvider;
   objectName: string;
   likelyPurpose: string;
-  confidence: number;
   evidence: string[];
   assumptions: string[];
   questions: FollowUpQuestion[];
@@ -21,9 +21,10 @@ export interface ModelIntelligence {
   load: Questionnaire['load'];
   impact: Questionnaire['impact'];
   heat: Questionnaire['heat'];
-  priority: Priority;
-  supportsAllowed: boolean;
-  materialHint: Material;
+  priority: Questionnaire['priority'];
+  supportsAllowed: Questionnaire['supportsAllowed'];
+  materialHint: Material | 'unknown';
+  userEvidence: string[];
 }
 
 export interface AIConnection {
@@ -32,18 +33,12 @@ export interface AIConnection {
   model: string;
 }
 
-function clampConfidence(value: unknown, fallback: number) {
-  return typeof value === 'number' ? Math.max(0, Math.min(1, value)) : fallback;
-}
-
 export function localModelAnalysis(model: ModelAnalysis): ModelIntelligence {
   const { x, y, z } = model.boundingBox.size;
   const sorted = [x, y, z].sort((a, b) => a - b);
   const flat = sorted[0] < sorted[2] * 0.18;
   const slender = sorted[2] > Math.max(1, sorted[1]) * 3;
   const tall = z > Math.max(x, y) * 2;
-  const smallContact = model.bedContactAreaMm2 < Math.max(100, x * y * 0.08);
-  const overhang = model.overhangRatio > 0.12;
 
   let objectName = 'mechanical component';
   let likelyPurpose = 'A functional part whose exact role cannot be established from geometry alone.';
@@ -57,24 +52,53 @@ export function localModelAnalysis(model: ModelAnalysis): ModelIntelligence {
     objectName = 'compact bracket, block, adapter, or enclosure component';
     likelyPurpose = 'Likely a compact functional component, but mating features and load direction need confirmation.';
   }
+  const nameClue = model.metadata?.clues[0];
+  if (nameClue) {
+    objectName = `possible ${nameClue.value}`;
+    likelyPurpose = `The model's ${nameClue.source === 'file-name' ? 'file name' : 'embedded STL name'} suggests this identity, but its intended use remains unconfirmed.`;
+  }
+  const clueEvidence = model.metadata?.clues.map(clue => {
+    const source = clue.source === 'file-name' ? 'File name' : clue.source === 'stl-solid-name' ? 'Embedded STL solid name' : 'Embedded STL binary header';
+    return `${source} provides the unverified clue “${clue.value}”.`;
+  }) ?? [];
+  const geometryRiskEvidence = model.geometryRisk ? [
+    `Bed contact covers ${(model.geometryRisk.bedCoverageRatio * 100).toFixed(1)}% of the XY bounding footprint.`,
+    `${model.geometryRisk.overhangRegionCount} connected overhang region(s) were measured; the largest projected span is ${model.geometryRisk.largestOverhangRegionSpanMm.toFixed(1)} mm.`,
+  ] : [];
+  const topologyEvidence = model.topology ? [
+    `${model.topology.componentCount} disconnected mesh component(s) were detected.`,
+    model.topology.watertight
+      ? 'The measured edge topology is closed and manifold.'
+      : `${model.topology.boundaryEdgeCount} boundary edge(s) and ${model.topology.nonManifoldEdgeCount} non-manifold edge(s) were detected.`,
+  ] : [];
+  const topologyQuestions: FollowUpQuestion[] = [];
+  if ((model.topology?.componentCount ?? 1) > 1) topologyQuestions.push({
+    id: 'components', question: 'Are the disconnected parts meant to be printed together or handled as separate objects?',
+    why: 'Separate parts can require different orientations or process settings.',
+  });
+  if (model.topology && !model.topology.watertight) topologyQuestions.push({
+    id: 'mesh-repair', question: 'Are the open or non-manifold surfaces intentional, or should this be a closed solid?',
+    why: 'A slicer may repair ambiguous geometry differently from the intended design.',
+  });
 
   return {
-    provider: 'local', objectName, likelyPurpose, confidence: 0.42,
+    provider: 'local', objectName, likelyPurpose,
     evidence: [
       `Overall dimensions are ${x.toFixed(1)} × ${y.toFixed(1)} × ${z.toFixed(1)} mm.`,
       `${(model.overhangRatio * 100).toFixed(1)}% of the surface is estimated as critical overhang.`,
       `${model.bedContactAreaMm2.toFixed(0)} mm² estimated contact in the imported orientation.`,
-      ...(smallContact ? ['The imported orientation has a relatively small bed contact area.'] : []),
-      ...(overhang ? ['The imported orientation contains a meaningful amount of downward-facing geometry.'] : []),
+      ...geometryRiskEvidence,
+      ...topologyEvidence,
+      ...clueEvidence,
     ],
-    assumptions: ['STL contains no semantic information, named features, material, load direction, or operating environment.'],
-    questions: [
+    assumptions: ['File names and STL header or solid names are unverified labels, not proof of function.', 'STL geometry does not establish material, load direction, operating environment, or whether a downward region can bridge successfully.'],
+    questions: [...topologyQuestions,
       { id: 'purpose', question: 'What does this object connect, hold, protect, display, or move?', why: 'Geometry alone cannot establish function reliably.' },
       { id: 'load', question: 'Where is force applied, and is strength, fit, or visible surface quality most important?', why: 'This determines orientation and shell strategy.' },
       { id: 'environment', question: 'Will it face heat, sunlight, moisture, chemicals, or repeated impact?', why: 'This determines the material family.' },
-    ],
-    environment: 'indoor', load: 'static', impact: 'medium', heat: 'normal',
-    priority: flat ? 'finish' : 'strength', supportsAllowed: true, materialHint: 'PETG',
+    ].slice(0, 5),
+    environment: 'unknown', load: 'unknown', impact: 'unknown', heat: 'unknown',
+    priority: 'unknown', supportsAllowed: 'unknown', materialHint: 'unknown', userEvidence: [],
   };
 }
 
@@ -87,21 +111,39 @@ function normalizeAI(value: Record<string, unknown>, fallback: ModelIntelligence
     const q = item as Record<string, unknown>;
     if (typeof q.question !== 'string') return [];
     return [{ id: typeof q.id === 'string' ? q.id : `question-${index + 1}`, question: q.question, why: typeof q.why === 'string' ? q.why : 'Needed to reduce uncertainty.' }];
-  }).slice(0, 3) : [];
+  }).slice(0, 5) : [];
   return {
     provider: 'openai',
     objectName: typeof value.objectName === 'string' ? value.objectName : fallback.objectName,
     likelyPurpose: typeof value.likelyPurpose === 'string' ? value.likelyPurpose : fallback.likelyPurpose,
-    confidence: clampConfidence(value.confidence, fallback.confidence),
     evidence: list(value.evidence).length ? list(value.evidence) : fallback.evidence,
     assumptions: list(value.assumptions), questions,
-    environment: allowed(value.environment, ['indoor', 'outdoor'] as const, fallback.environment),
-    load: allowed(value.load, ['none', 'static', 'cyclic'] as const, fallback.load),
-    impact: allowed(value.impact, ['none', 'medium', 'high'] as const, fallback.impact),
-    heat: allowed(value.heat, ['normal', 'warm', 'hot'] as const, fallback.heat),
-    priority: allowed(value.priority, ['strength', 'accuracy', 'finish', 'speed', 'flexibility'] as const, fallback.priority),
-    supportsAllowed: typeof value.supportsAllowed === 'boolean' ? value.supportsAllowed : fallback.supportsAllowed,
-    materialHint: allowed(value.materialHint, ['PLA', 'PETG', 'ASA', 'TPU', 'PA-CF'] as const, fallback.materialHint),
+    environment: allowed(value.environment, ['unknown', 'indoor', 'outdoor'] as const, fallback.environment),
+    load: allowed(value.load, ['unknown', 'none', 'static', 'cyclic'] as const, fallback.load),
+    impact: allowed(value.impact, ['unknown', 'none', 'medium', 'high'] as const, fallback.impact),
+    heat: allowed(value.heat, ['unknown', 'normal', 'warm', 'hot'] as const, fallback.heat),
+    priority: allowed(value.priority, ['unknown', 'strength', 'accuracy', 'finish', 'speed', 'flexibility'] as const, fallback.priority),
+    supportsAllowed: typeof value.supportsAllowed === 'boolean' || value.supportsAllowed === 'unknown' ? value.supportsAllowed : fallback.supportsAllowed,
+    materialHint: allowed(value.materialHint, ['unknown', 'PLA', 'PETG', 'ASA', 'TPU', 'PA-CF'] as const, fallback.materialHint),
+    userEvidence: fallback.userEvidence,
+  };
+}
+
+export function refineLocalIntelligence(ai: ModelIntelligence, answers: Record<string, string>): ModelIntelligence {
+  const userEvidence = Object.values(answers).map(value => value.trim()).filter(Boolean);
+  if (!userEvidence.length) return ai;
+  const detail = userEvidence.join(' ');
+  const inference = inferBrief(detail, '');
+  const inferred = <K extends 'environment'|'load'|'impact'|'heat'|'priority'|'supportsAllowed'>(field: K): ModelIntelligence[K] =>
+    inference[field].evidence.length ? inference[field].value as ModelIntelligence[K] : ai[field];
+  return {
+    ...ai,
+    likelyPurpose: detail,
+    evidence: [...ai.evidence, `User-provided clarification: “${detail}”.`],
+    assumptions: [...ai.assumptions, 'Only explicit terms in the user clarification were converted into manufacturing requirements.'],
+    questions: ai.questions.filter(question => !answers[question.id]?.trim()),
+    environment: inferred('environment'), load: inferred('load'), impact: inferred('impact'), heat: inferred('heat'),
+    priority: inferred('priority'), supportsAllowed: inferred('supportsAllowed'), userEvidence,
   };
 }
 
@@ -126,13 +168,13 @@ export async function analyzeWithOpenAI(
     previewImage: previewImage ?? null,
   });
   const cleaned = raw.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-  return normalizeAI(JSON.parse(cleaned) as Record<string, unknown>, fallback);
+  return { ...normalizeAI(JSON.parse(cleaned) as Record<string, unknown>, fallback), userEvidence: Object.values(followUpAnswers).map(value => value.trim()).filter(Boolean) };
 }
 
 export function questionnaireFromIntelligence(ai: ModelIntelligence, printer: Questionnaire['printer']): Questionnaire {
   return {
-    purpose: `${ai.objectName}. ${ai.likelyPurpose}`,
-    properties: `AI material hint: ${ai.materialHint}. ${ai.assumptions.join(' ')}`,
+    purpose: ai.userEvidence.join(' '),
+    properties: '',
     environment: ai.environment, load: ai.load, impact: ai.impact, heat: ai.heat,
     priority: ai.priority, supportsAllowed: ai.supportsAllowed,
     printerId: printer.id, printer,
