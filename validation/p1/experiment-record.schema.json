@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://checkmake.local/schemas/p1-experiment-record.schema.json",
+  "title": "Check Make P1 experiment record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recordId", "runId", "scopeId", "stage", "experimentId", "specimenId", "recordedAt", "geometry", "printer",
+    "material", "process", "environment", "responses", "outcome", "provenance"
+  ],
+  "properties": {
+    "recordId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "scopeId": { "type": "string", "minLength": 1 },
+    "stage": { "const": "screening" },
+    "experimentId": { "type": "string", "minLength": 1 },
+    "specimenId": { "type": "string", "minLength": 1 },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "supersedesRecordId": { "type": ["string", "null"] },
+    "correctionReason": { "type": ["string", "null"] },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelRevision", "geometrySha256", "orientationId", "units", "p1Metrics"],
+      "properties": {
+        "modelRevision": { "type": "string" },
+        "geometrySha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "orientationId": { "type": "string" },
+        "units": { "const": "mm" },
+        "p1Metrics": { "type": "object" }
+      }
+    },
+    "printer": {
+      "type": "object",
+      "required": ["manufacturer", "model", "serial", "firmware", "kinematicClass"],
+      "properties": {
+        "manufacturer": { "type": "string" }, "model": { "type": "string" },
+        "serial": { "type": "string" }, "firmware": { "type": "string" },
+        "kinematicClass": { "type": "string" }
+      }
+    },
+    "material": {
+      "type": "object",
+      "required": ["manufacturer", "product", "color", "lot", "diameterMm", "conditioning", "moistureHandling"],
+      "properties": {
+        "manufacturer": { "type": "string" }, "product": { "type": "string" },
+        "color": { "type": "string" }, "lot": { "type": "string" },
+        "diameterMm": { "type": "number", "exclusiveMinimum": 0 },
+        "conditioning": { "type": "string" }, "moistureHandling": { "type": "string" }
+      }
+    },
+    "process": { "type": "object" },
+    "environment": { "type": "object" },
+    "responses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "detached", "cornerLiftMaxMm", "dimensionalWarpMaxMm", "visibleOscillationRating",
+        "sagMaxMm", "undersideDeviationMaxMm", "undersideRoughnessMetric", "supportRemovalSeconds",
+        "removalDamageRating", "printTimeSeconds", "materialUsedGrams", "measurementNotes"
+      ],
+      "properties": {
+        "detached": { "type": ["boolean", "null"] },
+        "cornerLiftMaxMm": { "type": ["number", "null"], "minimum": 0 },
+        "dimensionalWarpMaxMm": { "type": ["number", "null"], "minimum": 0 },
+        "visibleOscillationRating": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
+        "sagMaxMm": { "type": ["number", "null"], "minimum": 0 },
+        "undersideDeviationMaxMm": { "type": ["number", "null"], "minimum": 0 },
+        "undersideRoughnessMetric": { "type": ["number", "null"], "minimum": 0 },
+        "supportRemovalSeconds": { "type": ["number", "null"], "minimum": 0 },
+        "removalDamageRating": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
+        "printTimeSeconds": { "type": ["number", "null"], "minimum": 0 },
+        "materialUsedGrams": { "type": ["number", "null"], "minimum": 0 },
+        "measurementNotes": { "type": "string" }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["completed", "failed", "failureMode"],
+      "properties": {
+        "completed": { "type": "boolean" }, "failed": { "type": "boolean" },
+        "failureMode": { "type": ["string", "null"] }, "operatorNotes": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["effectiveSettingsPath", "photoPaths", "analysisCodeVersion", "reviewer", "measurementSystem"],
+      "properties": {
+        "effectiveSettingsPath": { "type": "string" },
+        "photoPaths": { "type": "array", "items": { "type": "string" } },
+        "analysisCodeVersion": { "type": "string" }, "reviewer": { "type": "string" },
+        "measurementSystem": { "type": "object" }
+      }
+    }
+  }
+}

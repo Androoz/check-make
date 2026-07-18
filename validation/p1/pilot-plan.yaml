@@ -1,0 +1,87 @@
+id: P1-ADHESION-SUPPORT-PILOT-001
+status: implemented-awaiting-locked-scope
+preregistered: false
+purpose: Fit scoped adhesion, stability, overhang, and bridge-risk models without promoting coupon thresholds as universal rules.
+
+screening_stage:
+  experimentalUnit: one specimen per print job
+  specimenCount: 18
+  replicatesPerCondition: 1
+  randomization: seeded order written to generated/run-plan.json after scope lock
+  controls:
+    supportMode: off
+    brimWidthMm: 0
+    orientation: as-imported
+  families:
+    adhesion_stability:
+      specimens: [A01, A02, A03, A04, A05, A06]
+      design: Prismatic towers varying base width, height, and top offset without unsupported-overhang regions.
+    inclined_overhang:
+      specimens: [O01, O02, O03, O04, O05, O06, O07]
+      design: Inclined undersides spanning 10, 20, or 30 mm and crossing the provisional 45-degree classifier.
+    bridge:
+      specimens: [B01, B02, B03, B04, B05]
+      design: Known bridges with clear spans of 5, 10, 20, 30, or 40 mm; bridge truth comes from the fixture manifest.
+
+confirmation_stage:
+  status: not-generated-until-screening-review
+  selection: Conditions around observed transition regions plus controls.
+  replication: Determined by pilot variance and preregistered power analysis; minimum three independent jobs per selected condition.
+  interventions:
+    adhesion: Compare no brim with declared brim widths only after screening failures identify a useful range.
+    unsupported_geometry: Compare support off with one locked slicer support profile after screening identifies a useful range.
+
+blocks:
+  printer:
+    record: [manufacturer, model, serial, firmware, kinematicClass]
+  material:
+    record: [manufacturer, product, color, lot, diameterMm, conditioning, moistureHandling]
+  process:
+    record: [slicer, slicerVersion, nozzleMm, extrusionWidthMm, layerHeightMm, temperaturesC, coolingPercent, accelerationMmS2, enclosure, plate, platePreparation]
+  measurement:
+    record: [caliperId, caliperResolutionMm, caliperCalibration, massScaleId, massScaleResolutionGrams, photoDevice, undersideMetricMethod]
+
+geometry_factors:
+  adhesion_stability:
+    - bedCoverageRatio
+    - heightToContactWidthRatio
+    - surfaceCentroidOffsetRatio
+    - heightMm
+    - baseShapeClass
+  unsupported_geometry:
+    - meanDownwardNormalAngleDeg
+    - connectedRegionAreaMm2
+    - projectedSpanMm
+    - regionHeightAboveBedMm
+    - bridgeGroundTruth
+    - supportAccessibilityClass
+
+responses:
+  adhesion_stability:
+    - completed
+    - detached
+    - cornerLiftMaxMm
+    - dimensionalWarpMaxMm
+    - visibleOscillationRating
+  unsupported_geometry:
+    - completed
+    - sagMaxMm
+    - undersideDeviationMaxMm
+    - undersideRoughnessMetric
+    - supportRemovalSeconds
+    - removalDamageRating
+  cost:
+    - printTimeSeconds
+    - materialUsedGrams
+
+analysis:
+  pilot: Estimate within-condition variance and failure prevalence before power analysis.
+  candidateModels: [regularized-logistic-regression, monotonic-generalized-additive-model]
+  validation: Grouped held-out geometries; no coupon family may appear in both fit and confirmation groups.
+  reporting: Report uncertainty intervals, sensitivity, specificity, false-negative rate, calibration, and scope exclusions.
+
+promotion_gate:
+  - Scope is explicit and machine-checkable.
+  - Held-out performance improves over the current baseline.
+  - Failure false negatives meet the preregistered bound.
+  - A second reviewer approves exclusions and traceability.

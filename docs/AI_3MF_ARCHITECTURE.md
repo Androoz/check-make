@@ -2,7 +2,7 @@
 
 ## Recommended AI path
 
-Check Make renders the model and calculates deterministic features locally. The AI receives a rendered view, dimensions, triangle count, overhang/contact estimates, candidate orientations, and any prior answers. It returns a constrained analysis object rather than changing the mesh directly.
+Check Make renders the model and calculates deterministic features locally. The AI receives a rendered view, dimensions, triangle count, overhang/contact estimates, candidate orientations, sanitized naming clues from the file name or embedded model metadata, and any prior answers. Naming clues are explicitly unverified and cannot alone establish material, load, impact, or environment. The AI returns a constrained analysis object rather than changing the mesh directly.
 
 ```text
 STL
@@ -56,16 +56,19 @@ Corrected Core 3MF + canonical recommendations
    metadata is advisory    native profiles + validation
 ```
 
-The implemented Bambu Studio adapter:
+The implemented Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print adapters:
 
-1. resolves the installed Bambu machine, process, and filament profile inheritance;
+1. resolve the installed slicer's machine, process, and filament profile inheritance;
 2. overlays supported Check Make recommendations without changing the canonical rules;
-3. asks Bambu Studio to create the project 3MF;
-4. marks mapped keys as active project overrides, validates their values and markers before saving, and uses an integration test to verify Bambu Studio's effective settings after profile resolution.
+3. write a native project 3MF with slicer-specific process settings;
+4. validate the embedded values and, where applicable, active override markers before saving;
+5. use the installed slicer's CLI where supported to verify effective settings after profile resolution.
 
-Mapped settings are layer height, wall loops, top/bottom shells, infill pattern/density, support, brim, wall generator, wall/infill order, seam, nozzle temperature, and build-plate temperature. Build orientation is already baked into the corrected mesh. The high-level speed preset remains advisory because it is not one portable Bambu process key.
+Mapped settings are layer height, wall loops, top/bottom shells, infill pattern/density, support, brim, wall generator, wall/infill order, seam, nozzle temperature, and build-plate temperature. Build orientation is already baked into the corrected mesh. The high-level speed preset remains advisory because it is not one stable portable process key.
 
-The adapter registry also detects OrcaSlicer, PrusaSlicer, and UltiMaker Cura. Those targets stay disabled until their native project writers and round-trip validators are implemented; Check Make never labels a metadata-only file as a complete native project.
+The OrcaSlicer adapter supports every printer exposed by the current UI through Orca's installed 0.4 mm machine profiles. The PrusaSlicer adapter supports MK4S and CORE One, resolves the PrusaResearch profile inheritance bundled with the detected application, and asks PrusaSlicer to reopen and export the project's effective settings before saving. The UltiMaker Cura adapter supports ELEGOO Neptune 4 Pro because that is the exact UI printer present in Cura 5.13's installed library; it writes Cura's machine, extruder, material, and quality-change containers into the 3MF workspace. Cura does not expose a stable headless project-settings round-trip here, so Check Make validates the workspace structure and embedded values and reports that boundary as a warning. Creality Print supports the Bambu Lab and Creality profiles present in its installed library and disables the native target for unsupported printers. Its macOS build does not currently complete headless round-trip validation, so Check Make validates the embedded settings and active override markers and reports that boundary as an export warning.
+
+Cura 5 uses its Arachne wall engine without a separate portable wall-generator setting, so the `wall_generator` recommendation is reported as inherently satisfied rather than stored as an independent Cura key. The high-level speed preset remains advisory in all adapters where no stable single process key exists.
 
 Primary references:
 
