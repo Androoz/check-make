@@ -13,6 +13,8 @@ const inputPath = argument('input'); const mappingPath = argument('mapping');
 if (!inputPath || !mappingPath) throw new Error('Usage: npm run evidence:import -- --input <raw.csv|json|jsonl> --mapping <mapping.yaml> [--output <directory>]');
 const absoluteInput = resolve(inputPath); const absoluteMapping = resolve(mappingPath);
 const inputBytes = readFileSync(absoluteInput); const mappingBytes = readFileSync(absoluteMapping);
+const upstreamPath = argument('upstream');
+const upstreamBytes = upstreamPath ? readFileSync(resolve(upstreamPath)) : undefined;
 const mapping = YAML.parse(mappingBytes.toString('utf8')) as EvidenceImportMapping;
 const catalogPath = resolve(argument('catalog') ?? 'rules/evidence-datasets.yaml');
 const catalog = YAML.parse(readFileSync(catalogPath, 'utf8')) as Array<{ id: string; dataAccess: string }>;
@@ -29,10 +31,12 @@ const digest = (value: Uint8Array|string) => createHash('sha256').update(value).
 const manifest = {
   schemaVersion: 1, datasetId: mapping.datasetId, importedAt: new Date().toISOString(),
   sourceFile: basename(absoluteInput), sourceSha256: digest(inputBytes),
+  ...(upstreamPath && upstreamBytes ? {
+    upstreamSourceFile: basename(resolve(upstreamPath)), upstreamSourceSha256: digest(upstreamBytes),
+  } : {}),
   mappingFile: basename(absoluteMapping), mappingSha256: digest(mappingBytes),
   observationCount: observations.length, observationsFile: 'observations.jsonl',
   observationsSha256: digest(normalized),
 };
 writeFileSync(resolve(outputDirectory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`Imported ${observations.length} normalized observations for ${mapping.datasetId} into ${outputDirectory}`);
-

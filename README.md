@@ -6,11 +6,13 @@ Check Make is a local desktop assistant that analyzes a 3D model before asking t
 
 ## Desktop workflow
 
-1. Drop or browse to an STL, 3MF, or OBJ model. No use-case questionnaire is required.
-2. Run local preliminary analysis or connect an OpenAI API key for vision-assisted analysis.
-3. Review the likely object and purpose, then answer only the structured questions that remain necessary to close the deterministic manufacturing requirements.
-4. Select the target printer and review rule-validated material, orientation, and process recommendations.
-5. Export either a portable Core 3MF or a slicer-native project 3MF containing the corrected model and applied settings.
+Check Make stays in one continuous model-first workspace. Its process indicator is derived from project state rather than acting as page navigation:
+
+1. **Inspect:** drop or browse to an STL, 3MF, or OBJ model, select the target printer, and run local or optional OpenAI-assisted interpretation.
+2. **Prepare:** review the geometry, likely purpose, evidence, uncertainty, material, orientation, and process plan; answer only questions that can materially change the recommendation.
+3. **Export:** explicitly accept a ready plan, then create a portable Core 3MF or compatible slicer-native project with validated settings.
+
+Changing the model, printer, or a decision that affects the plan returns the workflow to the appropriate earlier state instead of silently exporting stale recommendations.
 
 ## Run locally
 
@@ -36,6 +38,8 @@ Maintainers can generate and check the optional physical P1 geometry pilot with 
 
 ## Implemented in 0.2
 
+- one continuous branded **Inspect → Prepare → Export** workspace with state-derived progress, persistent project context, contextual uncertainty, expandable evidence, and gated export
+- native application-menu commands for opening and saving `.checkmake` projects with standard macOS shortcuts
 - real macOS app-icon packaging plus visible in-app logo
 - one native macOS title bar; the duplicate simulated title bar was removed
 - native window-level drag-and-drop and file browser import

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Recommendation } from '../types';
-import { groupRecommendations, summarizeResult } from './presentation';
+import { groupRecommendations, recommendationExplanation, summarizeResult } from './presentation';
 
 const recommendation = (setting: Recommendation['setting'], value: Recommendation['value']): Recommendation => ({
   setting, value, reason: 'Because.', ruleIds: ['rule'], matchedRuleIds: ['rule'], evidenceLevel: 'C', validationStatus: 'provisional', trace: [],
@@ -24,5 +24,12 @@ describe('result presentation', () => {
     expect(summarizeResult([], [{ severity: 'warning', message: 'Too hot.' }]).warningCount).toBe(1);
     expect(summarizeResult([], []).reviewState).toBe('standard');
     expect(summarizeResult([], []).eyebrow).toBe('REVIEW REQUIRED');
+  });
+
+  it('explains temperatures as material-dependent starting values', () => {
+    const nozzle = recommendations.find(item => item.setting === 'nozzle_temperature')!;
+    expect(recommendationExplanation(nozzle, recommendations)).toContain('recommended PETG material family');
+    expect(recommendationExplanation(nozzle, recommendations)).toContain('filament manufacturer');
+    expect(recommendationExplanation(recommendations[0], recommendations)).toBe('Because.');
   });
 });

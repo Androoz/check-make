@@ -50,9 +50,15 @@ describe('external evidence scope matcher', () => {
     expect(result.eligibility).toBe('direction-only');
   });
 
+  it('records build surface and slicer as explicit transfer dimensions when the target locks them', () => {
+    const result = assessExternalDataset(dataset(), { ...target, buildSurface: 'textured PEI', slicer: 'Bambu Studio' });
+    expect(result.dimensions.buildSurface).toBe('unknown');
+    expect(result.dimensions.slicer).toBe('unknown');
+    expect(result.scopeMatch).toBe('partial');
+  });
+
   it('excludes another manufacturing process or an unrelated outcome', () => {
     expect(assessExternalDataset(dataset({ scope: { ...dataset().scope, process: 'laser-powder-bed-fusion' } }), target).eligibility).toBe('excluded');
     expect(assessExternalDataset(dataset({ outcomeDomains: ['tensile-properties'] }), target).eligibility).toBe('excluded');
   });
 });
-

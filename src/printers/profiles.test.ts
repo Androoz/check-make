@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getPrinter, printerFamilies, printerProfiles } from './profiles';
+import { getPrinter, printerAgnosticProfile, printerFamilies, printerProfiles } from './profiles';
 
 describe('printer families', () => {
   it('assigns every profile to exactly one family', () => {
@@ -20,5 +20,11 @@ describe('printer families', () => {
     expect(se.buildVolume.z).toBe(250);
     expect(ke.maxNozzleTempC).toBe(300);
     expect(ke.buildVolume.z).toBe(240);
+  });
+
+  it('keeps the printer-agnostic planning profile out of selectable profiles', () => {
+    expect(printerAgnosticProfile.id).toBe('unselected');
+    expect(printerProfiles.some(profile => profile.id === printerAgnosticProfile.id)).toBe(false);
+    expect(printerFamilies.flatMap(family => family.profiles)).not.toContain(printerAgnosticProfile);
   });
 });

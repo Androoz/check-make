@@ -56,6 +56,95 @@
   limitations: The repository describes a tabular dataset, but Check Make has not inspected its columns, raw asset, license applicability, or process metadata.
   reviewedAt: 2026-07-18
 
+- id: MENDELEY-PLA-PROCESS-QUALITY-2026
+  sourceIds: [MENDELEY-PLA-PROCESS-QUALITY-2026]
+  title: PLA process parameters, hardness, surface roughness, and dimensional error
+  sourceStrength: curated-research-dataset
+  dataAccess: raw-open
+  integrity: metadata-verified
+  license: CC BY 4.0
+  licenseUse: analysis-allowed
+  landingPage: https://data.mendeley.com/datasets/mf76r4zxg4/2
+  rawDataUrl: https://data.mendeley.com/public-api/zip/mf76r4zxg4/download/2
+  scope:
+    process: material-extrusion
+    materialFamilies: [PLA]
+    materialProducts: []
+    printerManufacturers: [Make3D]
+    printerModels: [Pratham 5.0]
+    kinematicClasses: []
+    nozzleDiameterMm: []
+    layerHeightMm: [0.08, 0.16, 0.25, 0.5]
+    enclosure: unknown
+    buildSurfaces: []
+    slicers: []
+    geometryClasses: [cube-metrology]
+  outcomeDomains: [surface-roughness, shore-d-hardness, dimensional-error, build-time]
+  proxyOutcomeDomains: [surface-finish, dimensional-accuracy]
+  variables: [layer-height, raster-orientation, print-speed, infill-density, infill-pattern, nozzle-temperature, bed-temperature, bottom-layers, build-time, surface-roughness, shore-d-hardness, dimensional-error]
+  ruleIds: [G08, P01, Q03, Q04, Q05, Q07, Q08]
+  limitations: Sixteen Taguchi L16 observations use a Pratham 5.0 printer, rectilinear infill, fixed 210 C nozzle and 60 C bed temperatures, and an unspecified PLA product, nozzle, build surface, and slicer. They can inform factor direction but cannot calibrate the locked X1 Carbon profile.
+  reviewedAt: 2026-07-20
+
+- id: MENDELEY-WAVE-OVERHANG-2026
+  sourceIds: [ANDERSONS-WAVE-OVERHANG-2026, MENDELEY-WAVE-OVERHANG-2026]
+  title: Wave-inspired support-free horizontal PLA overhang scan data
+  sourceStrength: peer-reviewed-experiment
+  dataAccess: raw-open
+  integrity: metadata-verified
+  license: CC BY 4.0
+  licenseUse: analysis-allowed
+  landingPage: https://data.mendeley.com/datasets/xhw8xkjyc2/2
+  rawDataUrl: https://data.mendeley.com/public-api/zip/xhw8xkjyc2/download/2
+  scope:
+    process: material-extrusion
+    materialFamilies: [PLA]
+    materialProducts: []
+    printerManufacturers: [Bambu Lab]
+    printerModels: [A1 mini]
+    kinematicClasses: [bed-slinger]
+    nozzleDiameterMm: [0.4]
+    layerHeightMm: []
+    enclosure: false
+    buildSurfaces: [textured PEI]
+    slicers: [Bambu Studio]
+    geometryClasses: [horizontal-overhang-monolayer]
+  outcomeDomains: [overhang-sagging, surface-deviation]
+  proxyOutcomeDomains: [support-need, surface-finish]
+  variables: [path-strategy, geometry-difficulty, replication, scan-point-count, signed-deviation, absolute-deviation, deviation-rmse, deviation-p95, print-order, caliper-dimensions]
+  ruleIds: [G05, G06, G07, Q09, Q10]
+  limitations: Eighteen randomized replicates compare custom arc and wave paths on a Bambu Lab A1 mini. G-code identifies PLA, Bambu Studio 02.01.01.52 adaptation, and textured PEI; the supplied slicer project records a 0.4 mm nozzle. Filament product is unspecified, the scan specimens are custom monolayer horizontal overhangs rather than standard angle coupons, and A1 mini kinematics do not transfer quantitatively to X1 Carbon.
+  reviewedAt: 2026-07-20
+
+- id: KONTAXIS-X1C-PLA-FLEXURAL-2025
+  sourceIds: [KONTAXIS-X1C-PLA-2025]
+  title: X1 Carbon PLA flexural, thermal, and viscoelastic experiment
+  sourceStrength: peer-reviewed-experiment
+  dataAccess: summary-only
+  integrity: metadata-verified
+  license: CC BY 4.0 article; raw specimen data available on request
+  licenseUse: analysis-allowed
+  landingPage: https://www.mdpi.com/2073-4360/17/7/913
+  scope:
+    process: material-extrusion
+    materialFamilies: [PLA]
+    materialProducts: [Bambu Lab PLA Basic]
+    printerManufacturers: [Bambu Lab]
+    printerModels: [X1 Carbon]
+    kinematicClasses: [corexy]
+    nozzleDiameterMm: []
+    layerHeightMm: [0.2]
+    enclosure: true
+    buildSurfaces: []
+    slicers: [Bambu Studio]
+    geometryClasses: [flexural-coupon]
+  outcomeDomains: [flexural-properties, viscoelastic-properties, thermal-properties]
+  proxyOutcomeDomains: [structural-strength]
+  variables: [printing-orientation, nozzle-temperature, flexural-modulus, flexural-strength, storage-modulus, glass-transition-temperature, crystallinity]
+  ruleIds: [U06]
+  limitations: This is the closest identified X1 Carbon study for printer, PLA family, 0.20 mm layer height, and Bambu Studio, but it uses a named PLA product, omits nozzle diameter and build surface, studies flexural coupons rather than arbitrary parts, and does not provide openly downloadable raw specimen rows.
+  reviewedAt: 2026-07-20
+
 - id: ZENODO-FFF-DEFECT-IMAGES-2026
   sourceIds: [ZENODO-FFF-DEFECTS-2026]
   title: PLA and ABS layerwise defect image dataset
@@ -122,21 +211,52 @@
   landingPage: https://pmc.ncbi.nlm.nih.gov/articles/PMC9058659/
   scope:
     process: material-extrusion
-    materialFamilies: []
+    materialFamilies: [PLA, PMMA, PP, PETG, ABS, ASA, HIPS, PC, CPE]
     materialProducts: []
     printerManufacturers: []
     printerModels: []
     kinematicClasses: []
-    nozzleDiameterMm: []
-    layerHeightMm: []
+    nozzleDiameterMm: [0.8, 1.0]
+    layerHeightMm: [0.5]
     enclosure: unknown
+    buildSurfaces: [brass, Pertinax, borosilicate glass]
+    slicers: []
     geometryClasses: [adhesion-test-specimen]
   outcomeDomains: [bed-adhesion-force]
   proxyOutcomeDomains: [adhesion-failure]
-  variables: [build-surface, material, adhesion-force, specimen-geometry]
+  variables: [build-surface, material, bed-temperature, adhesion-force, specimen-geometry]
   ruleIds: [G03, G04, G09, P07]
-  limitations: The measurement method can improve Check Make's pilot, but summarized results without normalized raw observations cannot set brim thresholds.
-  reviewedAt: 2026-07-18
+  limitations: The article reports repeated PLA force measurements and comparisons across surfaces and materials, but the linked open dataset contains device files and code rather than normalized measurement rows. Its large nozzle, thick first layer, non-PEI surfaces, and custom apparatus cannot set X1 Carbon brim thresholds.
+  reviewedAt: 2026-07-21
+
+- id: SPOERK-PLA-BED-TEMP-2018
+  sourceIds: [SPOERK-PLA-BED-TEMP-2018]
+  title: PLA bed temperature and build-surface adhesion experiment
+  sourceStrength: peer-reviewed-experiment
+  dataAccess: summary-only
+  integrity: metadata-verified
+  license: Open-access article; reuse governed by publisher terms
+  licenseUse: analysis-allowed
+  landingPage: https://www.tandfonline.com/doi/full/10.1080/14658011.2017.1399531
+  scope:
+    process: material-extrusion
+    materialFamilies: [PLA]
+    materialProducts: []
+    printerManufacturers: [Hage]
+    printerModels: [3DpA2]
+    kinematicClasses: [industrial-enclosed]
+    nozzleDiameterMm: [0.5]
+    layerHeightMm: [0.2]
+    enclosure: unknown
+    buildSurfaces: [glass, polyimide]
+    slicers: []
+    geometryClasses: [adhesion-shear-strand]
+  outcomeDomains: [bed-adhesion-force]
+  proxyOutcomeDomains: [adhesion-failure]
+  variables: [bed-temperature, build-surface, shear-off-force, glass-transition-temperature]
+  ruleIds: [G03, G04, G09, P07]
+  limitations: Sixteen strands per setting support the aggregate temperature and surface trends, but strand-level observations are not openly supplied. Glass and polyimide, a 0.5 mm nozzle, low printing speed, and an industrial printer do not transfer quantitatively to textured PEI on X1 Carbon.
+  reviewedAt: 2026-07-21
 
 - id: OVERHANG-PLA-2025-SUMMARY
   sourceIds: [OVERHANG-PLA-2025]

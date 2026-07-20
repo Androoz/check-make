@@ -65,6 +65,8 @@ export function assessExternalDataset(
       ? 'unknown' : dataset.scope.enclosure === target.enclosure ? 'exact' : 'mismatch',
     geometry: categorical(target.geometryClass, dataset.scope.geometryClasses),
   };
+  if (target.buildSurface) dimensions.buildSurface = categorical(target.buildSurface, dataset.scope.buildSurfaces ?? []);
+  if (target.slicer) dimensions.slicer = categorical(target.slicer, dataset.scope.slicers ?? []);
   const scope = scopeMatch(dimensions); const outcome = outcomeMatch(dataset, target); const reasons: string[] = [];
   let eligibility: ExternalEvidenceAssessment['eligibility'];
 

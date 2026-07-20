@@ -23,6 +23,8 @@ export interface ExternalEvidenceScope {
   nozzleDiameterMm: number[];
   layerHeightMm: number[];
   enclosure: boolean|'unknown';
+  buildSurfaces?: string[];
+  slicers?: string[];
   geometryClasses: string[];
 }
 
@@ -59,6 +61,8 @@ export interface EvidenceTargetScope {
   nozzleDiameterMm?: number;
   layerHeightMm?: number;
   enclosure?: boolean;
+  buildSurface?: string;
+  slicer?: string;
   geometryClass?: string;
   outcomeDomain: string;
 }
@@ -71,4 +75,3 @@ export interface ExternalEvidenceAssessment {
   dimensions: Record<string, DimensionMatch>;
   reasons: string[];
 }
-

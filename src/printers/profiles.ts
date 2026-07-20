@@ -15,6 +15,16 @@ export const printerProfiles: PrinterProfile[] = [
   {id:'anycubic-kobra3',manufacturer:'Anycubic',familyId:'anycubic-kobra3',family:'Kobra 3',variant:'Kobra 3',model:'Kobra 3',maxNozzleTempC:300,maxBedTempC:110,enclosed:false,hardenedNozzle:false,buildVolume:{x:250,y:250,z:260},notes:'Open-frame; verify installed nozzle for composites.'}
 ];
 
+// Used only while a project has no target printer. Its deliberately broad
+// capabilities prevent an arbitrary real printer from constraining the plan;
+// compatibility is checked once the user selects an actual profile.
+export const printerAgnosticProfile: PrinterProfile = {
+  id: 'unselected', manufacturer: 'Unspecified', familyId: 'unselected', family: 'Unspecified',
+  variant: 'Unspecified', model: 'No printer selected', maxNozzleTempC: 500, maxBedTempC: 200,
+  enclosed: true, hardenedNozzle: true, buildVolume: { x: 10000, y: 10000, z: 10000 },
+  notes: 'Internal printer-agnostic planning profile. It is never an export target.',
+};
+
 export interface PrinterFamilyGroup {
   id: string;
   manufacturer: string;

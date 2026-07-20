@@ -1,0 +1,33 @@
+schemaVersion: 1
+datasetId: MENDELEY-PLA-PROCESS-QUALITY-2026
+format: csv
+idColumn: experiment_id
+scope:
+  process: {constant: material-extrusion}
+  materialFamily: {column: material_family}
+  printerManufacturer: {column: printer_manufacturer}
+  printerModel: {column: printer_model}
+  geometryClass: {constant: cube-metrology}
+factors:
+  - {name: layerHeightMm, column: layer_height_mm, type: number, unit: mm}
+  - {name: rasterOrientationDeg, column: raster_orientation_deg, type: number, unit: deg}
+  - {name: printingSpeedMmS, column: printing_speed_mm_s, type: number, unit: mm/s}
+  - {name: infillDensityPct, column: infill_density_pct, type: number, unit: pct}
+  - {name: infillPattern, column: infill_pattern}
+  - {name: nozzleTemperatureC, column: nozzle_temperature_c, type: number, unit: C}
+  - {name: bedTemperatureC, column: bed_temperature_c, type: number, unit: C}
+  - {name: bottomLayers, column: bottom_layers, type: number, unit: count}
+outcomes:
+  - {name: buildTimeMin, column: build_time_min, type: number, unit: min}
+  - {name: topSurfaceRoughnessMeanUm, column: top_surface_roughness_mean_um, type: number, unit: um}
+  - {name: topSurfaceRoughnessSdUm, column: top_surface_roughness_sd_um, type: number, unit: um}
+  - {name: sideSurfaceRoughnessMeanUm, column: side_surface_roughness_mean_um, type: number, unit: um}
+  - {name: sideSurfaceRoughnessSdUm, column: side_surface_roughness_sd_um, type: number, unit: um}
+  - {name: topShoreDMean, column: top_shore_d_mean, type: number, unit: Shore D}
+  - {name: topShoreDSd, column: top_shore_d_sd, type: number, unit: Shore D}
+  - {name: sideShoreDMean, column: side_shore_d_mean, type: number, unit: Shore D}
+  - {name: sideShoreDSd, column: side_shore_d_sd, type: number, unit: Shore D}
+  - {name: bottomShoreDMean, column: bottom_shore_d_mean, type: number, unit: Shore D}
+  - {name: bottomShoreDSd, column: bottom_shore_d_sd, type: number, unit: Shore D}
+  - {name: sideLengthErrorMm, column: side_length_error_mm, type: number, unit: mm}
+  - {name: faceDiagonalErrorMm, column: face_diagonal_error_mm, type: number, unit: mm}

@@ -226,6 +226,46 @@
   supports: A tabular-data concept linking printing parameters and surface inclination to measured FFF surface roughness.
   limitations: Check Make has not yet inspected or checksum-verified the raw asset, columns, process scope, or applicability of the recorded CC BY-NC-ND terms.
 
+- id: MENDELEY-PLA-PROCESS-QUALITY-2026
+  type: research-dataset
+  title: Digital photographs and numerical dataset of hardness, surface roughness, and dimensional error of PLA specimens fabricated by fused filament fabrication under varying layer height, print speed, raster orientation and infill density
+  organization: Mendeley Data
+  doi: 10.17632/mf76r4zxg4.2
+  url: https://data.mendeley.com/datasets/mf76r4zxg4/2
+  accessed: 2026-07-20
+  supports: Sixteen CC BY 4.0 PLA experiments with measured build time, surface roughness, Shore D hardness, and dimensional error across layer height, raster orientation, print speed, and infill density.
+  limitations: The Pratham 5.0 process, rectilinear infill, unspecified filament product, unspecified build surface, and non-X1C software/profile prevent direct numerical transfer to the locked Check Make reference environment.
+
+- id: ANDERSONS-WAVE-OVERHANG-2026
+  type: peer-reviewed-research
+  title: Wave-inspired path-planning strategy for support-free horizontal overhangs in FDM
+  organization: Additive Manufacturing Letters
+  doi: 10.1016/j.addlet.2026.100392
+  url: https://doi.org/10.1016/j.addlet.2026.100392
+  accessed: 2026-07-20
+  supports: Toolpath strategy can materially change sagging and coverage for support-free horizontal PLA overhangs, including geometrically difficult monolayer cases.
+  limitations: The novel wave path is not conventional slicer behavior, and the demonstrated operating boundary is not a universal support-angle threshold.
+
+- id: MENDELEY-WAVE-OVERHANG-2026
+  type: research-dataset
+  title: Data for Wave-inspired path-planning strategy for support-free horizontal overhangs in FDM
+  organization: Mendeley Data
+  doi: 10.17632/xhw8xkjyc2.2
+  url: https://data.mendeley.com/datasets/xhw8xkjyc2/2
+  accessed: 2026-07-20
+  supports: CC BY 4.0 raw 3D-scan deviations for 18 randomized PLA monolayer overhang prints, plus G-code, slicer projects, geometry, and caliper measurements.
+  limitations: The A1 mini, custom Grasshopper-generated paths, and experimental horizontal monolayers are not an exact X1 Carbon or standard Bambu Studio support-decision scope.
+
+- id: KONTAXIS-X1C-PLA-2025
+  type: peer-reviewed-research
+  title: 3D-Printed PLA Mechanical and Viscoelastic Behavior Dependence on the Nozzle Temperature and Printing Orientation
+  organization: Polymers
+  doi: 10.3390/polym17070913
+  url: https://www.mdpi.com/2073-4360/17/7/913
+  accessed: 2026-07-20
+  supports: X1 Carbon and Bambu Studio observations show that printing orientation and nozzle temperature affect scoped PLA flexural and viscoelastic response at 0.20 mm layer height.
+  limitations: The article reports aggregates, while raw specimen data are available only on request; it uses Bambu Lab PLA Basic and does not record build surface or nozzle diameter.
+
 - id: ZENODO-FFF-DEFECTS-2026
   type: restricted-research-dataset
   title: A Multi-Material PLA and ABS Image Dataset for Layerwise Defect Detection
@@ -252,3 +292,13 @@
   accessed: 2026-07-18
   supports: An open measurement device, specimen geometry, and repeatable approach for quantifying part-to-build-surface adhesion force.
   limitations: The method improves pilot design but does not itself establish Check Make's geometry-to-brim decision boundary across materials and plates.
+
+- id: SPOERK-PLA-BED-TEMP-2018
+  type: peer-reviewed-experiment
+  title: Effect of the printing bed temperature on the adhesion of parts produced by fused filament fabrication
+  organization: Plastics, Rubber and Composites
+  doi: 10.1080/14658011.2017.1399531
+  url: https://www.tandfonline.com/doi/full/10.1080/14658011.2017.1399531
+  accessed: 2026-07-21
+  supports: PLA bed temperature and build surface strongly affect measured first-layer shear-off force around the material glass-transition region.
+  limitations: The article exposes aggregate means and deviations rather than the sixteen strand-level force observations per setting; its glass and polyimide surfaces, 0.5 mm nozzle, and industrial printer do not match textured PEI on X1 Carbon.

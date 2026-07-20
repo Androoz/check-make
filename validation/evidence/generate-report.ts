@@ -29,6 +29,9 @@ const rank: Record<EvidenceEligibility, number> = {
 const counts = <T extends string>(values: T[]) => Object.entries(values.reduce<Record<string, number>>((result, value) => {
   result[value] = (result[value] ?? 0) + 1; return result;
 }, {})).map(([key, value]) => `${key}: ${value}`).join(', ');
+const today = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
 
 const targetSections = targets.map(target => {
   const assessments = datasets.map(dataset => ({ dataset, result: assessExternalDataset(dataset, target.scope) }))
@@ -52,9 +55,23 @@ const byRule = rules.map(rule => {
   return `| ${rule.id} | ${rule.group} | ${linked.map(dataset => dataset.id).join(', ') || '—'} | ${readiness} |`;
 }).join('\n');
 
+const waveDataset = datasets.find(dataset => dataset.id === 'MENDELEY-WAVE-OVERHANG-2026');
+let verifiedObservationNotes = 'No dataset-specific verified observation summary is available.';
+if (waveDataset?.localPath) {
+  const observations = readFileSync(waveDataset.localPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) as Array<{
+    factors: { pathStrategy: string; geometryDifficulty: string }; outcomes: { rmseDeviationMm: number };
+  }>;
+  const cells = ['easy', 'medium', 'hard'].flatMap(difficulty => ['arc', 'wave'].map(strategy => {
+    const values = observations.filter(item => item.factors.geometryDifficulty === difficulty && item.factors.pathStrategy === strategy).map(item => item.outcomes.rmseDeviationMm);
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    return `${difficulty} ${strategy}: ${mean.toFixed(3)} mm`;
+  }));
+  verifiedObservationNotes = `Replicate-mean scan-deviation RMSE (three prints per cell): ${cells.join('; ')}. These descriptive means preserve print-level replication and do not establish significance or an X1 Carbon threshold.`;
+}
+
 const report = `# External evidence reuse and gap report
 
-Generated: ${new Date().toISOString().slice(0, 10)}
+Generated: ${today}
 
 ## Result
 
@@ -63,6 +80,10 @@ The catalog contains ${datasets.length} external dataset records. Data access: $
 No external record is currently both locally checksum-verified and sufficiently scoped to replace Check Make's P1 confirmation. External work can already determine factor direction and test design; quantitative transfer remains gated by raw import, license review, and scope match.
 
 The matcher deliberately separates source strength, data access, integrity, license, outcome match, and scope match. Publication alone never promotes a rule.
+
+## Verified observation notes
+
+${verifiedObservationNotes}
 
 ${targetSections}
 
@@ -74,11 +95,12 @@ ${byRule}
 
 ## Next implementation actions
 
-1. Obtain and inspect the METU FFF roughness tabular asset and its applicable license.
-2. Import an open quantitative adhesion dataset or reproduce the open adhesion-force method.
-3. Keep image-only defect datasets in the monitoring track, not the manufacturing-threshold track.
-4. Use AMB2018-03 to test ingestion and structural-data provenance, not consumer PLA/PETG thresholds.
-5. Generate a reduced local confirmation matrix only after raw external rows are normalized and matched to a locked target scope.
+1. Use the imported wave-overhang observations for path-strategy and geometry-difficulty interaction only, not a standard X1 Carbon support threshold.
+2. Seek raw specimen rows for the exact-scope X1 Carbon PLA flexural study or another CoreXY study with nozzle and build-surface metadata.
+3. Treat the Spoerk and Laumann adhesion studies as test-design evidence only: their quantitative results are aggregates and their build surfaces do not match textured PEI.
+4. Seek author-supplied strand-level rows or another open quantitative adhesion dataset with textured-PEI surface metadata before fitting the first-layer track.
+5. Keep image-only defect datasets in the monitoring track, not the manufacturing-threshold track.
+6. Generate a reduced confirmation matrix only after raw external rows are normalized and sufficiently matched to the locked target scope.
 `;
 writeFileSync(resolve(root, 'docs/EXTERNAL_EVIDENCE_GAP_REPORT.md'), report);
 console.log(`Wrote external evidence report for ${datasets.length} datasets, ${targets.length} targets, and ${rules.length} rules`);

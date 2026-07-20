@@ -52,6 +52,18 @@ export function groupRecommendations(recommendations: Recommendation[], scope: R
   })).filter(group => group.recommendations.length > 0);
 }
 
+export function recommendationExplanation(item: Recommendation, recommendations: Recommendation[]): string {
+  const material = recommendations.find(recommendation => recommendation.setting === 'material')?.value;
+  const materialName = material ? String(material) : 'selected material';
+  if (item.setting === 'nozzle_temperature') {
+    return `This starting nozzle temperature follows the recommended ${materialName} material family. The exact value can vary by filament manufacturer, product profile, printer, nozzle, and print conditions.`;
+  }
+  if (item.setting === 'bed_temperature') {
+    return `This starting build-plate temperature follows the recommended ${materialName} material family. The exact value can vary by filament manufacturer, product profile, build surface, printer, and print conditions.`;
+  }
+  return item.reason;
+}
+
 export function summarizeResult(decisionGaps: Array<{ id: string }>, notices: CompatibilityNotice[]) {
   const warningCount = notices.filter(notice => notice.severity === 'warning').length;
   const reviewState: ResultReviewState = decisionGaps.length || warningCount ? 'attention' : 'standard';

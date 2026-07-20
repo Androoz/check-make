@@ -8,7 +8,11 @@ use std::{
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::ipc::Response;
+use tauri::{
+    ipc::Response,
+    menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder},
+    Emitter,
+};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 const MAX_MODEL_BYTES: u64 = 100 * 1024 * 1024;
@@ -3339,6 +3343,59 @@ fn validate_manufacturing_package(path: String, target: String) -> Result<Packag
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            let app_menu = SubmenuBuilder::new(app, "Check Make")
+                .about(None)
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let open_project = MenuItemBuilder::with_id("project-open", "Open Project…")
+                .accelerator("CmdOrCtrl+O")
+                .build(app)?;
+            let save_project = MenuItemBuilder::with_id("project-save", "Save Project…")
+                .accelerator("CmdOrCtrl+S")
+                .build(app)?;
+            let file_menu = SubmenuBuilder::new(app, "File")
+                .item(&open_project)
+                .item(&save_project)
+                .separator()
+                .close_window()
+                .build()?;
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .fullscreen()
+                .build()?;
+            let menu = MenuBuilder::new(app)
+                .item(&app_menu)
+                .item(&file_menu)
+                .item(&edit_menu)
+                .item(&window_menu)
+                .build()?;
+            app.set_menu(menu)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "project-open" => {
+                let _ = app.emit("project-open-requested", ());
+            }
+            "project-save" => {
+                let _ = app.emit("project-save-requested", ());
+            }
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![
             pick_model_path,
             read_model_bytes,

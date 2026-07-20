@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "MENDELEY-WAVE-OVERHANG-2026",
+  "importedAt": "2026-07-20T21:50:56.447Z",
+  "sourceFile": "scan-summary.csv",
+  "sourceSha256": "bd0d8f83ddb6434e169d8027b3c6b8bd5468c9d729d78f1e7a307cc2d3417810",
+  "upstreamSourceFile": "xhw8xkjyc2-v2.zip",
+  "upstreamSourceSha256": "86e613067b739a1b5eb2adb7fb7827ce9d022f8b9e4a78be7bbd747eeeee9924",
+  "mappingFile": "xhw8xkjyc2-v2.yaml",
+  "mappingSha256": "3fb52d6bcbacab44ec9ce68d9423dc01f2642cdbcc3c82715a6e5feecde225e0",
+  "observationCount": 18,
+  "observationsFile": "observations.jsonl",
+  "observationsSha256": "58013ca155e70ec23d28e73443e07b7063772ee906aa342ead1958fd3741c017"
+}
