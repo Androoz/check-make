@@ -14,6 +14,7 @@
     "p1:summary": "node validation/p1/pilot-cli.mjs summary",
     "evidence:report": "vite-node validation/evidence/generate-report.ts",
     "evidence:import": "vite-node validation/evidence/import-external.ts",
+    "interpretation:report": "vite-node validation/interpretation/evaluate-context-corpus.ts",
     "tauri": "tauri"
   },
   "dependencies": {

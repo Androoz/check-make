@@ -22,28 +22,72 @@ Interpretation v3 is a cross-cutting prerequisite for Priority 4. More advanced 
 
 - [x] Start phrase-aware deterministic interpretation with explicit evidence per inferred manufacturing requirement.
 - [x] Keep ambiguous or conflicting requirements unresolved instead of choosing a convenient keyword match.
-- [x] Recognize common English and Swedish negations for decision-changing phrases.
+- [x] Recognize common English negations for decision-changing phrases. Swedish-language interpretation is outside the Check Make product scope.
 - [x] Interpret explicit Celsius values and ranges into the existing normal, warm, and hot requirement bands.
-- [x] Expand controlled vocabulary for UV, water, moisture, chemicals, food contact, fatigue, load direction, fit type, critical surfaces, intended lifetime, and safety consequence.
-- [ ] Add spelling-tolerant and morphology-aware matching without allowing loose fuzzy matches to confirm safety-relevant requirements.
+- [x] Expand the English controlled vocabulary for UV, water, moisture, chemicals, food contact, fatigue, load direction, fit type, critical surfaces, intended lifetime, and safety consequence.
+- [x] Add reviewed English compound, inflection, and typo normalization without allowing loose fuzzy matches to confirm safety-relevant requirements.
 - [x] Separate object function, operating environment, desired property, failure consequence, and manufacturing preference in the interpretation result.
 - [x] Surface conflicts and ambiguous phrases beside the Context field and turn them into targeted follow-up questions.
 
 ### Object understanding
 
-- [ ] Combine mesh proportions, topology, components, holes/features, filename metadata, Context text, and optional multi-view AI evidence into one object hypothesis.
-- [ ] Record provenance and confidence separately for geometry observations, user statements, filename clues, deterministic language matches, and AI hypotheses.
-- [ ] Distinguish an object's identity from its purpose; neither may be treated as confirmed solely because the other is known.
-- [ ] Identify likely mating features, load-bearing regions, visible surfaces, and critical thin features while explicitly labelling analysis limits.
-- [ ] Ask the user to confirm or correct consequential object hypotheses before those hypotheses affect material, orientation, or structure.
+- [x] Combine available mesh proportions, topology/components, filename metadata, Context text, and optional multi-view AI evidence into one object hypothesis. Hole, thread, local-feature, and wall-thickness classification remain explicitly marked as not evaluated rather than inferred.
+- [x] Record provenance and confidence separately for geometry observations, topology/components, user statements, filename clues, deterministic language matches, and AI hypotheses.
+- [x] Distinguish an object's identity from its purpose; neither is treated as confirmed solely because the other is known.
+- [x] Extend the Context-backed mating-feature, mechanical-demand, and critical-surface hypotheses with geometric localization of mating features, load-bearing regions, visible surfaces, and critical thin features. Interpretation v3.5 uses deterministic candidates plus explicit user confirmation; it remains a risk and relevance assessment rather than structural simulation.
+- [x] Ask the user to confirm or reject consequential AI object-purpose hypotheses before those hypotheses can affect material, orientation, or structure. Explicit Context statements remain user-sourced evidence; unconfirmed hypotheses remain explanatory only.
 
 ### Validation and acceptance
 
-- [x] Add deterministic regression cases for negation, explicit temperature, conflicting statements, and mixed Swedish/English Context descriptions.
-- [ ] Build a versioned corpus of realistic Context descriptions with expected inferences, expected unknowns, and required follow-up questions.
-- [ ] Add object-family reference models with expected geometry evidence and allowed hypothesis ranges.
-- [ ] Measure false-confirmation rate separately from coverage; missing an inference is safer than confirming the wrong manufacturing requirement.
-- [ ] Preserve user corrections as project-specific evidence without automatically turning them into shared rules.
+- [x] Add deterministic English regression cases for negation, explicit temperature, conflicting statements, inflections, compounds, and reviewed typo variants.
+- [x] Build a versioned English Context corpus with expected inferences, expected unknowns, corrections, safety cues, and required follow-up questions.
+- [x] Add versioned broad object-family reference cases with expected geometry evidence and allowed hypothesis ranges.
+- [x] Measure false-confirmation rate separately from coverage; missing an inference is safer than confirming the wrong manufacturing requirement.
+- [x] Preserve user confirmations and corrections in the saved Check Make project without automatically turning them into shared rules.
+
+### Interpretation v3.4 — decision bridge
+
+- [x] Introduce one versioned `ManufacturingIntent` contract for function, environment, temperature, mechanical demand, interfaces, critical surfaces, failure consequence, lifetime, and manufacturing preferences.
+- [x] Preserve status, confidence, provenance, and evidence IDs for every intent fact that can affect a manufacturing decision.
+- [x] Make the deterministic rule engine consume `ManufacturingIntent`; remove the legacy raw-purpose keyword parser from the rule-evaluation path.
+- [x] Gate semantic rule values so hypothesized, conflicted, or rejected facts cannot activate manufacturing rules.
+- [x] Generate targeted questions for conflicting fit types, unspecified chemical exposure, food contact, and safety-critical use.
+- [x] Abstain from exportable recommendations when confirmed safety-critical, food-contact, or chemical-compatibility requirements exceed the connected evidence scope.
+- [x] Pass confirmed intent constraints into orientation comparison. Support-free intent changes scoring; load direction, mating geometry, and critical surfaces remain explicitly unresolved until localized on the mesh.
+- [x] Attach interpretation evidence IDs to matched-rule traces and expose them in the technical recommendation details.
+- [x] Add end-to-end regression cases for outdoor/UV, snap fit and visible surfaces, repeated bending, vague heat/sun Context, and safety-critical abstention.
+
+The remaining object-understanding item above is intentionally not closed by v3.4: geometric localization or user marking of load axes, mating faces, visible faces, and critical thin regions is required before those constraints may influence orientation beyond the support-free weighting.
+
+### Interpretation v3.5 — spatial manufacturing intent
+
+Interpretation v3.5 closes the remaining object-understanding gap without presenting heuristic geometry as structural simulation. Geometry analysis may propose spatial candidates, but only user-confirmed regions and directions may change deterministic manufacturing decisions.
+
+#### 3.5a — spatial contract and persistence
+
+- [x] Add a versioned spatial-intent contract for load axes, load-bearing regions, mating surfaces, visible surfaces, and critical thin regions.
+- [x] Preserve status, confidence, provenance, evidence IDs, source-mesh coordinates, and stable triangle references for every spatial fact.
+- [x] Save and restore confirmed spatial intent in Check Make projects without promoting project-specific confirmation into a shared rule.
+
+#### 3.5b — deterministic candidate analysis
+
+- [x] Generate explainable planar-surface candidates from mesh connectivity, area, normal, and location.
+- [x] Generate conservative local-thickness candidates where opposing mesh intersections provide a usable estimate; report unevaluated coverage rather than filling gaps.
+- [x] Offer model-space axis choices for confirmed mechanical demand without inferring where force is applied from object appearance alone.
+
+#### 3.5c — 3D confirmation workflow
+
+- [x] Visualize proposed and confirmed functional regions directly on the model.
+- [x] Let users mark or replace mating, visible, load-bearing, and critical-thin regions by selecting model faces.
+- [x] Let users confirm a model-space load axis and show which evidence-backed requirement makes the localization consequential.
+
+#### 3.5d — decision integration and validation
+
+- [x] Allow only confirmed spatial intent to affect orientation scoring and deterministic rule traces.
+- [x] Keep export blocked when a confirmed consequential requirement still needs spatial localization, while allowing users to explicitly state that localization is not applicable.
+- [x] Store spatial evidence in exported Check Make metadata and add end-to-end regressions for persistence, gating, orientation effects, rejected candidates, and legacy projects without spatial data.
+
+Interpretation v3.5 is a geometric relevance and risk assessment, not FEM or a safe-load calculation. STEP import, arbitrary-angle orientation optimization, product-specific material alternatives, toolpath quantity estimation, provider expansion, and shared learning remain outside this slice.
 
 ## Priority 4 — fine-tuning and alternatives
 
@@ -120,12 +164,16 @@ Priority 5 expands the intelligence layer only after deterministic requirements,
 
 ## Recommended development order after 0.2.5
 
-1. Printer-compatible material alternatives with explicit trade-offs.
-2. Consistent comparison between Recommended and each supported alternative.
-3. Versioned post-print feedback and revision data model.
-4. Explicit privacy and consent controls.
-5. Additional AI providers and fully local inference options.
-6. Controlled shared learning only after the feedback and privacy foundations are validated.
+1. Interpretation v3.5a: spatial contract and project persistence.
+2. Interpretation v3.5b: deterministic geometric candidates.
+3. Interpretation v3.5c: model-view marking and confirmation.
+4. Interpretation v3.5d: orientation, rules, export gating, and regression coverage.
+5. Printer-compatible material alternatives with explicit trade-offs.
+6. Consistent comparison between Recommended and each supported alternative.
+7. Versioned post-print feedback and revision data model using the same spatial-region references for localized outcomes.
+8. Explicit privacy and consent controls before external providers receive spatial annotations or annotated model views.
+9. Additional AI providers and fully local inference options using the provider-neutral spatial contract.
+10. Controlled shared learning only after the feedback and privacy foundations are validated.
 
 Lower cost and Lower weight remain deferred until Check Make has a stable toolpath-aware quantity source. They must not be reintroduced using bounding-box estimates or by launching an installed slicer invisibly.
 

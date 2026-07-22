@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localModelAnalysis, questionnaireFromIntelligence, refineLocalIntelligence } from './modelIntelligence';
+import { localModelAnalysis, prepareIntelligenceForReview, questionnaireFromIntelligence, refineLocalIntelligence } from './modelIntelligence';
 import { getPrinter } from '../printers/profiles';
 import type { ModelAnalysis } from '../types';
 
@@ -37,6 +37,20 @@ describe('local model intelligence', () => {
     expect(result.evidence).toContain('File name provides the unverified clue “phone stand”.');
   });
 
+  it('keeps missing function unresolved without adding a second description field', () => {
+    const result = localModelAnalysis(model, 'Used outside in direct sun and rain.');
+    expect(result.objectHypothesis?.purpose.status).toBe('unknown');
+    expect(result.purposeConfirmed).toBe(false);
+    expect(result.questions.map(question => question.id)).not.toContain('object-purpose-description');
+  });
+
+  it('keeps explicit identity and purpose separate without repeating the purpose question', () => {
+    const result = localModelAnalysis(model, 'Protective cover that snaps onto a housing.');
+    expect(result.objectHypothesis?.identity).toMatchObject({ value: 'protective cover or enclosure', status: 'user-stated' });
+    expect(result.objectHypothesis?.purpose).toMatchObject({ value: 'protects or encloses', status: 'user-stated' });
+    expect(result.questions.map(question => question.id)).not.toContain('object-purpose-description');
+  });
+
   it('keeps naming hypotheses out of rule context until the user confirms them', () => {
     const initial = localModelAnalysis({
       ...model,
@@ -69,8 +83,9 @@ describe('local model intelligence', () => {
   });
 
   it('closes deterministic requirements from structured answers instead of relying on prose keywords', () => {
-    const refined = refineLocalIntelligence(localModelAnalysis(model), {
-      purpose: 'Protective machine cover', priority: 'finish', load: 'none', impact: 'medium',
+    const context = 'Protective machine cover';
+    const refined = refineLocalIntelligence({ ...localModelAnalysis(model, context), userEvidence: [context] }, {
+      priority: 'finish', load: 'none', impact: 'medium',
       environment: 'outdoor', heat: 'warm',
     });
 
@@ -82,5 +97,21 @@ describe('local model intelligence', () => {
     expect(refined.heat).toBe('warm');
     expect(refined.questions).toHaveLength(0);
     expect(refined.requirements.heat).toMatchObject({ status: 'confirmed', source: 'user', confidence: 1 });
+  });
+
+  it('understands a spacer for a parasol base from the original Context field', () => {
+    const result = localModelAnalysis(model, 'Distance for parasoll base');
+    expect(result.objectHypothesis?.identity).toMatchObject({ value: 'spacer or standoff', status: 'user-stated' });
+    expect(result.objectHypothesis?.purpose).toMatchObject({ value: 'creates or maintains spacing', status: 'user-stated' });
+    expect(result.questions.map(question => question.id)).not.toContain('object-purpose-description');
+  });
+
+  it('removes the legacy duplicate purpose field from saved projects', () => {
+    const initial = localModelAnalysis(model, 'Used outside in direct sun.');
+    const restored = prepareIntelligenceForReview({
+      ...initial,
+      questions: [...initial.questions, { id: 'object-purpose-description', question: 'Legacy duplicate', why: 'Legacy field' }],
+    });
+    expect(restored.questions.map(question => question.id)).not.toContain('object-purpose-description');
   });
 });

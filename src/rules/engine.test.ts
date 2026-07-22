@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateRules } from './engine';
 import type { ModelAnalysis, Questionnaire, Rule } from '../types';
+import { emptyManufacturingIntent } from '../intent/manufacturingIntent';
 const analysis = {heightMm:180,bedContactAreaMm2:200,overhangRatio:.2} as ModelAnalysis;
 const answers = {purpose:'bärande fäste',impact:'high'} as Questionnaire;
 it('combines minimum actions deterministically', () => {
@@ -9,9 +10,10 @@ it('combines minimum actions deterministically', () => {
   expect(result.value).toBe(5);
   expect(result.ruleIds).toEqual(['r1']);
   expect(result.trace).toEqual([
-    { ruleId: 'r0', state: 'superseded', conflictsWithFinal: false, proposedValue: 4, resultingValue: 4 },
-    { ruleId: 'r1', state: 'active', conflictsWithFinal: false, proposedValue: 5, resultingValue: 5 },
+    { ruleId: 'r0', state: 'superseded', conflictsWithFinal: false, proposedValue: 4, resultingValue: 4, inputEvidenceIds: ['requirement:impact:1'] },
+    { ruleId: 'r1', state: 'active', conflictsWithFinal: false, proposedValue: 5, resultingValue: 5, inputEvidenceIds: ['requirement:impact:1'] },
   ]);
+  expect(result.inputEvidenceIds).toEqual(['requirement:impact:1']);
 });
 
 it('reports an overwritten set action as a conflict and explains only the final value', () => {
@@ -36,4 +38,23 @@ it('applies an optimization objective without replacing the original user priori
   const result = evaluateRules(objectiveRules, analysis, { ...answers, priority: 'strength' }, {}, 'time');
   expect(result.find(item => item.setting === 'wall_loops')?.value).toBe(4);
   expect(result.find(item => item.setting === 'layer_height')?.value).toBe('0.24 mm');
+});
+
+it('does not reinterpret raw purpose text with the retired keyword parser', () => {
+  const intentRule: Rule = { id: 'structural', group: 'usage', priority: 1, conditions: [{ path: 'intent.compatibility.structural', op: 'eq', value: true }], actions: [{ setting: 'wall_loops', value: 4, mode: 'min' }], reason: 'structural', confidence: .8 };
+  const neutral = {
+    ...answers, purpose: 'Bracket shaped decorative display only', environment: 'indoor', load: 'none', impact: 'none', heat: 'normal',
+    priority: 'finish', supportsAllowed: true,
+  } as Questionnaire;
+  expect(evaluateRules([intentRule], analysis, neutral)).toHaveLength(0);
+});
+
+it('uses the structured manufacturing intent even when raw prose is non-descriptive', () => {
+  const intentRule: Rule = { id: 'structural', group: 'usage', priority: 1, conditions: [{ path: 'intent.compatibility.structural', op: 'eq', value: true }], actions: [{ setting: 'wall_loops', value: 4, mode: 'min' }], reason: 'structural', confidence: .8 };
+  const structural = {
+    ...answers, purpose: 'Replacement part', environment: 'indoor', load: 'static', impact: 'none', heat: 'normal',
+    priority: 'strength', supportsAllowed: true,
+  } as Questionnaire;
+  structural.manufacturingIntent = emptyManufacturingIntent(structural);
+  expect(evaluateRules([intentRule], analysis, structural)[0]?.value).toBe(4);
 });

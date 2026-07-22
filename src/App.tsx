@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Canvas, useThree } from '@react-three/fiber';
-import { Grid, Html, OrbitControls } from '@react-three/drei';
+import { ContactShadows, Edges, Grid, Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { chooseOrientation, compareOrientations, geometryForOrientation, riskVisualizationGeometry } from './geometry/stl';
+import {
+  analyzeSpatialCandidates, applySpatialRegionColors, confirmCandidate, confirmedRegion,
+  emptySpatialManufacturingIntent, facePatchRegion, normalizeSpatialManufacturingIntent,
+  rejectSpatialCandidate, replaceSpatialRegion, setConfirmedLoadAxis, setSpatialRegionNotApplicable,
+} from './geometry/spatialIntent';
 import { cameraPose } from './geometry/previewScene';
 import type { CameraView } from './geometry/previewScene';
 import { importModel } from './geometry/importModel';
@@ -22,16 +28,17 @@ import type { PlanObjective } from './results/alternatives';
 import { assessDecisionReadiness } from './decision/readiness';
 import { deriveWorkflowStage, isPreparationComplete, prepareStatus } from './workflow/state';
 import { analyzePurposeContext } from './workflow/decisionAutomation';
+import { intentFactUsable } from './intent/manufacturingIntent';
 import type { ContextClarificationOption, ContextInterpretationIssue } from './workflow/decisionAutomation';
 import type { AIConnection, ModelIntelligence } from './ai/modelIntelligence';
-import type { ChecklistField, CompatibilityNotice, ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, SlicerAdapterStatus, SlicerTarget } from './types';
+import type { ChecklistField, CompatibilityNotice, ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, SlicerAdapterStatus, SlicerTarget, SpatialManufacturingIntent, SpatialRegion, SpatialRegionKind } from './types';
 import './styles.css';
 import './desktop-mvp.css';
 import './workflow-v4.css';
 import './accessibility-v5.css';
 
 type View = 'import' | 'analysis' | 'export';
-type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare';
+type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare' | 'spatial';
 type UiIconName = 'model' | 'printer' | 'material' | 'orientation' | 'support' | 'layer' | 'walls' | 'infill' | 'package' | 'check' | 'lock' | 'settings';
 
 const slicerIconPath: Partial<Record<SlicerTarget, string>> = {
@@ -96,8 +103,10 @@ function UiIcon({ name }: { name: UiIconName }) {
 
 function PrinterPicker({ value, onChange, label, emptyLabel, emptyDescription }: { value: string; onChange: (value: string) => void; label: string; emptyLabel: string; emptyDescription: string }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number; maxHeight: number }>();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
   const selected = printerProfiles.find(profile => profile.id === value);
   const manufacturers = useMemo(() => printerProfiles.reduce<Array<{ manufacturer: string; profiles: typeof printerProfiles }>>((groups, profile) => {
     const group = groups.find(item => item.manufacturer === profile.manufacturer);
@@ -106,20 +115,37 @@ function PrinterPicker({ value, onChange, label, emptyLabel, emptyDescription }:
     return groups;
   }, []), []);
 
+  const positionMenu = () => {
+    const bounds = trigger.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const margin = 12;
+    const width = Math.min(window.innerWidth - margin * 2, window.innerWidth < 720 ? 340 : window.innerWidth < 1080 ? 460 : 660);
+    const preferredHeight = Math.min(520, window.innerHeight - margin * 2);
+    const top = Math.max(margin, Math.min(bounds.bottom + 6, window.innerHeight - preferredHeight - margin));
+    const left = Math.max(margin, Math.min(bounds.right - width, window.innerWidth - width - margin));
+    setMenuPosition({ top, left, width, maxHeight: window.innerHeight - top - margin });
+  };
+
   useEffect(() => {
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      if (!root.current?.contains(event.target as Node) && !menu.current?.contains(event.target as Node)) setOpen(false);
     };
     const closeWithEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault(); setOpen(false); trigger.current?.focus();
     };
+    const reposition = () => positionMenu();
+    positionMenu();
     document.addEventListener('pointerdown', closeOutside);
     window.addEventListener('keydown', closeWithEscape);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
     return () => {
       document.removeEventListener('pointerdown', closeOutside);
       window.removeEventListener('keydown', closeWithEscape);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
     };
   }, [open]);
 
@@ -127,39 +153,46 @@ function PrinterPicker({ value, onChange, label, emptyLabel, emptyDescription }:
     onChange(id); setOpen(false); trigger.current?.focus();
   };
 
-  return <div className="printer-picker" ref={root}>
-    <button ref={trigger} type="button" className="printer-picker-trigger" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)} onKeyDown={event => {
-      if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true); }
+  const popup = open && menuPosition ? createPortal(<div ref={menu} className="printer-picker-menu" role="listbox" aria-label={label} style={menuPosition}>
+    <button type="button" className={`printer-picker-option printer-picker-empty ${!value ? 'selected' : ''}`} role="option" aria-selected={!value} onClick={() => choose('')}>
+      <span className="printer-picker-check">{!value && <UiIcon name="check"/>}</span><span><b>{emptyLabel}</b><small>{emptyDescription}</small></span>
+    </button>
+    <div className="printer-picker-groups">{manufacturers.map(group => <section className="printer-picker-group" role="group" aria-label={group.manufacturer} key={group.manufacturer}><div className="printer-picker-group-label">{group.manufacturer}</div>{group.profiles.map(profile => <button type="button" className={`printer-picker-option ${value === profile.id ? 'selected' : ''}`} role="option" aria-selected={value === profile.id} key={profile.id} onClick={() => choose(profile.id)}>
+      <span className="printer-picker-check">{value === profile.id && <UiIcon name="check"/>}</span><span><b>{profile.model}</b><small>{profile.buildVolume.x} × {profile.buildVolume.y} × {profile.buildVolume.z} mm · {profile.enclosed ? 'Enclosed' : 'Open frame'}</small></span>
+    </button>)}</section>)}</div>
+  </div>, document.body) : null;
+
+  return <>
+    <div className="printer-picker" ref={root}><button ref={trigger} type="button" className="printer-picker-trigger" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => { if (!open) positionMenu(); setOpen(current => !current); }} onKeyDown={event => {
+      if (event.key === 'ArrowDown' && !open) { event.preventDefault(); positionMenu(); setOpen(true); }
     }}>
       <span><b>{selected ? `${selected.manufacturer} · ${selected.model}` : emptyLabel}</b></span><span className="printer-picker-chevron" aria-hidden="true">⌄</span>
-    </button>
-    {open && <div className="printer-picker-menu" role="listbox" aria-label={label}>
-      <button type="button" className={`printer-picker-option printer-picker-empty ${!value ? 'selected' : ''}`} role="option" aria-selected={!value} onClick={() => choose('')}>
-        <span className="printer-picker-check">{!value && <UiIcon name="check"/>}</span><span><b>{emptyLabel}</b><small>{emptyDescription}</small></span>
-      </button>
-      {manufacturers.map(group => <section className="printer-picker-group" role="group" aria-label={group.manufacturer} key={group.manufacturer}><div className="printer-picker-group-label">{group.manufacturer}</div>{group.profiles.map(profile => <button type="button" className={`printer-picker-option ${value === profile.id ? 'selected' : ''}`} role="option" aria-selected={value === profile.id} key={profile.id} onClick={() => choose(profile.id)}>
-        <span className="printer-picker-check">{value === profile.id && <UiIcon name="check"/>}</span><span><b>{profile.model}</b><small>{profile.buildVolume.x} × {profile.buildVolume.y} × {profile.buildVolume.z} mm · {profile.enclosed ? 'Enclosed' : 'Open frame'}</small></span>
-      </button>)}</section>)}
-    </div>}
-  </div>;
+    </button></div>{popup}
+  </>;
 }
-function PreparedModel({ geometry, orientationId, risk = false, color = '#b8bcba', position = [0, 0, 0], opacity = 1 }: { geometry: THREE.BufferGeometry; orientationId: string; risk?: boolean; color?: string; position?: [number, number, number]; opacity?: number }) {
-  const prepared = useMemo(() => risk ? riskVisualizationGeometry(geometry, orientationId) : geometryForOrientation(geometry, orientationId), [geometry, orientationId, risk]);
+function PreparedModel({ geometry, orientationId, risk = false, spatialRegions = [], color = '#b8bcba', position = [0, 0, 0], opacity = 1, onFaceSelect }: { geometry: THREE.BufferGeometry; orientationId: string; risk?: boolean; spatialRegions?: SpatialRegion[]; color?: string; position?: [number, number, number]; opacity?: number; onFaceSelect?: (faceIndex: number) => void }) {
+  const prepared = useMemo(() => {
+    const result = risk ? riskVisualizationGeometry(geometry, orientationId) : geometryForOrientation(geometry, orientationId);
+    return !risk && spatialRegions.length ? applySpatialRegionColors(result, spatialRegions) : result;
+  }, [geometry, orientationId, risk, spatialRegions]);
   const centeredPosition = useMemo(() => {
     prepared.computeBoundingBox();
     const center = prepared.boundingBox?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
     return [position[0] - center.x, position[1] - center.y, position[2]] as [number, number, number];
   }, [position, prepared]);
   useEffect(() => () => prepared.dispose(), [prepared]);
-  return <mesh geometry={prepared} position={centeredPosition}><meshStandardMaterial color={risk ? '#ffffff' : color} vertexColors={risk} roughness={0.62} metalness={0.05} transparent={opacity < 1} opacity={opacity}/></mesh>;
+  return <mesh geometry={prepared} position={centeredPosition} castShadow receiveShadow onPointerDown={event => {
+    if (!onFaceSelect || event.faceIndex == null) return;
+    event.stopPropagation(); onFaceSelect(event.faceIndex);
+  }}><meshStandardMaterial color={risk || spatialRegions.length ? '#ffffff' : color} vertexColors={risk || spatialRegions.length > 0} roughness={0.52} metalness={0.03} transparent={opacity < 1} opacity={opacity}/><Edges threshold={32} color={risk ? '#34413c' : '#63716b'}/></mesh>;
 }
 
-function CameraPreset({ view, distance, targetY }: { view: CameraView; distance: number; targetY: number }) {
+function CameraPreset({ view, distance, targetY, resetKey }: { view: CameraView; distance: number; targetY: number; resetKey: number }) {
   const { camera } = useThree();
   useEffect(() => {
     const pose = cameraPose(view, distance, targetY);
     camera.position.set(...pose.position); camera.up.set(...pose.up); camera.lookAt(...pose.target); camera.updateProjectionMatrix();
-  }, [camera, distance, targetY, view]);
+  }, [camera, distance, resetKey, targetY, view]);
   return null;
 }
 
@@ -209,10 +242,11 @@ function CapturePreview({ captureKey, onCapture, distance, targetY }: { captureK
   return null;
 }
 
-function Preview({ geometry, orientationId = 'as-imported', mode = 'original', plateSize = { x: 256, y: 256, z: 256 }, plateLabel = 'Build plate', captureKey, onCapture }: { geometry?: THREE.BufferGeometry; orientationId?: string; mode?: PreviewMode; plateSize?: { x: number; y: number; z: number }; plateLabel?: string; captureKey?: string; onCapture?: (image: string) => void }) {
+function Preview({ geometry, orientationId = 'as-imported', mode = 'original', plateSize = { x: 256, y: 256, z: 256 }, plateLabel = 'Build plate', overhangRegionCount = 0, spatialRegions = [], markingKind, onFaceSelect, captureKey, onCapture }: { geometry?: THREE.BufferGeometry; orientationId?: string; mode?: PreviewMode; plateSize?: { x: number; y: number; z: number }; plateLabel?: string; overhangRegionCount?: number; spatialRegions?: SpatialRegion[]; markingKind?: SpatialRegionKind; onFaceSelect?: (faceIndex: number) => void; captureKey?: string; onCapture?: (image: string) => void }) {
   const [showPlate, setShowPlate] = useState(true);
-  const [showAxes, setShowAxes] = useState(true);
+  const [showAxes, setShowAxes] = useState(false);
   const [cameraView, setCameraView] = useState<CameraView>('isometric');
+  const [cameraReset, setCameraReset] = useState(0);
   const darkAppearance = useMediaQuery('(prefers-color-scheme: dark)');
   const comparisonOffset = geometry ? Math.max(geometry.boundingBox?.getSize(new THREE.Vector3()).x ?? 0, 30) * 0.72 : 40;
   const modelSize = useMemo(() => {
@@ -221,22 +255,57 @@ function Preview({ geometry, orientationId = 'as-imported', mode = 'original', p
     const size = prepared.boundingBox?.getSize(new THREE.Vector3()) ?? new THREE.Vector3(1, 1, 1);
     prepared.dispose(); return size;
   }, [geometry, mode, orientationId]);
-  const modelExtent = Math.max(modelSize.x * (mode === 'compare' ? 2.5 : 1), modelSize.y, modelSize.z, 30);
-  const cameraDistance = showPlate ? Math.max(plateSize.x, plateSize.y, modelSize.z * 1.8) * 1.18 : modelExtent * 1.6;
-  const targetY = modelSize.z / 2;
-  const axesWidth = showPlate ? plateSize.x : Math.max(modelSize.x * 1.4, 60);
-  const axesDepth = showPlate ? plateSize.y : Math.max(modelSize.y * 1.4, 60);
-  return <div className="preview preview-analysis"><Canvas gl={{ preserveDrawingBuffer: Boolean(onCapture) }} camera={{ position: [cameraDistance, cameraDistance * 0.75, cameraDistance], near: 0.1, far: cameraDistance * 8 }} shadows>
-    <color attach="background" args={[darkAppearance ? '#1b221f' : '#f7f7f2']}/><ambientLight intensity={darkAppearance ? 1.8 : 1.5}/><directionalLight position={[8, 12, 6]} intensity={2}/>
-    <CameraPreset view={cameraView} distance={cameraDistance} targetY={targetY}/>
+  const importedModelSize = useMemo(() => {
+    if (!geometry) return new THREE.Vector3(1, 1, 1);
+    const prepared = geometryForOrientation(geometry, 'as-imported');
+    const size = prepared.boundingBox?.getSize(new THREE.Vector3()) ?? new THREE.Vector3(1, 1, 1);
+    prepared.dispose(); return size;
+  }, [geometry]);
+  const displayHeight = mode === 'compare' ? Math.max(modelSize.z, importedModelSize.z) : modelSize.z;
+  const comparisonWidth = mode === 'compare' ? Math.max(modelSize.x, importedModelSize.x) + comparisonOffset * 2 : modelSize.x;
+  const modelExtent = Math.max(comparisonWidth, modelSize.y, importedModelSize.y, displayHeight, 30);
+  const cameraDistance = Math.max(68, modelExtent * (mode === 'compare' ? 1.35 : 1.55));
+  const targetY = displayHeight / 2;
+  const axesWidth = Math.max(modelSize.x * 1.4, 60);
+  const axesDepth = Math.max(modelSize.y * 1.4, 60);
+  return <div className="preview preview-analysis"><Canvas dpr={[1, 2]} gl={{ antialias: true, preserveDrawingBuffer: Boolean(onCapture) }} camera={{ fov: 44, position: [cameraDistance, cameraDistance * 0.75, cameraDistance], near: 0.1, far: cameraDistance * 8 }} shadows>
+    <color attach="background" args={[darkAppearance ? '#1b221f' : '#f7f7f2']}/><hemisphereLight args={[darkAppearance ? '#dce9e4' : '#ffffff', '#46554f', darkAppearance ? 1.6 : 1.25]}/><directionalLight castShadow position={[cameraDistance * .45, cameraDistance * .8, cameraDistance * .35]} intensity={2.25}/><directionalLight position={[-cameraDistance * .35, cameraDistance * .3, -cameraDistance * .25]} intensity={0.75}/>
+    <CameraPreset view={cameraView} distance={cameraDistance} targetY={targetY} resetKey={cameraReset}/>
     {showPlate && <BuildPlate width={plateSize.x} depth={plateSize.y} ghost={cameraView === 'bottom'}/>}
     {showAxes && <PrinterAxes width={axesWidth} depth={axesDepth}/>}
     {geometry && <group rotation={[-Math.PI / 2, 0, 0]}>
-      {mode === 'compare' ? <><PreparedModel geometry={geometry} orientationId="as-imported" color="#8a969c" opacity={0.72} position={[-comparisonOffset, 0, 0]}/><PreparedModel geometry={geometry} orientationId={orientationId} position={[comparisonOffset, 0, 0]}/></> : <PreparedModel geometry={geometry} orientationId={mode === 'original' ? 'as-imported' : orientationId} risk={mode === 'risk'}/>}
+      {mode === 'compare' ? <><PreparedModel geometry={geometry} orientationId="as-imported" color="#8a969c" opacity={0.72} position={[-comparisonOffset, 0, 0]}/><PreparedModel geometry={geometry} orientationId={orientationId} position={[comparisonOffset, 0, 0]}/></> : <PreparedModel geometry={geometry} orientationId={mode === 'original' ? 'as-imported' : orientationId} risk={mode === 'risk'} spatialRegions={mode === 'spatial' ? spatialRegions : []} onFaceSelect={mode === 'spatial' && markingKind ? onFaceSelect : undefined}/>}
     </group>}
+    {showPlate && <ContactShadows position={[0, 0.05, 0]} scale={Math.max(plateSize.x, plateSize.y) * .8} opacity={darkAppearance ? .42 : .25} blur={2.6} far={Math.max(modelSize.z, 40) * 1.4}/>}
     <OrbitControls makeDefault target={[0, targetY, 0]}/>
     {geometry && captureKey && onCapture && <CapturePreview captureKey={captureKey} onCapture={onCapture} distance={cameraDistance} targetY={targetY}/>}
-  </Canvas><div className="scene-controls"><div><button className={showPlate ? 'active' : ''} aria-pressed={showPlate} onClick={() => setShowPlate(current => !current)}>Build plate</button><button className={showAxes ? 'active' : ''} aria-pressed={showAxes} onClick={() => setShowAxes(current => !current)}>XYZ axes</button></div><label>View<select value={cameraView} onChange={event => setCameraView(event.target.value as CameraView)}><option value="isometric">Isometric</option><option value="top">Top</option><option value="front">Front</option><option value="back">Back</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option></select></label></div>{mode === 'risk' && <div className="risk-legend"><span><i className="risk-normal"/>Regular surface</span><span><i className="risk-bed"/>Bed contact</span><span><i className="risk-overhang"/>Overhang</span><span><i className="risk-severe"/>Downward face</span></div>}{mode === 'compare' && <div className="comparison-legend"><span>Original</span><span>Selected orientation</span></div>}{showPlate && <div className="plate-size-label">{plateLabel} {plateSize.x} × {plateSize.y} mm</div>}</div>;
+  </Canvas><div className="scene-controls"><div><button onClick={() => setCameraReset(current => current + 1)}>Fit model</button><button className={showPlate ? 'active' : ''} aria-pressed={showPlate} onClick={() => setShowPlate(current => !current)}>Build plate</button><button className={showAxes ? 'active' : ''} aria-pressed={showAxes} onClick={() => setShowAxes(current => !current)}>Axes</button></div><label>View<select value={cameraView} onChange={event => { setCameraView(event.target.value as CameraView); setCameraReset(current => current + 1); }}><option value="isometric">Isometric</option><option value="top">Top</option><option value="front">Front</option><option value="back">Back</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option></select></label></div>{mode === 'risk' && <div className="risk-legend"><b>{overhangRegionCount ? `${overhangRegionCount} area${overhangRegionCount === 1 ? '' : 's'} may require support` : 'No angle-based overhangs found'}</b><span><i className="risk-normal"/>Model</span><span><i className="risk-bed"/>Bed contact</span><span><i className="risk-overhang"/>Support likely</span><span><i className="risk-severe"/>Downward face</span><small>Angle-based geometry check, not a print simulation.</small></div>}{mode === 'spatial' && <div className="spatial-legend"><b>{markingKind ? `Select a ${markingKind.replaceAll('-', ' ')}` : 'Functional geometry'}</b><span><i className="spatial-load"/>Load-bearing</span><span><i className="spatial-mating"/>Mating</span><span><i className="spatial-visible"/>Visible</span><span><i className="spatial-thin"/>Critical thin</span><small>{markingKind ? 'Click a connected surface patch on the model.' : 'Only confirmed regions affect decisions.'}</small></div>}{mode === 'compare' && <div className="comparison-legend"><span>Imported</span><span>Preview orientation</span></div>}{showPlate && <div className="plate-size-label">{plateLabel} {plateSize.x} × {plateSize.y} mm</div>}</div>;
+}
+
+function SpatialIntentPanel({ spatial, loadRequired, matingRequired, visibleRequired, planarCandidateId, thinCandidateId, thinCandidateMm, thicknessCoverage, markingKind, onLoadAxis, onMark, onUseCandidate, onRejectCandidate, onNotApplicable }: {
+  spatial: SpatialManufacturingIntent; loadRequired: boolean; matingRequired: boolean; visibleRequired: boolean;
+  planarCandidateId?: string; thinCandidateId?: string; thinCandidateMm?: number; thicknessCoverage?: { sampledTriangles: number; measuredTriangles: number; totalTriangles: number };
+  markingKind?: SpatialRegionKind; onLoadAxis: (axis: 'x' | 'y' | 'z' | 'not-applicable') => void;
+  onMark: (kind: SpatialRegionKind) => void; onUseCandidate: (kind: SpatialRegionKind) => void; onRejectCandidate: (kind: SpatialRegionKind) => void; onNotApplicable: (kind: SpatialRegionKind) => void;
+}) {
+  const regionRow = (kind: SpatialRegionKind, label: string, required: boolean, candidateId?: string) => {
+    if (!required && kind !== 'critical-thin') return null;
+    const region = confirmedRegion(spatial, kind); const notApplicable = spatial.notApplicable.includes(kind);
+    const candidateAvailable = Boolean(candidateId && !spatial.rejectedCandidateIds.includes(`${kind}:${candidateId}`));
+    return <div className={`spatial-decision-row ${region || notApplicable ? 'resolved' : required ? 'required' : ''}`} key={kind}>
+      <span><b>{label}</b><small>{region ? `${region.mesh.triangleIndices.length} faces confirmed` : notApplicable ? 'Marked not applicable' : required ? 'Required by confirmed Context' : thinCandidateMm ? `Candidate estimate ${thinCandidateMm.toFixed(2)} mm` : 'No usable candidate found'}</small></span>
+      <div>{candidateAvailable && !region && <><button type="button" onClick={() => onUseCandidate(kind)}>Use candidate</button><button type="button" onClick={() => onRejectCandidate(kind)}>Dismiss suggestion</button></>}<button type="button" className={markingKind === kind ? 'active' : ''} onClick={() => onMark(kind)}>{markingKind === kind ? 'Click model…' : region ? 'Replace' : 'Select on model'}</button>{required && <button type="button" onClick={() => onNotApplicable(kind)}>Not applicable</button>}</div>
+    </div>;
+  };
+  return <section className="spatial-intent-panel" aria-labelledby="spatial-intent-title">
+    <div className="spatial-intent-heading"><div><h2 id="spatial-intent-title">Functional geometry</h2><p>Connect confirmed requirements to the model. Geometry candidates remain hypotheses until you confirm them.</p></div><span>{spatial.regions.filter(region => region.status === 'confirmed').length} marked</span></div>
+    {loadRequired && <div className={`spatial-axis-row ${spatial.loadAxis.status === 'confirmed' || spatial.loadAxis.status === 'not-applicable' ? 'resolved' : 'required'}`}><span><b>Model-space load axis</b><small>{spatial.loadAxis.status === 'confirmed' ? `${spatial.loadAxis.axis.toUpperCase()} axis confirmed` : spatial.loadAxis.status === 'not-applicable' ? 'No single axis applies' : 'Required by the described mechanical load'}</small></span><div>{(['x', 'y', 'z'] as const).map(axis => <button type="button" className={spatial.loadAxis.axis === axis && spatial.loadAxis.status === 'confirmed' ? 'active' : ''} onClick={() => onLoadAxis(axis)} key={axis}>{axis.toUpperCase()}</button>)}<button type="button" onClick={() => onLoadAxis('not-applicable')}>No single axis</button></div></div>}
+    {regionRow('load-bearing', 'Load-bearing region', loadRequired, planarCandidateId)}
+    {regionRow('mating-surface', 'Mating surface', matingRequired, planarCandidateId)}
+    {regionRow('visible-surface', 'Appearance-critical surface', visibleRequired, planarCandidateId)}
+    {regionRow('critical-thin', 'Critical thin region', false, thinCandidateId)}
+    {thicknessCoverage && <p className="spatial-coverage">Thickness screening measured {thicknessCoverage.measuredTriangles} of {thicknessCoverage.sampledTriangles} sampled faces across {thicknessCoverage.totalTriangles} total triangles. Missing intersections remain unevaluated.</p>}
+  </section>;
 }
 
 function ProcessBar({ stage, decisions, settingsOpen, onToggleSettings }: { stage: View; decisions: number; settingsOpen: boolean; onToggleSettings: () => void }) {
@@ -248,7 +317,7 @@ function ProcessBar({ stage, decisions, settingsOpen, onToggleSettings }: { stag
   const order = steps.map(step => step.id);
   const activeIndex = order.indexOf(stage);
   return <header className="workflow-header">
-    <div className="workflow-brand"><img src="/check-make-wordmark.png" alt="CHECK / MAKE"/></div>
+    <div className="workflow-brand"><img src="/check-make-wordmark.svg" alt="CHECK / MAKE"/></div>
     <div className="process-flow" aria-label="Check Make progress">{steps.map((step, index) => {
       const complete = index < activeIndex;
       const active = index === activeIndex;
@@ -285,6 +354,8 @@ export default function App() {
   const [adapters, setAdapters] = useState<SlicerAdapterStatus[]>(adapterPlaceholders);
   const [previewMode, setPreviewMode] = useState<PreviewMode>('recommended');
   const [previewOrientationId, setPreviewOrientationId] = useState('as-imported');
+  const [spatialIntent, setSpatialIntent] = useState<SpatialManufacturingIntent>(() => emptySpatialManufacturingIntent());
+  const [spatialMarkingKind, setSpatialMarkingKind] = useState<SpatialRegionKind>();
   const [planObjective, setPlanObjective] = useState<PlanObjective>('recommended');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -295,15 +366,19 @@ export default function App() {
   const printer = printerProfiles.find(profile => profile.id === printerId);
   const analysisPrinter = printer ?? printerAgnosticProfile;
   const previewPlate = printer?.buildVolume ?? { x: 250, y: 250, z: 250 };
+  const previewOrientation = analysis?.orientations.find(candidate => candidate.id === previewOrientationId) ?? analysis?.orientations[0];
+  const previewGeometryRisk = previewOrientation?.geometryRisk ?? analysis?.geometryRisk;
+  const geometryWarnings = analysis?.findings?.filter(finding => finding.severity === 'warning') ?? [];
   const suggestedPackageTarget = useMemo(() => suggestSlicerTarget(adapters, printerId), [adapters, printerId]);
   const suggestedPackageAdapter = adapters.find(adapter => adapter.target === suggestedPackageTarget) ?? adapterPlaceholders[0];
-  const questionnaire = useMemo(() => intelligence ? questionnaireFromIntelligence(intelligence, analysisPrinter) : undefined, [intelligence, analysisPrinter]);
-  const recommendedOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, questionnaire.priority) : undefined, [analysis, questionnaire]);
-  const fasterOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, 'speed') : undefined, [analysis, questionnaire]);
-  const performanceOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, 'strength') : undefined, [analysis, questionnaire]);
+  const spatialCandidates = useMemo(() => geometry ? analyzeSpatialCandidates(geometry) : undefined, [geometry]);
+  const questionnaire = useMemo(() => intelligence ? { ...questionnaireFromIntelligence(intelligence, analysisPrinter), spatialIntent } : undefined, [intelligence, analysisPrinter, spatialIntent]);
+  const recommendedOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, questionnaire.priority, questionnaire.manufacturingIntent, spatialIntent) : undefined, [analysis, questionnaire, spatialIntent]);
+  const fasterOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, 'speed', questionnaire.manufacturingIntent, spatialIntent) : undefined, [analysis, questionnaire, spatialIntent]);
+  const performanceOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, 'strength', questionnaire.manufacturingIntent, spatialIntent) : undefined, [analysis, questionnaire, spatialIntent]);
   const orientation = planObjective === 'time' ? fasterOrientation : planObjective === 'performance' ? performanceOrientation : recommendedOrientation;
   const orientationPriority = planObjective === 'time' ? 'speed' : planObjective === 'performance' ? 'strength' : questionnaire?.priority;
-  const orientationComparisons = useMemo(() => analysis && orientationPriority ? compareOrientations(analysis, orientationPriority) : [], [analysis, orientationPriority]);
+  const orientationComparisons = useMemo(() => analysis && orientationPriority ? compareOrientations(analysis, orientationPriority, questionnaire?.manufacturingIntent, spatialIntent) : [], [analysis, orientationPriority, questionnaire?.manufacturingIntent, spatialIntent]);
   const recommendedEvaluated = useMemo(() => analysis ? { ...analysis, orientationLabel: recommendedOrientation?.label ?? 'As imported' } : undefined, [analysis, recommendedOrientation]);
   const fasterEvaluated = useMemo(() => analysis ? { ...analysis, orientationLabel: fasterOrientation?.label ?? 'As imported' } : undefined, [analysis, fasterOrientation]);
   const performanceEvaluated = useMemo(() => analysis ? { ...analysis, orientationLabel: performanceOrientation?.label ?? 'As imported' } : undefined, [analysis, performanceOrientation]);
@@ -324,12 +399,31 @@ export default function App() {
   const selectedAdapter = adapters.find(item => item.target === packageTarget);
   const selectedPrinterSupported = packageTarget === 'generic' || Boolean(printer && supportsPrinter(selectedAdapter, printerId));
   const supportedPrinterNames = selectedAdapter?.supportedPrinterIds?.map(id => getPrinter(id).model).join(', ') ?? '';
-  const readiness = useMemo(() => intelligence ? assessDecisionReadiness(intelligence) : undefined, [intelligence]);
+  const readiness = useMemo(() => intelligence ? assessDecisionReadiness(intelligence, spatialIntent) : undefined, [intelligence, spatialIntent]);
   const importedBuildVolumeNotice = analysis && printer ? checkBuildVolume(analysis, printer)[0] : undefined;
   const unansweredQuestions = intelligence?.questions.filter(question => !(followUps[question.id] ?? '').trim()) ?? [];
-  const preparationComplete = isPreparationComplete(readiness?.conservativePlan === 'ready', intelligence?.questions.length ?? 0);
+  const spatialGaps = readiness?.gaps.filter(gap => gap.id.startsWith('spatial-')) ?? [];
+  const preparationComplete = isPreparationComplete(readiness?.conservativePlan === 'ready', unansweredQuestions.length + spatialGaps.length);
+  const purposeNeedsContext = Boolean(intelligence && !intelligence.purposeConfirmed && !intelligence.questions.some(question => question.id === 'object-purpose'));
   const workflowStage: View = deriveWorkflowStage({ hasIntelligence: Boolean(intelligence), exportRequested: view === 'export', ready: preparationComplete });
   const contextAnalysis = useMemo(() => analyzePurposeContext(followUps.purpose ?? '', followUps), [followUps]);
+  const contextFunctionKnown = contextAnalysis.facets.some(facet => facet.category === 'object-function');
+  const contextNeedsFunction = Boolean(followUps.purpose?.trim()) && !contextFunctionKnown;
+  const intent = intelligence?.manufacturingIntent;
+  const loadLocalizationRequired = Boolean(intent && intentFactUsable(intent.mechanical.loadDirections) && intent.mechanical.loadDirections.value.length);
+  const matingLocalizationRequired = Boolean(intent && (
+    intentFactUsable(intent.interface.fitType) && intent.interface.fitType.value !== 'unknown'
+    || intentFactUsable(intent.interface.criticalSurfaces) && intent.interface.criticalSurfaces.value.includes('mating')
+  ));
+  const visibleLocalizationRequired = Boolean(intent && intentFactUsable(intent.interface.criticalSurfaces) && intent.interface.criticalSurfaces.value.includes('visible'));
+  const spatialPreviewRegions = useMemo(() => {
+    const confirmed = spatialIntent.regions.filter(region => region.status === 'confirmed');
+    if (confirmed.length || previewMode !== 'spatial') return confirmed;
+    return [
+      spatialCandidates?.planarCandidates.find(candidate => !spatialIntent.rejectedCandidateIds.includes(`visible-surface:${candidate.id}`)),
+      spatialCandidates?.thinCandidates.find(candidate => !spatialIntent.rejectedCandidateIds.includes(`critical-thin:${candidate.id}`)),
+    ].filter(Boolean) as SpatialRegion[];
+  }, [previewMode, spatialCandidates, spatialIntent]);
   const contextSignals = useMemo(() => {
     const signals = [
       ...Object.entries(contextAnalysis.suggestions).map(([field, suggestion]) => ({
@@ -432,6 +526,42 @@ export default function App() {
     });
   };
 
+  const spatialEvidenceFor = (kind: SpatialRegionKind) => {
+    if (!intent) return [];
+    if (kind === 'load-bearing') return intent.mechanical.loadDirections.evidenceIds;
+    if (kind === 'mating-surface') return [...new Set([...intent.interface.fitType.evidenceIds, ...intent.interface.criticalSurfaces.evidenceIds])];
+    if (kind === 'visible-surface') return intent.interface.criticalSurfaces.evidenceIds;
+    return ['geometry:opposing-ray-screening'];
+  };
+  const beginSpatialMarking = (kind: SpatialRegionKind) => {
+    setSpatialMarkingKind(kind); setPreviewMode('spatial');
+  };
+  const selectSpatialFace = (faceIndex: number) => {
+    if (!geometry || !spatialMarkingKind) return;
+    const labels: Record<SpatialRegionKind, string> = {
+      'load-bearing': 'Confirmed load-bearing region', 'mating-surface': 'Confirmed mating surface',
+      'visible-surface': 'Confirmed visible surface', 'critical-thin': 'Confirmed critical thin region',
+    };
+    const region = facePatchRegion(geometry, faceIndex, spatialMarkingKind, labels[spatialMarkingKind], spatialEvidenceFor(spatialMarkingKind));
+    if (!region) { setError('That face could not be mapped to a stable surface patch.'); return; }
+    setSpatialIntent(current => replaceSpatialRegion(current, region)); setSpatialMarkingKind(undefined); setError('');
+  };
+  const useSpatialCandidate = (kind: SpatialRegionKind) => {
+    const candidates = kind === 'critical-thin' ? spatialCandidates?.thinCandidates : spatialCandidates?.planarCandidates;
+    const candidate = candidates?.find(item => !spatialIntent.rejectedCandidateIds.includes(`${kind}:${item.id}`));
+    if (!candidate) return;
+    setSpatialIntent(current => replaceSpatialRegion(current, confirmCandidate(candidate, kind, spatialEvidenceFor(kind))));
+    setSpatialMarkingKind(undefined); setPreviewMode('spatial');
+  };
+  const markSpatialNotApplicable = (kind: SpatialRegionKind) => {
+    setSpatialIntent(current => setSpatialRegionNotApplicable(current, kind)); setSpatialMarkingKind(undefined);
+  };
+  const dismissSpatialCandidate = (kind: SpatialRegionKind) => {
+    const candidates = kind === 'critical-thin' ? spatialCandidates?.thinCandidates : spatialCandidates?.planarCandidates;
+    const candidate = candidates?.find(item => !spatialIntent.rejectedCandidateIds.includes(`${kind}:${item.id}`));
+    if (candidate) setSpatialIntent(current => rejectSpatialCandidate(current, kind, candidate.id));
+  };
+
   const resetAnalysis = (preserveBrief = false) => {
     const brief = preserveBrief ? followUps.purpose ?? '' : '';
     setIntelligence(undefined); setStatus(''); setValidationReport(undefined); setPlanObjective('recommended');
@@ -444,7 +574,7 @@ export default function App() {
     setBusy(true); setError(''); resetAnalysis(true);
     try {
       const result = await importModel(await file.arrayBuffer(), file.name);
-      setAnalysis(result.analysis); setGeometry(result.geometry); setSourcePath(undefined); setSourceModelPath(undefined); setPreviewImage(undefined);
+      setAnalysis(result.analysis); setGeometry(result.geometry); setSourcePath(undefined); setSourceModelPath(undefined); setPreviewImage(undefined); setSpatialIntent(emptySpatialManufacturingIntent()); setSpatialMarkingKind(undefined);
     } catch (reason) { setError(`The model could not be read. ${String(reason)}`); }
     finally { setBusy(false); setDropActive(false); }
   };
@@ -462,7 +592,7 @@ export default function App() {
       const analysisWithP1Metrics = imported.analysis.metadata.format === 'stl'
         ? { ...imported.analysis, metadata: native.metadata }
         : imported.analysis;
-      setAnalysis(analysisWithP1Metrics); setGeometry(imported.geometry); setSourcePath(exportPath); setSourceModelPath(path); setPreviewImage(undefined); setView('import');
+      setAnalysis(analysisWithP1Metrics); setGeometry(imported.geometry); setSourcePath(exportPath); setSourceModelPath(path); setPreviewImage(undefined); setSpatialIntent(emptySpatialManufacturingIntent()); setSpatialMarkingKind(undefined); setView('import');
       return true;
     } catch (reason) { setError(String(reason)); return false; }
     finally { setBusy(false); setDropActive(false); }
@@ -474,7 +604,7 @@ export default function App() {
 
   const saveProject = async () => {
     if (!analysis || !sourceModelPath) return;
-    const contents = JSON.stringify({ product: 'Check Make', schemaVersion: 2, savedAt: new Date().toISOString(), sourcePath: sourceModelPath, view, intelligence, printerId, followUps, packageTarget, planObjective }, null, 2);
+    const contents = JSON.stringify({ product: 'Check Make', schemaVersion: 3, savedAt: new Date().toISOString(), sourcePath: sourceModelPath, view, intelligence, spatialIntent, printerId, followUps, packageTarget, planObjective }, null, 2);
     const stem = analysis.fileName.replace(/\.(?:stl|3mf|obj)$/i, '');
     try {
       const saved = await invoke<string | null>('save_check_make_project', { defaultName: `${stem}.checkmake`, contents });
@@ -487,10 +617,10 @@ export default function App() {
     try {
       const contents = await invoke<string | null>('open_check_make_project');
       if (!contents) return;
-      const project = JSON.parse(contents) as { sourcePath?: string; view?: View; intelligence?: ModelIntelligence; printerId?: string; followUps?: Record<string, string>; packageTarget?: SlicerTarget; planObjective?: PlanObjective };
+      const project = JSON.parse(contents) as { sourcePath?: string; view?: View; intelligence?: ModelIntelligence; spatialIntent?: SpatialManufacturingIntent; printerId?: string; followUps?: Record<string, string>; packageTarget?: SlicerTarget; planObjective?: PlanObjective };
       if (!project.sourcePath) throw new Error('The project does not reference its source model.');
       if (!await loadPath(project.sourcePath)) return;
-      setIntelligence(project.intelligence ? prepareIntelligenceForReview(project.intelligence) : undefined); setPrinterId(project.printerId ?? ''); setFollowUps(project.followUps ?? {}); setPackageTarget(project.packageTarget ?? 'generic'); setPackageTargetManuallySelected(Boolean(project.packageTarget)); setPlanObjective(project.planObjective === 'time' || project.planObjective === 'performance' ? project.planObjective : 'recommended'); setView(project.intelligence ? project.view ?? 'analysis' : 'import');
+      setIntelligence(project.intelligence ? prepareIntelligenceForReview(project.intelligence) : undefined); setSpatialIntent(normalizeSpatialManufacturingIntent(project.spatialIntent)); setPrinterId(project.printerId ?? ''); setFollowUps(project.followUps ?? {}); setPackageTarget(project.packageTarget ?? 'generic'); setPackageTargetManuallySelected(Boolean(project.packageTarget)); setPlanObjective(project.planObjective === 'time' || project.planObjective === 'performance' ? project.planObjective : 'recommended'); setView(project.intelligence ? project.view ?? 'analysis' : 'import');
       setStatus('Check Make project reopened.');
     } catch (reason) { setError(`Could not open project. ${String(reason)}`); }
   };
@@ -508,7 +638,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleProjectShortcut);
     return () => window.removeEventListener('keydown', handleProjectShortcut);
-  }, [analysis, sourceModelPath, intelligence, printerId, followUps, packageTarget, planObjective, settingsOpen, view]);
+  }, [analysis, sourceModelPath, intelligence, spatialIntent, printerId, followUps, packageTarget, planObjective, settingsOpen, view]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -523,7 +653,7 @@ export default function App() {
       else { stopOpen = openListener; stopSave = saveListener; }
     });
     return () => { disposed = true; stopOpen?.(); stopSave?.(); };
-  }, [analysis, sourceModelPath, intelligence, printerId, followUps, packageTarget, planObjective, view]);
+  }, [analysis, sourceModelPath, intelligence, spatialIntent, printerId, followUps, packageTarget, planObjective, view]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -547,15 +677,18 @@ export default function App() {
   const runIntelligence = async () => {
     if (!analysis) return;
     setBusy(true); setError(''); setView('analysis');
-    const baseline = localModelAnalysis(analysis);
     const brief = followUps.purpose?.trim() ?? '';
-    const prepareInitialReview = (result: ModelIntelligence): ModelIntelligence => brief ? {
-      ...result,
-      likelyPurpose: brief,
-      purposeConfirmed: true,
-      userEvidence: [brief],
-      questions: baseline.questions.filter(question => question.id !== 'purpose'),
-    } : result;
+    const baseline = localModelAnalysis(analysis, brief);
+    const prepareInitialReview = (result: ModelIntelligence): ModelIntelligence => {
+      if (!brief) return result;
+      const purposeEstablished = result.objectHypothesis?.purpose.status === 'user-stated' || result.objectHypothesis?.purpose.status === 'confirmed';
+      return {
+        ...result,
+        purposeConfirmed: purposeEstablished || (!result.objectHypothesis && result.purposeConfirmed),
+        userEvidence: [brief],
+        questions: result.questions.filter(question => question.id !== 'purpose'),
+      };
+    };
     try {
       const result = connection.provider === 'openai'
         ? await analyzeWithOpenAI(connection, analysis, previewImage, followUps)
@@ -576,7 +709,7 @@ export default function App() {
     if (readiness?.conservativePlan !== 'ready') { setError('Check Make cannot export until every decision-changing requirement has been resolved.'); setView('analysis'); return; }
     setBusy(true); setError('');
     try {
-      const metadata = JSON.stringify({ product: 'Check Make', schemaVersion: 2, intelligence, printer: printer ?? null, planObjective, recommendations, notices }, null, 2);
+      const metadata = JSON.stringify({ product: 'Check Make', schemaVersion: 3, intelligence, spatialIntent, printer: printer ?? null, planObjective, recommendations, notices }, null, 2);
       const args = {
         path: sourcePath, orientationId: orientation.id, metadataJson: metadata,
         defaultName: packageFileName(analysis.fileName, packageTarget), printerId: printerId || 'unselected',
@@ -595,11 +728,16 @@ export default function App() {
     finally { setBusy(false); }
   };
 
-  const decisionCount = unansweredQuestions.length;
-  const primaryPrepareLabel = preparationComplete
+  const decisionCount = unansweredQuestions.length + spatialGaps.length;
+  const unsupportedPlan = readiness?.conservativePlan === 'unsupported';
+  const primaryPrepareLabel = purposeNeedsContext
+    ? 'Return to Context'
+    : unsupportedPlan
+    ? 'Export unavailable for this use'
+    : preparationComplete
     ? 'Continue to export'
-    : unansweredQuestions.length > 0
-      ? `Answer ${unansweredQuestions.length} decision${unansweredQuestions.length === 1 ? '' : 's'}`
+    : decisionCount > 0
+      ? `Resolve ${decisionCount} decision${decisionCount === 1 ? '' : 's'}`
       : 'Apply answers and re-check';
 
   const prepareReadyLabel = printer ? 'Plan ready' : 'Plan ready · printer not validated';
@@ -626,7 +764,8 @@ export default function App() {
         <section className="context-card purpose-context"><span>CONTEXT</span><label><textarea value={followUps.purpose ?? ''} onChange={event => updateProjectBrief(event.target.value)} placeholder="Example: Outdoor mounting bracket in direct sun, holds 5 kg, occasional impacts, maximum 55 °C, accurate fit."/><small>Include function, environment, load, heat or impact, and what matters most. Check Make asks only for missing details.</small></label>
           {contextSignals.length > 0 && <div className="context-signals" aria-label="Requirements understood from context"><b>Understood</b>{contextSignals.map(signal => <span key={signal.id}>{signal.label}: {signal.value}</span>)}</div>}
           {contextAnalysis.issues.slice(0, 2).map(issue => <div className="context-clarification" key={`${issue.field}:${issue.evidence.join('-')}`}><b>{issue.question}</b><small>{issue.field === 'heat' ? 'Sun or “heat” alone does not establish the part temperature. Choose the hottest realistic condition.' : issue.message}</small><div>{issue.options.map(option => <button type="button" key={option.value} onClick={() => applyContextClarification(issue, option)}>{option.label}</button>)}</div></div>)}
-          {contextAnalysis.specialistPrompts.slice(0, 1).map(prompt => <div className="context-specialist" key={prompt.id}><b>{prompt.question}</b><small>{prompt.message}</small></div>)}
+          {contextAnalysis.specialistPrompts.slice(0, 3).map(prompt => <div className="context-specialist" key={prompt.id}><b>{prompt.question}</b><small>{prompt.message}</small></div>)}
+          {contextNeedsFunction && <div className="context-warning"><b>Add what the object does</b><p>Describe its function in this same Context field—for example “creates spacing in a parasol base”, “holds a sensor”, or “protects a connector”.</p></div>}
         </section>
         <section className="context-card printer-context"><span>PRINTER · OPTIONAL</span><div className="context-glyph printer-glyph"><UiIcon name="printer"/></div><div className="printer-control"><PrinterPicker value={printerId} onChange={selectPrinter} label="Target printer" emptyLabel="No printer selected" emptyDescription="Validate compatibility later"/><small>{printer ? `${printer.buildVolume.x} × ${printer.buildVolume.y} × ${printer.buildVolume.z} mm · ${printer.enclosed ? 'Enclosed' : 'Open frame'}` : 'Compatibility will be checked when selected.'}</small></div></section>
         <section className="context-card analysis-context"><span>ANALYSIS</span><div className="analysis-options"><label><input type="radio" checked={connection.provider === 'local'} onChange={() => setConnection(current => ({ ...current, provider: 'local' }))}/><span><b>Local preliminary analysis</b><small>Private · geometry + deterministic rules</small></span></label><label><input type="radio" checked={connection.provider === 'openai'} onChange={() => setConnection(current => ({ ...current, provider: 'openai' }))}/><span><b>OpenAI vision analysis</b><small>Rendered views + deterministic rules</small></span></label>{connection.provider === 'openai' && !connection.apiKey.trim() && <small className="analysis-credential-note">Add an API key in Settings to use this provider.</small>}</div></section>
@@ -634,14 +773,21 @@ export default function App() {
       </aside>
 
       <section className="model-workspace">
-        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1>{analysis?.fileName ?? 'No model loaded'}</h1></div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Selected'], ['risk', 'Risk map'], ['compare', 'Compare']] as const).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => setPreviewMode(id)}>{label}</button>)}</div>}</header>
+        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1>{analysis?.fileName ?? 'No model loaded'}</h1>{analysis && <span className="model-measured"><UiIcon name="check"/> Geometry measured</span>}</div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Model'], ['risk', 'Overhangs'], ['spatial', 'Functional regions']] as const).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => setPreviewMode(id)}>{label}</button>)}</div>}</header>
         {analysis ? <>
-          <div className="workflow-preview"><Preview geometry={geometry} orientationId={previewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} captureKey={`${analysis.fileName}:${previewOrientationId}:${previewMode}`} onCapture={setPreviewImage}/></div>
-          <div className="workflow-metrics"><div><b>{analysis.heightMm.toFixed(1)} mm</b><span>Height</span></div><div><b>{analysis.topology?.componentCount ?? 1}</b><span>Mesh parts</span></div><div><b>{analysis.geometryRisk.overhangRegionCount}</b><span>Overhang regions</span></div><div><b>{(analysis.geometryRisk.bedCoverageRatio * 100).toFixed(1)}%</b><span>Base coverage</span></div></div>
-          <details className="model-evidence-drawer"><summary>Geometry findings and orientation evidence</summary>
-            <div className="geometry-findings">{analysis.findings?.map(finding => <div className={finding.severity} key={finding.id}><b>{finding.label}</b><p>{finding.detail}</p><small>{Math.round(finding.confidence * 100)}% measurement confidence</small></div>)}</div>
-            {orientationComparisons.length > 0 && <div className="orientation-comparison"><p>Relative geometry scores only. Select an orientation to preview it.</p><div>{orientationComparisons.map((item, index) => <button className={`${previewOrientationId === item.candidate.id ? 'selected ' : ''}${index === 0 ? 'recommended' : ''}`} key={item.candidate.id} onClick={() => { setPreviewOrientationId(item.candidate.id); setPreviewMode('recommended'); }}><span><b>{item.candidate.label}</b><small>{index === 0 ? 'Recommended · ' : ''}{item.candidate.heightMm.toFixed(1)} mm tall</small></span><strong>{item.overallScore.toFixed(0)}</strong><span className="score-breakdown">Stability {item.stabilityScore.toFixed(0)} · Support {item.supportScore.toFixed(0)} · Height {item.heightScore.toFixed(0)}</span></button>)}</div></div>}
-            <p className="geometry-caveat">Largest connected overhang: {analysis.geometryRisk.largestOverhangRegionAreaMm2.toFixed(0)} mm² · {analysis.geometryRisk.largestOverhangRegionSpanMm.toFixed(1)} mm projected span. These measurements are not FEM, load-path, wall-thickness, or print-failure predictions.</p>
+          <div className={`workflow-preview ${spatialMarkingKind ? 'marking-spatial-region' : ''}`}><Preview geometry={geometry} orientationId={previewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} overhangRegionCount={previewGeometryRisk?.overhangRegionCount ?? 0} spatialRegions={spatialPreviewRegions} markingKind={spatialMarkingKind} onFaceSelect={selectSpatialFace} captureKey={`${analysis.fileName}:${previewOrientationId}:${previewMode}`} onCapture={setPreviewImage}/></div>
+          <div className="workflow-metrics"><div><b>{(previewOrientation?.heightMm ?? analysis.heightMm).toFixed(1)} mm</b><span>Height</span></div><div><b>{analysis.topology?.componentCount ?? 1}</b><span>Mesh bodies</span></div><button className={previewMode === 'risk' ? 'active' : ''} aria-pressed={previewMode === 'risk'} onClick={() => setPreviewMode('risk')}><b>{previewGeometryRisk?.overhangRegionCount ?? 0}</b><span>Overhangs</span></button><div><b>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}%</b><span>Bed contact</span></div></div>
+          <details className="model-evidence-drawer"><summary><span>Model checks</span><em className={geometryWarnings.length ? 'warning' : 'ready'}>{geometryWarnings.length ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'}` : 'Mesh ready'}</em></summary>
+            <div className="model-checks">
+              <div><span className={`check-indicator ${geometryWarnings.length ? 'warning' : 'ready'}`}>{geometryWarnings.length ? '!' : <UiIcon name="check"/>}</span><span><b>Mesh integrity</b><small>{geometryWarnings.length ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'} needs review` : 'Closed printable mesh detected'}</small></span></div>
+              <div><span className="check-indicator neutral">%</span><span><b>Bed contact</b><small>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}% of the bounding footprint</small></span></div>
+              <button type="button" onClick={() => setPreviewMode('risk')}><span className={`check-indicator ${previewGeometryRisk?.overhangRegionCount ? 'attention' : 'ready'}`}>{previewGeometryRisk?.overhangRegionCount ?? 0}</span><span><b>Overhangs</b><small>{previewGeometryRisk?.overhangRegionCount ? `${previewGeometryRisk.overhangRegionCount} region${previewGeometryRisk.overhangRegionCount === 1 ? '' : 's'} · largest ${previewGeometryRisk.largestOverhangRegionAreaMm2.toFixed(0)} mm²` : 'No angle-based regions detected'}</small></span><em>Show ›</em></button>
+              <div><span className="check-indicator neutral">↻</span><span><b>Orientation</b><small>{previewOrientation?.label ?? 'As imported'}</small></span></div>
+            </div>
+            {geometryWarnings.length > 0 && <div className="geometry-warnings">{geometryWarnings.map(finding => <div key={finding.id}><b>{finding.label}</b><p>{finding.detail}</p></div>)}</div>}
+            <details className="technical-geometry"><summary>Technical geometry details</summary><dl><div><dt>Triangles</dt><dd>{analysis.triangleCount.toLocaleString()}</dd></div><div><dt>Largest overhang</dt><dd>{previewGeometryRisk?.largestOverhangRegionAreaMm2.toFixed(0) ?? 0} mm² · {previewGeometryRisk?.largestOverhangRegionSpanMm.toFixed(1) ?? '0.0'} mm span</dd></div><div><dt>Mesh boundaries</dt><dd>{analysis.topology?.boundaryEdgeCount ?? 0}</dd></div><div><dt>Non-manifold edges</dt><dd>{analysis.topology?.nonManifoldEdgeCount ?? 0}</dd></div></dl><p>Preliminary geometric measurements. These values are not calibrated failure probabilities.</p></details>
+            {orientationComparisons.length > 0 && <details className="orientation-comparison"><summary>Orientation alternatives</summary><p>Six axis-aligned orientations are compared using bed contact, overhang exposure, and height.</p>{orientationComparisons[0].constraintsApplied?.map(note => <p className="orientation-constraint applied" key={note}>Applied: {note}</p>)}{orientationComparisons[0].constraintsUnresolved?.map(note => <p className="orientation-constraint unresolved" key={note}>Not localized: {note}</p>)}{previewOrientationId !== 'as-imported' && <button type="button" className={`compare-orientation ${previewMode === 'compare' ? 'active' : ''}`} aria-pressed={previewMode === 'compare'} onClick={() => setPreviewMode(previewMode === 'compare' ? 'recommended' : 'compare')}>{previewMode === 'compare' ? 'Show selected orientation' : 'Compare with imported orientation'}</button>}<div>{orientationComparisons.map((item, index) => <button className={`${previewOrientationId === item.candidate.id ? 'selected ' : ''}${index === 0 ? 'recommended' : ''}`} aria-pressed={previewOrientationId === item.candidate.id} key={item.candidate.id} onClick={() => { setPreviewOrientationId(item.candidate.id); setPreviewMode('recommended'); }}><span><b>{item.candidate.label}</b><small>{index === 0 ? 'Recommended for current objective' : 'Preview this orientation'}</small></span><span className="orientation-measures">{item.candidate.heightMm.toFixed(1)} mm high · {item.candidate.bedContactAreaMm2.toFixed(0)} mm² contact · {(item.candidate.overhangRatio * 100).toFixed(1)}% overhang</span></button>)}</div></details>}
+            <details className="analysis-limits"><summary>Analysis limits</summary><div>{analysis.analysisLimits?.map(limit => <div key={limit.id}><span>{limit.status === 'requires-input' ? 'Needs input' : limit.status === 'evaluated' ? 'Screened' : 'Not evaluated'}</span><p><b>{limit.label}</b>{limit.detail}</p></div>)}</div><p className="analysis-limit-note">No structural simulation is performed. Load paths and stress are not inferred from appearance; thickness screening is partial and geometric only.</p></details>
           </details>
         </> : <div className={`workspace-dropzone ${dropActive ? 'drag-active' : ''}`} onDragOver={event => { event.preventDefault(); setDropActive(true); }} onDragLeave={() => setDropActive(false)} onDrop={event => { event.preventDefault(); setDropActive(false); void loadBrowserFile(event.dataTransfer.files[0]); }}><img src="/check-make-symbol.svg" alt=""/><h2>{busy ? 'Reading model…' : dropActive ? 'Release to inspect' : 'Drop a 3D model to begin'}</h2><p>Check Make starts from geometry, then asks only for decisions that can change the print plan.</p><button className="primary" disabled={busy} onClick={() => void browse()}>Choose model…</button></div>}
         <input ref={fileInput} hidden type="file" accept=".stl,.3mf,.obj" onChange={event => void loadBrowserFile(event.target.files?.[0])}/>
@@ -650,10 +796,20 @@ export default function App() {
       <aside className="decision-panel" ref={decisionPanel}>
         {workflowStage === 'import' && <section className="inspect-panel"><span className="kicker">INSPECT</span><h1>{busy ? 'Inspecting the model…' : !analysis ? 'Add a model' : followUps.purpose?.trim() ? 'Ready to inspect' : 'Add context'}</h1><p>{analysis ? 'Describe what the part does and where it will be used. A printer is optional at this stage and, when selected, adds capability and build-volume checks.' : 'Add or load a 3D model first. Then describe its context; you can select a printer now or validate compatibility later.'}</p>
           <div className="inspect-checklist"><div className={analysis ? 'done' : ''}><i>{analysis ? <UiIcon name="check"/> : '1'}</i><span><b>Model geometry</b><small>{analysis ? `${analysis.triangleCount.toLocaleString()} triangles measured` : 'Waiting for STL, 3MF, or OBJ'}</small></span></div><div className={followUps.purpose?.trim() ? 'done' : ''}><i>{followUps.purpose?.trim() ? <UiIcon name="check"/> : '2'}</i><span><b>Context</b><small>{followUps.purpose?.trim() ? 'Included in analysis' : 'Describe the part and its use'}</small></span></div><div className={printer ? 'done' : 'optional'}><i>{printer ? <UiIcon name="check"/> : <UiIcon name="printer"/>}</i><span><b>Target printer <em>Optional</em></b><small>{printer ? `${printer.manufacturer} ${printer.model}` : 'No printer selected · validate later'}</small></span></div><div><i>3</i><span><b>Analysis</b><small>{connection.provider === 'openai' ? 'Context + vision + deterministic rules' : 'Context + geometry + deterministic rules'}</small></span></div></div>
-          <button className="primary workflow-primary" disabled={!analysis || !followUps.purpose?.trim() || busy || (connection.provider === 'openai' && !connection.apiKey.trim())} onClick={() => void runIntelligence()}>{busy ? 'Inspecting…' : connection.provider === 'openai' ? 'Inspect with AI' : 'Inspect model'}</button>
+          <button className="primary workflow-primary" disabled={!analysis || !followUps.purpose?.trim() || busy || (connection.provider === 'openai' && !connection.apiKey.trim()) || (connection.provider === 'local' && contextNeedsFunction)} onClick={() => void runIntelligence()}>{busy ? 'Inspecting…' : connection.provider === 'local' && contextNeedsFunction ? 'Add function to Context' : connection.provider === 'openai' ? 'Inspect with AI' : 'Inspect model'}</button>
         </section>}
 
-        {workflowStage === 'analysis' && intelligence && <section className="prepare-panel"><span className="kicker">PREPARE</span><div className="prepare-heading"><div><h1>Prepare print</h1><p>{intelligence.objectName}</p></div><span className={preparationComplete ? 'ready-pill' : 'review-pill'}>{preparationComplete ? prepareReadyLabel : 'Review required'}</span></div><div className="readiness-summary"><i style={{ '--readiness': `${preparationComplete ? 100 : Math.max(16, 100 - Math.max(1, decisionCount) * 12)}%` } as React.CSSProperties}/><div><b>{preparationComplete ? prepareReadySummary : decisionCount ? `Ready after ${decisionCount} decision${decisionCount === 1 ? '' : 's'}` : 'Review and apply the prefilled decisions'}</b><small>{intelligence.likelyPurpose}</small></div></div>
+        {workflowStage === 'analysis' && intelligence && <section className="prepare-panel"><span className="kicker">PREPARE</span><div className="prepare-heading"><div><h1>Prepare print</h1><p>{intelligence.objectName}</p></div><span className={preparationComplete ? 'ready-pill' : 'review-pill'}>{preparationComplete ? prepareReadyLabel : unsupportedPlan ? 'Unsupported use' : 'Review required'}</span></div><div className="readiness-summary"><i style={{ '--readiness': `${preparationComplete ? 100 : Math.max(16, 100 - Math.max(1, decisionCount) * 12)}%` } as React.CSSProperties}/><div><b>{preparationComplete ? prepareReadySummary : unsupportedPlan ? 'Check Make must abstain from this print plan' : decisionCount ? `Ready after ${decisionCount} decision${decisionCount === 1 ? '' : 's'}` : 'Review and apply the prefilled decisions'}</b><small>{intelligence.likelyPurpose}</small></div></div>
+          {readiness?.unsupportedReasons.map(reason => <div className="context-warning" role="alert" key={reason}><b>Recommendation withheld</b><p>{reason}</p></div>)}
+          {purposeNeedsContext && <div className="context-warning"><b>Purpose is not established</b><p>Return to the original Context field and add what the object does. Check Make will not ask for the same description in a second text field.</p></div>}
+          {intelligence.objectHypothesis && <details className="object-hypothesis"><summary><span><b>Object hypothesis</b><small>{intelligence.objectHypothesis.identity.value} · {intelligence.objectHypothesis.purpose.value}</small></span><em>{Math.round(intelligence.objectHypothesis.identity.confidence * 100)}% identity confidence</em></summary><div className="hypothesis-body"><div className="hypothesis-assertions">{[intelligence.objectHypothesis.identity, intelligence.objectHypothesis.purpose].map(item => <div key={item.id}><span><b>{item.label}</b><small>{item.status.replace('-', ' ')}</small></span><strong>{item.value}</strong></div>)}</div>{intelligence.objectHypothesis.features.length > 0 && <div className="hypothesis-features"><b>Context-linked features</b>{intelligence.objectHypothesis.features.map(feature => <span key={feature.id}><small>{feature.label}</small><strong>{feature.value}</strong><em>{feature.status.replace('-', ' ')}</em></span>)}</div>}<details className="hypothesis-evidence"><summary>Evidence and provenance</summary><ul>{intelligence.objectHypothesis.evidence.map(item => <li key={item.id}><span>{item.source.replaceAll('-', ' ')}</span><p>{item.statement}</p><em>{Math.round(item.confidence * 100)}%</em></li>)}</ul></details><details className="hypothesis-limits"><summary>What is not established</summary><ul>{intelligence.objectHypothesis.limits.map(limit => <li key={limit}>{limit}</li>)}</ul></details><p className="hypothesis-boundary">Only confirmed user requirements feed the manufacturing rules. Unconfirmed object hypotheses remain explanatory evidence.</p></div></details>}
+          {(loadLocalizationRequired || matingLocalizationRequired || visibleLocalizationRequired || Boolean(spatialCandidates?.thinCandidates.length)) && <SpatialIntentPanel
+            spatial={spatialIntent} loadRequired={loadLocalizationRequired} matingRequired={matingLocalizationRequired} visibleRequired={visibleLocalizationRequired}
+            planarCandidateId={spatialCandidates?.planarCandidates[0]?.id} thinCandidateId={spatialCandidates?.thinCandidates[0]?.id} thinCandidateMm={spatialCandidates?.thinCandidates[0]?.thicknessMm} thicknessCoverage={spatialCandidates?.thicknessCoverage}
+            markingKind={spatialMarkingKind}
+            onLoadAxis={axis => setSpatialIntent(current => setConfirmedLoadAxis(current, axis, intent?.mechanical.loadDirections.evidenceIds ?? []))}
+            onMark={beginSpatialMarking} onUseCandidate={useSpatialCandidate} onRejectCandidate={dismissSpatialCandidate} onNotApplicable={markSpatialNotApplicable}
+          />}
           {intelligence.questions.length > 0 && <div className="workflow-questions"><div className="decision-heading"><div><h2>Decisions that affect this plan</h2><p>Review the values prefilled from the Inspect description and complete any remaining decisions.</p></div><span>{unansweredQuestions.length} left</span></div>{intelligence.questions.map(question => {
             const inferredEvidence = autoFilledDecisions[question.id];
             const input = question.kind === 'single' && question.options
@@ -662,7 +818,7 @@ export default function App() {
             return <label className={`${(followUps[question.id] ?? '').trim() ? 'answered ' : ''}${inferredEvidence ? 'inferred' : ''}`} key={question.id}><span className="decision-state">{(followUps[question.id] ?? '').trim() ? '✓' : intelligence.questions.findIndex(item => item.id === question.id) + 1}</span><span className="decision-copy"><b>{question.question}</b><small>{question.why}</small>{input}{inferredEvidence && <em title={inferredEvidence.join(', ')}>Filled from description · review if needed</em>}</span></label>;
           })}</div>}
           {preparationComplete && recommendations.length > 0 && <RecommendedKeySettings recommendations={recommendations} notices={notices}/>}
-          <button className="primary workflow-primary" disabled={busy || (!preparationComplete && unansweredQuestions.length > 0)} onClick={() => preparationComplete ? setView('export') : void refine()}>{primaryPrepareLabel}</button>
+          <button className="primary workflow-primary" disabled={busy || unsupportedPlan || (!purposeNeedsContext && !preparationComplete && decisionCount > 0)} onClick={() => purposeNeedsContext ? resetAnalysis(true) : preparationComplete ? setView('export') : void refine()}>{primaryPrepareLabel}</button>
           {preparationComplete && <details className="full-plan trade-off-alternatives"><summary>Trade-off alternatives</summary><TradeOffAlternatives alternatives={planAlternatives} objective={planObjective} onObjectiveChange={setPlanObjective}/></details>}
         </section>}
 
@@ -676,6 +832,5 @@ export default function App() {
         {error && <p className="page-error workflow-error" role="alert">{error}</p>}
       </aside>
     </main>
-    <footer className="workflow-status" aria-live="polite"><span>{analysis ? '✓ Local geometry measured' : '○ Geometry waiting'}</span><span>{intelligence ? '✓ Evidence available' : '○ Evidence pending'}</span><span>✓ No structural simulation</span></footer>
   </div>;
 }

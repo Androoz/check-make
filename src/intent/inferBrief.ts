@@ -1,6 +1,8 @@
 import type { BriefInference, ChecklistField, InferenceValue, Questionnaire } from '../types';
 import { extractContextFacets } from './contextFacets';
 import type { ContextFacet } from './contextFacets';
+import { normalizeEnglishContext } from './englishNormalization';
+import type { EnglishCorrection, EnglishReviewCue } from './englishNormalization';
 
 type RequirementValue = Questionnaire[ChecklistField];
 type PhrasePattern = { expression: RegExp; allowNegated?: boolean };
@@ -30,6 +32,8 @@ export interface ContextInterpretation {
   ambiguities: ContextAmbiguity[];
   temperaturesC: number[];
   facets: ContextFacet[];
+  corrections: EnglishCorrection[];
+  languageCues: EnglishReviewCue[];
 }
 
 const phrase = (expression: RegExp, allowNegated = false): PhrasePattern => ({ expression, allowNegated });
@@ -56,7 +60,7 @@ const candidates: Candidate[] = [
   candidate('impact', 'medium', .84,
     phrase(/\b(?:impact|knocks?|knocked|bumps?|bumped|drops?|dropped|tough|durable|slag|stöt|tappas|tålig)\b/i)),
   candidate('impact', 'none', .91,
-    phrase(/\b(?:no impact|not dropped|no knocks?|ingen slagbelastning|inga slag|tappas inte)\b/i, true)),
+    phrase(/\b(?:no impacts?|not dropped|no knocks?|ingen slagbelastning|inga slag|tappas inte)\b/i, true)),
 
   candidate('heat', 'hot', .94,
     phrase(/\b(?:engine bay|oven|over 70(?:\s*°?c)?|above 70(?:\s*°?c)?|high heat|hot car|exhaust|motorutrymme|ugn|över 70(?:\s*°?c)?|hög värme|avgassystem)\b/i)),
@@ -68,7 +72,7 @@ const candidates: Candidate[] = [
   candidate('priority', 'flexibility', .95,
     phrase(/\b(?:flexible|soft|rubber|gasket|bendable|mjuk|flexibel|gummi|packning)\b/i)),
   candidate('priority', 'accuracy', .93,
-    phrase(/\b(?:accurate fit|tolerance|press[- ]?fit|snap[- ]?fit|sliding fit|clearance fit|dimensionally accurate|mating surface|bearing|thread|precise fit|noggrann|tolerans|passning|presspassning|snäppfäste|glidpassning|spelpassning|anliggningsyta|lagerläge|gänga)\b/i)),
+    phrase(/\b(?:accurate fit|tolerance|press[- ]?fit|snap[- ]?fit|sliding fit|clearance fit|dimensionally accurate|mating surface|bearing (?:seat|fit|bore)|thread|precise fit|noggrann|tolerans|passning|presspassning|snäppfäste|glidpassning|spelpassning|anliggningsyta|lagerläge|gänga)\b/i)),
   candidate('priority', 'finish', .91,
     phrase(/\b(?:smooth|surface finish|visible face|cosmetic|display quality|appearance|ytfinish|synlig yta|utseende|kosmetisk)\b/i)),
   candidate('priority', 'speed', .89,
@@ -106,7 +110,7 @@ function temperatures(text: string): number[] {
   const found: number[] = [];
   const range = /(-?\d+(?:[.,]\d+)?)\s*(?:-|to|till)\s*(-?\d+(?:[.,]\d+)?)\s*°?\s*c\b/giu;
   for (const match of text.matchAll(range)) found.push(Number(match[1].replace(',', '.')), Number(match[2].replace(',', '.')));
-  const single = /(-?\d+(?:[.,]\d+)?)\s*°\s*c\b|(-?\d+(?:[.,]\d+)?)\s*c\b/giu;
+  const single = /(?<![\d-])(-?\d+(?:[.,]\d+)?)\s*°\s*c\b|(?<![\d-])(-?\d+(?:[.,]\d+)?)\s*c\b/giu;
   for (const match of text.matchAll(single)) found.push(Number((match[1] ?? match[2]).replace(',', '.')));
   return [...new Set(found.filter(Number.isFinite))];
 }
@@ -131,7 +135,8 @@ const unknownInference = (): BriefInference => ({
 });
 
 export function interpretBriefV3(purpose: string, properties = ''): ContextInterpretation {
-  const normalizedText = normalize(`${purpose} ${properties}`);
+  const language = normalizeEnglishContext(normalize(`${purpose} ${properties}`));
+  const normalizedText = language.text;
   const facets = extractContextFacets(normalizedText);
   const parsedTemperatures = temperatures(normalizedText);
   const activeCandidates = [...candidates];
@@ -189,7 +194,10 @@ export function interpretBriefV3(purpose: string, properties = ''): ContextInter
       reason: 'Temperature exposure is mentioned without a usable operating temperature or explicit heat band.',
     });
   }
-  return { normalizedText, inference, conflicts, ambiguities, temperaturesC: parsedTemperatures, facets };
+  return {
+    normalizedText, inference, conflicts, ambiguities, temperaturesC: parsedTemperatures, facets,
+    corrections: language.corrections, languageCues: language.reviewCues,
+  };
 }
 
 export function inferBrief(purpose: string, properties: string): BriefInference {

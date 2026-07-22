@@ -36,10 +36,12 @@ describe('P0 safe decision flow', () => {
     const bySetting = Object.fromEntries(recommendations.map(item => [item.setting, item]));
     expect(bySetting.material.value).toBe('PETG');
     expect(bySetting.material.ruleIds).toEqual(['M02', 'M03']);
+    expect(bySetting.material.inputEvidenceIds).toContain('requirement:environment:1');
     expect(bySetting.wall_loops.value).toBe(4);
     expect(bySetting.wall_loops.matchedRuleIds).toEqual(['P04', 'U01', 'U06', 'Q01']);
     expect(bySetting.support.value).toBe('Off — orientation required');
     expect(bySetting.support.ruleIds).toEqual(['Q09']);
+    expect(bySetting.support.trace.find(entry => entry.ruleId === 'Q09')?.inputEvidenceIds).toContain('requirement:supportsAllowed:1');
     expect(questionnaire.impact).toBe('unknown');
     expect(bySetting.material.matchedRuleIds).not.toContain('M04');
   });

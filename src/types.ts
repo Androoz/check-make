@@ -1,8 +1,57 @@
+import type { ManufacturingIntent } from './intent/manufacturingIntent';
+
 export type Material = 'PLA' | 'PETG' | 'ASA' | 'TPU' | 'PA-CF';
 export type Priority = 'strength' | 'accuracy' | 'finish' | 'speed' | 'flexibility';
 export type OptimizationObjective = 'recommended' | 'time' | 'cost' | 'weight' | 'performance';
 
 export interface Vec3 { x: number; y: number; z: number }
+export type SpatialRegionKind = 'load-bearing' | 'mating-surface' | 'visible-surface' | 'critical-thin';
+export type SpatialFactStatus = 'hypothesized' | 'confirmed' | 'rejected' | 'not-applicable';
+export type ModelAxis = 'x' | 'y' | 'z';
+export interface MeshRegionReference {
+  triangleIndices: number[];
+  centroid: Vec3;
+  normal: Vec3;
+  bounds: { min: Vec3; max: Vec3 };
+  areaMm2: number;
+}
+export interface SpatialRegion {
+  id: string;
+  kind: SpatialRegionKind;
+  label: string;
+  status: SpatialFactStatus;
+  confidence: number;
+  provenance: 'geometry-candidate' | 'user-selection' | 'user-confirmation';
+  evidenceIds: string[];
+  mesh: MeshRegionReference;
+  thicknessMm?: number;
+}
+export interface SpatialAxisFact {
+  axis: ModelAxis | 'not-applicable' | 'unknown';
+  status: SpatialFactStatus;
+  confidence: number;
+  provenance: 'geometry-candidate' | 'user-selection' | 'user-confirmation';
+  evidenceIds: string[];
+}
+export interface SpatialManufacturingIntent {
+  schemaVersion: 1;
+  coordinateSpace: 'source-model';
+  loadAxis: SpatialAxisFact;
+  regions: SpatialRegion[];
+  notApplicable: SpatialRegionKind[];
+  rejectedCandidateIds: string[];
+}
+export interface SpatialRegionCandidate extends SpatialRegion {
+  status: 'hypothesized';
+  provenance: 'geometry-candidate';
+}
+export interface SpatialCandidateAnalysis {
+  schemaVersion: 1;
+  planarCandidates: SpatialRegionCandidate[];
+  thinCandidates: SpatialRegionCandidate[];
+  thicknessCoverage: { sampledTriangles: number; measuredTriangles: number; totalTriangles: number };
+  notes: string[];
+}
 export type ModelFormat = 'stl' | '3mf' | 'obj';
 export type ModelClueSource = 'file-name' | 'stl-solid-name' | 'stl-binary-header' | 'model-name';
 export interface ModelClue { source: ModelClueSource; value: string }
@@ -78,6 +127,9 @@ export interface OrientationComparison {
   supportScore: number;
   heightScore: number;
   reason: string;
+  constraintsApplied?: string[];
+  constraintsUnresolved?: string[];
+  spatialEvidenceIds?: string[];
 }
 export interface OrientationCandidate {
   id: string;
@@ -98,6 +150,8 @@ export interface Questionnaire {
   supportsAllowed: 'unknown' | boolean;
   printer: PrinterProfile;
   printerId: string;
+  manufacturingIntent?: ManufacturingIntent;
+  spatialIntent?: SpatialManufacturingIntent;
 }
 export interface PrinterCapabilities {
   maxNozzleTempC: number; maxBedTempC: number; enclosed: boolean; hardenedNozzle: boolean; buildVolume: Vec3;
@@ -147,6 +201,7 @@ export interface DecisionTraceEntry {
   conflictsWithFinal: boolean;
   proposedValue: string|number|boolean;
   resultingValue: string|number|boolean;
+  inputEvidenceIds?: string[];
 }
 export interface Recommendation {
   setting: SettingKey;
@@ -157,6 +212,7 @@ export interface Recommendation {
   evidenceLevel: EvidenceLevel;
   validationStatus: string;
   trace: DecisionTraceEntry[];
+  inputEvidenceIds?: string[];
 }
 export type SlicerTarget = 'generic' | 'bambu' | 'orca' | 'prusa' | 'cura' | 'creality';
 export interface SlicerAdapterStatus {

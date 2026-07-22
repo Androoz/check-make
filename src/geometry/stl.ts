@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import type { AnalysisLimit, GeometryFinding, GeometryRiskMetrics, MeshComponent, MeshTopology, ModelAnalysis, ModelClue, ModelMetadata, OrientationComparison, OverhangRegion, Questionnaire, Vec3 } from '../types';
+import type { AnalysisLimit, GeometryFinding, GeometryRiskMetrics, MeshComponent, MeshTopology, ModelAnalysis, ModelClue, ModelMetadata, OrientationComparison, OverhangRegion, Questionnaire, SpatialManufacturingIntent, Vec3 } from '../types';
+import type { ManufacturingIntent } from '../intent/manufacturingIntent';
+import { intentFactUsable } from '../intent/manufacturingIntent';
+import { confirmedRegion, spatialEvidenceIds } from './spatialIntent';
 
 const genericNameTokens = new Set([
   'ascii', 'binary', 'stl', 'mesh', 'model', 'part', 'object', 'solid', 'untitled',
@@ -261,7 +264,7 @@ function geometryFindings(measured: GeometryMeasurement, topology: MeshTopology)
 }
 
 const analysisLimits: AnalysisLimit[] = [
-  { id: 'wall-thickness', label: 'Local wall thickness', status: 'not-evaluated', detail: 'Requires ray casting or a volumetric thickness field.' },
+  { id: 'wall-thickness', label: 'Local wall thickness', status: 'evaluated', detail: 'A bounded opposing-ray screen proposes thin-region candidates and reports coverage; it is not a complete volumetric thickness field.' },
   { id: 'load-path', label: 'Load direction and structural stress', status: 'requires-input', detail: 'Geometry alone cannot establish where force is applied.' },
   { id: 'bridges', label: 'True bridge classification', status: 'not-evaluated', detail: 'Requires layer direction, attachment, material, cooling, and process context.' },
   { id: 'surface-priority', label: 'Critical visible or mating surfaces', status: 'requires-input', detail: 'The user or AI interpretation must identify which surfaces matter.' },
@@ -326,7 +329,7 @@ export function riskVisualizationGeometry(geometry: THREE.BufferGeometry, orient
   const box = result.boundingBox?.clone() ?? new THREE.Box3(); const size = new THREE.Vector3(); box.getSize(size);
   const bedEpsilon = Math.max(0.05, size.z * 0.002);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), normal = new THREE.Vector3();
-  const regular = new THREE.Color('#35c98b'), bed = new THREE.Color('#4e8cff'), overhang = new THREE.Color('#ff9f43'), severe = new THREE.Color('#ef4b4b');
+  const regular = new THREE.Color('#aeb8b4'), bed = new THREE.Color('#3f9fc2'), overhang = new THREE.Color('#f0a34a'), severe = new THREE.Color('#df6559');
   for (let index = 0; index < positions.count; index += 3) {
     a.fromBufferAttribute(positions, index); b.fromBufferAttribute(positions, index + 1); c.fromBufferAttribute(positions, index + 2);
     normal.crossVectors(new THREE.Vector3().subVectors(b, a), new THREE.Vector3().subVectors(c, a)).normalize();
@@ -353,14 +356,36 @@ function analyzeOrientations(geometry: THREE.BufferGeometry) {
   });
 }
 
-export function chooseOrientation(analysis: ModelAnalysis, priority: Questionnaire['priority']) {
-  return compareOrientations(analysis, priority)[0]?.candidate ?? analysis.orientations[0];
+function orientationIntentConstraints(intent?: ManufacturingIntent, spatial?: SpatialManufacturingIntent) {
+  const applied: string[] = [];
+  const unresolved: string[] = [];
+  const supportFree = Boolean(intent && intentFactUsable(intent.preferences.supportsAllowed) && intent.preferences.supportsAllowed.value === false);
+  if (supportFree) applied.push('Support-free printing increases the support-exposure weight.');
+  const loadKnown = Boolean(intent && intentFactUsable(intent.mechanical.loadDirections) && intent.mechanical.loadDirections.value.length);
+  if (loadKnown && spatial?.loadAxis.status === 'confirmed') applied.push(`Confirmed model-space ${spatial.loadAxis.axis.toUpperCase()} load axis affects layer-orientation scoring.`);
+  else if (loadKnown && spatial?.loadAxis.status !== 'not-applicable') unresolved.push(
+    `Load type (${intent!.mechanical.loadDirections.value.join(', ')}) is known, but no model-space load axis is confirmed.`,
+  );
+  const matingRequired = Boolean(intent && intentFactUsable(intent.interface.fitType) && intent.interface.fitType.value !== 'unknown'
+    || intent && intentFactUsable(intent.interface.criticalSurfaces) && intent.interface.criticalSurfaces.value.includes('mating'));
+  if (matingRequired && confirmedRegion(spatial, 'mating-surface')) applied.push('A confirmed mating surface affects support and surface-orientation scoring.');
+  else if (matingRequired) unresolved.push(`The ${intent?.interface.fitType.value ?? 'mating'} interface is known, but its mating geometry is not localized on the mesh.`);
+  const visibleRequired = Boolean(intent && intentFactUsable(intent.interface.criticalSurfaces) && intent.interface.criticalSurfaces.value.includes('visible'));
+  if (visibleRequired && confirmedRegion(spatial, 'visible-surface')) applied.push('A confirmed visible surface affects support and surface-orientation scoring.');
+  else if (visibleRequired) unresolved.push('Critical visible surfaces are known, but their faces are not localized on the mesh.');
+  return { supportFree, applied, unresolved, evidenceIds: spatialEvidenceIds(spatial) };
 }
 
-export function compareOrientations(analysis: ModelAnalysis, priority: Questionnaire['priority']): OrientationComparison[] {
+export function chooseOrientation(analysis: ModelAnalysis, priority: Questionnaire['priority'], intent?: ManufacturingIntent, spatial?: SpatialManufacturingIntent) {
+  return compareOrientations(analysis, priority, intent, spatial)[0]?.candidate ?? analysis.orientations[0];
+}
+
+export function compareOrientations(analysis: ModelAnalysis, priority: Questionnaire['priority'], intent?: ManufacturingIntent, spatial?: SpatialManufacturingIntent): OrientationComparison[] {
   const maxHeight = Math.max(...analysis.orientations.map(candidate => candidate.heightMm), 1);
   const maxContact = Math.max(...analysis.orientations.map(candidate => candidate.bedContactAreaMm2), 1);
-  const weights = priority === 'finish' ? [0.2, 0.65, 0.15] : priority === 'speed' ? [0.2, 0.3, 0.5] : priority === 'accuracy' ? [0.5, 0.35, 0.15] : priority === 'strength' ? [0.45, 0.3, 0.25] : [0.4, 0.4, 0.2];
+  const constraints = orientationIntentConstraints(intent, spatial);
+  const weights = constraints.supportFree ? [0.25, 0.65, 0.1]
+    : priority === 'finish' ? [0.2, 0.65, 0.15] : priority === 'speed' ? [0.2, 0.3, 0.5] : priority === 'accuracy' ? [0.5, 0.35, 0.15] : priority === 'strength' ? [0.45, 0.3, 0.25] : [0.4, 0.4, 0.2];
   return analysis.orientations.map(candidate => {
     const leverage = candidate.geometryRisk?.heightToContactWidthRatio;
     const offset = candidate.geometryRisk?.surfaceCentroidOffsetRatio;
@@ -371,8 +396,27 @@ export function compareOrientations(analysis: ModelAnalysis, priority: Questionn
       ? ((1 - candidate.overhangRatio) + 1 / (1 + candidate.geometryRisk.overhangRegionCount * 0.1)) / 2
       : 1 - candidate.overhangRatio;
     const height = 1 - candidate.heightMm / maxHeight;
-    const overall = stability * weights[0] + support * weights[1] + height * weights[2];
+    let overall = stability * weights[0] + support * weights[1] + height * weights[2];
+    const transform = orientationTransform(candidate.id).map;
+    const mapDirection = (value: Vec3) => transform(new THREE.Vector3(value.x, value.y, value.z)).sub(transform(new THREE.Vector3())).normalize();
+    if (spatial?.loadAxis.status === 'confirmed' && spatial.loadAxis.axis !== 'unknown' && spatial.loadAxis.axis !== 'not-applicable') {
+      const sourceAxis = spatial.loadAxis.axis === 'x' ? { x: 1, y: 0, z: 0 } : spatial.loadAxis.axis === 'y' ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
+      const buildAlignment = Math.abs(mapDirection(sourceAxis).z);
+      overall += (1 - buildAlignment) * 0.12;
+    }
+    const surfaceRegions = [confirmedRegion(spatial, 'mating-surface'), confirmedRegion(spatial, 'visible-surface')].filter(Boolean);
+    surfaceRegions.forEach(region => {
+      const z = mapDirection(region!.mesh.normal).z;
+      const surfaceScore = z < -0.2 ? 0 : 0.55 + (1 - Math.abs(z)) * 0.45;
+      overall += surfaceScore * 0.06;
+    });
     const metrics = [{ label: 'stability', value: stability }, { label: 'support exposure', value: support }, { label: 'height', value: height }].sort((left, right) => right.value - left.value);
-    return { candidate, overallScore: overall * 100, stabilityScore: stability * 100, supportScore: support * 100, heightScore: height * 100, reason: `Best relative contribution: ${metrics[0].label}. Scores compare only the six axis-aligned candidates.` };
+    return {
+      candidate, overallScore: overall * 100, stabilityScore: stability * 100, supportScore: support * 100, heightScore: height * 100,
+      reason: `Best relative contribution: ${metrics[0].label}. Scores compare only the six axis-aligned candidates.${constraints.unresolved.length ? ` ${constraints.unresolved.length} confirmed intent constraint${constraints.unresolved.length === 1 ? ' is' : 's are'} not geometrically localized.` : ''}`,
+      constraintsApplied: constraints.applied,
+      constraintsUnresolved: constraints.unresolved,
+      spatialEvidenceIds: constraints.evidenceIds,
+    };
   }).sort((left, right) => right.overallScore - left.overallScore);
 }

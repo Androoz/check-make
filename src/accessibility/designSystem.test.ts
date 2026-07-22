@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('../accessibility-v5.css', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 
 function luminance(hex: string) {
   const channels = hex.match(/[a-f\d]{2}/gi)!.map(value => parseInt(value, 16) / 255)
@@ -44,6 +45,18 @@ describe('accessible Check Make design system', () => {
     expect(css).toMatch(/\.printer-picker-menu \{[^}]*background: var\(--surface-raised\)/);
     expect(css).toMatch(/\.printer-picker-option b \{[^}]*font-size: 13px/);
     expect(css).toMatch(/\.printer-picker-option small \{[^}]*font-size: 11px/);
+    expect(css).toMatch(/\.printer-picker-menu \{[^}]*position: fixed/);
+    expect(css).toMatch(/\.printer-picker-groups \{[^}]*grid-template-columns: repeat\(3/);
+  });
+
+  it('uses the simplified model review workflow', () => {
+    expect(app).toContain("['recommended', 'Model'], ['risk', 'Overhangs']");
+    expect(app).toContain('<span>Model checks</span>');
+    expect(app).toContain('Compare with imported orientation');
+    expect(app).toContain('No structural simulation is performed.');
+    expect(app).not.toContain('<footer className="workflow-status"');
+    expect(app).not.toContain("['compare', 'Compare']");
+    expect(app).toContain('>Build plate</button>');
   });
 
   it('includes keyboard, appearance, contrast, reflow, and motion accommodations', () => {

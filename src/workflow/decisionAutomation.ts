@@ -109,7 +109,11 @@ export function analyzePurposeContext(
       message: 'Check Make can identify print risks but cannot certify a safety-critical part. Add quantified loads and required safety margin for review.',
     }];
     return [];
-  });
+  }).concat(interpretation.languageCues.map(cue => ({
+    id: `language-${cue.domain}-${cue.original.toLocaleLowerCase('en-US')}`,
+    question: `Did you mean ${cue.suggested}?`,
+    message: `“${cue.original}” resembles a safety-relevant term. Confirm it explicitly in Context before Check Make uses it.`,
+  })));
   return { suggestions, issues, facets: interpretation.facets, specialistPrompts };
 }
 

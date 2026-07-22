@@ -20,4 +20,18 @@ describe('decision readiness', () => {
     expect(result.requirements).toBe('ready'); expect(result.conservativePlan).toBe('ready');
     expect(result.processReductions).toBe('unsupported');
   });
+  it('asks targeted consequential questions and then abstains from unsupported safety claims', () => {
+    const initial = { ...localModelAnalysis(model, 'Safety-critical protective cover with food contact, cleaned with solvents.'), userEvidence: ['Safety-critical protective cover with food contact, cleaned with solvents.'] };
+    expect(initial.questions.map(question => question.id)).toEqual(expect.arrayContaining([
+      'intent-chemical-details', 'intent-food-contact', 'intent-safety-critical',
+    ]));
+    const refined = refineLocalIntelligence(initial, {
+      priority: 'strength', load: 'static', impact: 'none', environment: 'indoor', heat: 'normal',
+      'intent-chemical-details': '70% isopropyl alcohol', 'intent-food-contact': 'confirmed', 'intent-safety-critical': 'confirmed',
+    });
+    const result = assessDecisionReadiness(refined);
+    expect(result.requirements).toBe('ready');
+    expect(result.conservativePlan).toBe('unsupported');
+    expect(result.unsupportedReasons).toHaveLength(3);
+  });
 });

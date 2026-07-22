@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "1.0.0",
+  "description": "Broad object-family references for conservative geometry hypotheses. These are not semantic ground truth or manufacturing validation models.",
+  "cases": [
+    {
+      "id": "flat-plate-family",
+      "sizeMm": [100, 70, 4],
+      "context": "",
+      "expectedIdentity": "plate-like component",
+      "minimumConfidence": 0.7,
+      "expectedStatus": "hypothesized"
+    },
+    {
+      "id": "elongated-family",
+      "sizeMm": [12, 14, 120],
+      "context": "",
+      "expectedIdentity": "elongated component",
+      "minimumConfidence": 0.7,
+      "expectedStatus": "hypothesized"
+    },
+    {
+      "id": "compact-family",
+      "sizeMm": [38, 35, 32],
+      "context": "",
+      "expectedIdentity": "compact mechanical component",
+      "minimumConfidence": 0.65,
+      "expectedStatus": "hypothesized"
+    },
+    {
+      "id": "explicit-bracket-context",
+      "sizeMm": [80, 42, 35],
+      "context": "Mounting bracket that supports a shelf under repeated bending load.",
+      "expectedIdentity": "mounting bracket",
+      "minimumConfidence": 0.95,
+      "expectedStatus": "user-stated"
+    },
+    {
+      "id": "explicit-cover-context",
+      "sizeMm": [110, 80, 18],
+      "context": "Protective cover that snaps onto a housing. The visible face is cosmetic.",
+      "expectedIdentity": "protective cover or enclosure",
+      "minimumConfidence": 0.95,
+      "expectedStatus": "user-stated"
+    }
+  ]
+}

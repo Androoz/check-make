@@ -14,8 +14,8 @@ describe('context facets', () => {
     ]));
   });
 
-  it('recognizes explicit Swedish mechanical and interface details', () => {
-    const facets = extractContextFacets('Fästet utsätts för upprepad belastning och böjning. Det har presspassning och en kritisk monteringsyta.');
+  it('recognizes explicit English mechanical and interface details', () => {
+    const facets = extractContextFacets('The bracket experiences repeated load and bending. It has a press fit and a critical mounting face.');
     expect(facets).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'load-fatigue' }),
       expect.objectContaining({ id: 'load-bending' }),
@@ -35,5 +35,11 @@ describe('context facets', () => {
     const facets = extractContextFacets('Indoor cover with no water or chemical exposure.');
     expect(facets.some(facet => facet.id === 'environment-moisture')).toBe(false);
     expect(facets.some(facet => facet.id === 'environment-chemical')).toBe(false);
+  });
+
+  it('recognizes spacing as an explicit object function', () => {
+    expect(extractContextFacets('Spacer for a parasol base')).toContainEqual(expect.objectContaining({
+      id: 'function-space', category: 'object-function', value: 'creates or maintains spacing',
+    }));
   });
 });

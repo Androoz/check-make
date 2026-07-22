@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { analyzeGeometry, compareOrientations, geometryForOrientation, riskVisualizationGeometry } from './stl';
+import { localModelAnalysis, refineLocalIntelligence } from '../ai/modelIntelligence';
 
 const metadata = { format: 'stl', encoding: 'ascii', clues: [] } as const;
 
@@ -63,6 +64,18 @@ describe('P2 model analysis', () => {
     expect(comparisons.every(item => Number.isFinite(item.overallScore))).toBe(true);
     expect(comparisons[0].overallScore).toBeGreaterThanOrEqual(comparisons[1].overallScore);
     expect(comparisons[0].reason).toContain('six axis-aligned candidates');
+  });
+
+  it('applies support-free intent while exposing constraints that are not geometrically localized', () => {
+    const box = new THREE.BoxGeometry(20, 10, 40).translate(0, 0, 20);
+    const { analysis } = analyzeGeometry(box, 'orientation-intent.stl', metadata);
+    const initial = { ...localModelAnalysis(analysis, 'Snap-fit bracket under repeated bending with a visible face and no supports.'), userEvidence: ['Snap-fit bracket under repeated bending with a visible face and no supports.'] };
+    const refined = refineLocalIntelligence(initial, { supportsAllowed: 'false', load: 'cyclic', priority: 'strength', impact: 'none', environment: 'indoor', heat: 'normal' });
+    const comparisons = compareOrientations(analysis, 'strength', refined.manufacturingIntent);
+
+    expect(comparisons[0].constraintsApplied).toContain('Support-free printing increases the support-exposure weight.');
+    expect(comparisons[0].constraintsUnresolved?.join(' ')).toMatch(/Load type.*mating geometry.*Critical visible/s);
+    expect(comparisons[0].reason).toContain('not geometrically localized');
   });
 
   it('creates a translated preview geometry for the selected orientation', () => {

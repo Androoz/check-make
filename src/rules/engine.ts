@@ -1,8 +1,52 @@
 import type { DecisionTraceEntry, EvidenceLevel, ModelAnalysis, OptimizationObjective, Questionnaire, Recommendation, Rule, RuleAction, RuleEvidenceRecord } from '../types';
-import { analyzePurpose } from '../intent/analyzePurpose';
+import { emptyManufacturingIntent, intentFactUsable } from '../intent/manufacturingIntent';
+import type { EvidencedValue, ManufacturingIntent } from '../intent/manufacturingIntent';
 import { englishReasons } from './reasons';
+import { spatialEvidenceIds } from '../geometry/spatialIntent';
 
 const get = (ctx: unknown, path: string) => path.split('.').reduce<unknown>((value, key) => (value as Record<string, unknown>)?.[key], ctx);
+
+const factAt = (ctx: unknown, path: string): EvidencedValue<unknown> | undefined => {
+  const value = get(ctx, path);
+  return value && typeof value === 'object' && 'status' in value && 'evidenceIds' in value ? value as EvidencedValue<unknown> : undefined;
+};
+
+function ruleValue(ctx: unknown, path: string) {
+  if (path.startsWith('answers.')) {
+    const intent = get(ctx, 'intent') as ManufacturingIntent;
+    const facts: Record<string, EvidencedValue<unknown>> = {
+      environment: intent.environment.location, load: intent.mechanical.loadMode, impact: intent.mechanical.impact,
+      heat: intent.thermal.band, priority: intent.preferences.priority, supportsAllowed: intent.preferences.supportsAllowed,
+    };
+    const fact = facts[path.slice('answers.'.length)];
+    if (fact) return intentFactUsable(fact) ? fact.value : undefined;
+  }
+  if (path.startsWith('intent.') && path.endsWith('.value')) {
+    const fact = factAt(ctx, path.slice(0, -'.value'.length));
+    if (fact && !intentFactUsable(fact)) return undefined;
+  }
+  return get(ctx, path);
+}
+
+function conditionEvidenceIds(path: string, intent: ManufacturingIntent, spatial: Questionnaire['spatialIntent']): string[] {
+  const answerFacts: Record<string, EvidencedValue<unknown>> = {
+    environment: intent.environment.location, load: intent.mechanical.loadMode, impact: intent.mechanical.impact,
+    heat: intent.thermal.band, priority: intent.preferences.priority, supportsAllowed: intent.preferences.supportsAllowed,
+  };
+  if (path.startsWith('answers.')) return answerFacts[path.slice('answers.'.length)]?.evidenceIds ?? [];
+  if (path.startsWith('intent.') && path.endsWith('.value')) {
+    return factAt({ intent }, path.slice(0, -'.value'.length))?.evidenceIds ?? [];
+  }
+  if (path === 'spatial.confirmedCriticalThin') return spatial?.regions.find(region => region.kind === 'critical-thin' && region.status === 'confirmed')?.evidenceIds ?? [];
+  const compatibilityEvidence: Record<string, string[]> = {
+    'intent.compatibility.structural': [...intent.function.evidenceIds, ...intent.mechanical.loadMode.evidenceIds, ...intent.mechanical.loadDirections.evidenceIds, ...intent.preferences.priority.evidenceIds],
+    'intent.compatibility.fitCritical': [...intent.interface.fitType.evidenceIds, ...intent.interface.criticalSurfaces.evidenceIds, ...intent.preferences.priority.evidenceIds],
+    'intent.compatibility.flexible': intent.preferences.priority.evidenceIds,
+    'intent.compatibility.weatherExposed': [...intent.environment.location.evidenceIds, ...intent.environment.uvExposure.evidenceIds, ...intent.environment.moistureExposure.evidenceIds],
+    'intent.compatibility.heatExposed': [...intent.thermal.band.evidenceIds, ...intent.thermal.explicitRangeC.evidenceIds],
+  };
+  return [...new Set(compatibilityEvidence[path] ?? [])];
+}
 
 const matches = (actual: unknown, op: string, expected: unknown) => {
   if (op === 'eq') return actual === expected;
@@ -25,6 +69,7 @@ interface AppliedRule {
   action: RuleAction;
   resultingValue: RuleAction['value'];
   changed: boolean;
+  inputEvidenceIds: string[];
 }
 
 const evidenceLevel = (rules: Rule[], evidence: Record<string, RuleEvidenceRecord>): EvidenceLevel => {
@@ -49,11 +94,16 @@ export function evaluateRules(
   evidence: Record<string, RuleEvidenceRecord> = {},
   objective: OptimizationObjective = 'recommended',
 ): Recommendation[] {
-  const ctx = { analysis, answers, objective, intent: analyzePurpose(`${answers.purpose} ${answers.properties}`) };
+  const intent = answers.manufacturingIntent ?? emptyManufacturingIntent(answers);
+  const spatial = {
+    confirmedCriticalThin: Boolean(answers.spatialIntent?.regions.some(region => region.kind === 'critical-thin' && region.status === 'confirmed')),
+  };
+  const ctx = { analysis, answers, objective, intent, spatial };
   const selected = new Map<Recommendation['setting'], { action: RuleAction; applied: AppliedRule[] }>();
 
   for (const rule of [...rules].sort((left, right) => left.priority - right.priority)) {
-    if (!rule.conditions.every(condition => matches(get(ctx, condition.path), condition.op, condition.value))) continue;
+    if (!rule.conditions.every(condition => matches(ruleValue(ctx, condition.path), condition.op, condition.value))) continue;
+    const inputEvidenceIds = [...new Set(rule.conditions.flatMap(condition => conditionEvidenceIds(condition.path, intent, answers.spatialIntent)))];
     for (const rawAction of rule.actions) {
       const action = typeof rawAction.value === 'string' && rawAction.value.startsWith('$')
         ? { ...rawAction, value: get(ctx, rawAction.value.slice(1)) as RuleAction['value'] }
@@ -65,7 +115,7 @@ export function evaluateRules(
         action: merged,
         applied: [
           ...(previous?.applied ?? []),
-          { rule, action, resultingValue: merged.value, changed: !previous || !sameValue(previous.action.value, merged.value) },
+          { rule, action, resultingValue: merged.value, changed: !previous || !sameValue(previous.action.value, merged.value), inputEvidenceIds },
         ],
       });
     }
@@ -74,6 +124,7 @@ export function evaluateRules(
   return [...selected.entries()].map(([setting, hit]) => {
     let activeIndex = 0;
     hit.applied.forEach((entry, index) => { if (entry.changed) activeIndex = index; });
+    const spatialIds = setting === 'orientation' ? spatialEvidenceIds(answers.spatialIntent) : [];
     const trace: DecisionTraceEntry[] = hit.applied.map((entry, index) => {
       const state: DecisionTraceEntry['state'] = index === activeIndex
         ? 'active'
@@ -87,6 +138,7 @@ export function evaluateRules(
         conflictsWithFinal: state === 'superseded' && (mode === 'set' || numericConflict),
         proposedValue: entry.action.value,
         resultingValue: entry.resultingValue,
+        inputEvidenceIds: [...new Set([...entry.inputEvidenceIds, ...(state === 'superseded' ? [] : spatialIds)])],
       };
     });
     const activeRules = hit.applied.filter((_, index) => trace[index].state !== 'superseded').map(entry => entry.rule);
@@ -99,6 +151,10 @@ export function evaluateRules(
       evidenceLevel: evidenceLevel(activeRules, evidence),
       validationStatus: validationStatus(activeRules, evidence),
       trace,
+      inputEvidenceIds: [...new Set([
+        ...activeRules.flatMap(rule => hit.applied.find(entry => entry.rule.id === rule.id)?.inputEvidenceIds ?? []),
+        ...spatialIds,
+      ])],
     };
   });
 }

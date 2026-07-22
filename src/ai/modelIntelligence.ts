@@ -1,6 +1,10 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { ChecklistField, Material, ModelAnalysis, Questionnaire, RequirementAssessments, RequirementAssessment } from '../types';
 import { inferBrief } from '../intent/inferBrief';
+import { applyObjectHypothesisAnswers, buildObjectHypothesis } from './objectHypothesis';
+import type { ObjectHypothesis } from './objectHypothesis';
+import { applyManufacturingIntentAnswers, buildManufacturingIntent } from '../intent/manufacturingIntent';
+import type { ManufacturingIntent } from '../intent/manufacturingIntent';
 
 export type IntelligenceProvider = 'local' | 'openai';
 
@@ -8,7 +12,7 @@ export interface FollowUpQuestion {
   id: string;
   question: string;
   why: string;
-  field?: ChecklistField | 'purpose' | 'components' | 'mesh-repair';
+  field?: ChecklistField | 'purpose' | 'components' | 'mesh-repair' | 'object-purpose' | 'intent';
   kind?: 'text' | 'single';
   options?: Array<{ value: string; label: string }>;
 }
@@ -30,6 +34,8 @@ export interface ModelIntelligence {
   materialHint: Material | 'unknown';
   userEvidence: string[];
   requirements: RequirementAssessments;
+  objectHypothesis?: ObjectHypothesis;
+  manufacturingIntent?: ManufacturingIntent;
 }
 
 export interface AIConnection {
@@ -124,14 +130,55 @@ function questionsForRequirements(requirements: RequirementAssessments, purposeK
   return questions.slice(0, 7);
 }
 
+function questionsForObjectHypothesis(hypothesis?: ObjectHypothesis): FollowUpQuestion[] {
+  if (!hypothesis) return [];
+  if (hypothesis.purpose.status === 'unknown') return [];
+  if (hypothesis.purpose.status !== 'hypothesized' || !hypothesis.purpose.consequential) return [];
+  return [{
+    id: `object-${hypothesis.purpose.id}`, field: 'object-purpose', kind: 'single',
+    question: `Does “${hypothesis.purpose.value}” correctly describe what this object is used for?`,
+    why: `This hypothesis could affect ${hypothesis.purpose.affectsRecommendations.join(', ')} and must be confirmed before it can be used.`,
+    options: choices(['confirmed', 'Yes, use this purpose'], ['rejected', 'No, use only my Context description']),
+  }];
+}
+
+function questionsForManufacturingIntent(intent?: ManufacturingIntent): FollowUpQuestion[] {
+  if (!intent) return [];
+  const questions: FollowUpQuestion[] = [];
+  if (intent.interface.fitType.status === 'conflicted') questions.push({
+    id: 'intent-fit-type', field: 'intent', kind: 'single',
+    question: 'Which interface must this part actually provide?',
+    why: 'The Context describes incompatible fit types. The selected fit can change dimensional and seam decisions.',
+    options: choices(['press', 'Press fit'], ['sliding', 'Sliding or clearance fit'], ['snap', 'Snap fit'], ['threaded', 'Threaded interface'], ['sealing', 'Sealing interface']),
+  });
+  if (intent.environment.chemicalExposure.value === true && intent.environment.chemicalDetails.status === 'unknown') questions.push({
+    id: 'intent-chemical-details', field: 'intent', kind: 'text',
+    question: 'Which chemicals, cleaners, oils, or fuels will contact the part?',
+    why: '“Chemical exposure” is not specific enough for a defensible material compatibility decision.',
+  });
+  if (intent.environment.foodContact.value === true && intent.environment.foodContact.status !== 'confirmed') questions.push({
+    id: 'intent-food-contact', field: 'intent', kind: 'single',
+    question: 'Will the printed part directly contact food?',
+    why: 'Food contact needs an explicit confirmation and cannot be inferred into a qualified material claim.',
+    options: choices(['confirmed', 'Yes, direct food contact'], ['rejected', 'No food contact']),
+  });
+  if (intent.failureConsequence.value === 'safety-critical' && intent.failureConsequence.status !== 'confirmed') questions.push({
+    id: 'intent-safety-critical', field: 'intent', kind: 'single',
+    question: 'Could failure of this printed part injure someone?',
+    why: 'A safety-critical use must be explicitly confirmed. Check Make cannot validate structural safety.',
+    options: choices(['confirmed', 'Yes, failure could cause injury'], ['rejected', 'No, failure is not safety-critical']),
+  });
+  return questions;
+}
+
 export function prepareIntelligenceForReview(ai: ModelIntelligence): ModelIntelligence {
   const requirements = ai.requirements ?? requirementsFromLegacyIntelligence(ai);
-  const topologyQuestions = (ai.questions ?? []).filter(question => question.id === 'components' || question.id === 'mesh-repair');
+  const topologyQuestions = (ai.questions ?? []).filter(question => question.id !== 'object-purpose-description' && (question.id === 'components' || question.id === 'mesh-repair' || question.id.startsWith('object-') || question.id.startsWith('intent-')));
   const purposeConfirmed = Boolean(ai.purposeConfirmed);
   return { ...ai, purposeConfirmed, requirements, questions: questionsForRequirements(requirements, purposeConfirmed, topologyQuestions) };
 }
 
-export function localModelAnalysis(model: ModelAnalysis): ModelIntelligence {
+export function localModelAnalysis(model: ModelAnalysis, contextText = ''): ModelIntelligence {
   const { x, y, z } = model.boundingBox.size;
   const sorted = [x, y, z].sort((a, b) => a - b);
   const flat = sorted[0] < sorted[2] * 0.18;
@@ -180,6 +227,10 @@ export function localModelAnalysis(model: ModelAnalysis): ModelIntelligence {
   });
 
   const requirements = localRequirements(model);
+  const objectHypothesis = buildObjectHypothesis(model, contextText);
+  const manufacturingIntent = buildManufacturingIntent(contextText, requirements, objectHypothesis);
+  if (objectHypothesis.identity.status === 'user-stated') objectName = objectHypothesis.identity.value;
+  if (objectHypothesis.purpose.status === 'user-stated') likelyPurpose = objectHypothesis.purpose.value;
   return {
     provider: 'local', objectName, likelyPurpose, purposeConfirmed: false,
     evidence: [
@@ -191,9 +242,9 @@ export function localModelAnalysis(model: ModelAnalysis): ModelIntelligence {
       ...clueEvidence,
     ],
     assumptions: ['File names and STL header or solid names are unverified labels, not proof of function.', 'STL geometry does not establish material, load direction, operating environment, or whether a downward region can bridge successfully.'],
-    questions: questionsForRequirements(requirements, false, topologyQuestions),
+    questions: questionsForRequirements(requirements, Boolean(contextText.trim()), [...topologyQuestions, ...(contextText.trim() ? [...questionsForObjectHypothesis(objectHypothesis), ...questionsForManufacturingIntent(manufacturingIntent)] : [])]),
     environment: 'unknown', load: 'unknown', impact: 'unknown', heat: 'unknown',
-    priority: 'unknown', supportsAllowed: 'unknown', materialHint: 'unknown', userEvidence: [], requirements,
+    priority: 'unknown', supportsAllowed: 'unknown', materialHint: 'unknown', userEvidence: [], requirements, objectHypothesis, manufacturingIntent,
   };
 }
 
@@ -237,7 +288,7 @@ function normalizeAI(value: Record<string, unknown>, fallback: ModelIntelligence
     assumptions: list(value.assumptions), questions: aiQuestions,
     ...normalizedValues,
     materialHint: allowed(value.materialHint, ['unknown', 'PLA', 'PETG', 'ASA', 'TPU', 'PA-CF'] as const, fallback.materialHint),
-    userEvidence: fallback.userEvidence, requirements,
+    userEvidence: fallback.userEvidence, requirements, objectHypothesis: fallback.objectHypothesis, manufacturingIntent: fallback.manufacturingIntent,
   };
 }
 
@@ -271,15 +322,30 @@ export function refineLocalIntelligence(ai: ModelIntelligence, answers: Record<s
   const inferred = <K extends ChecklistField>(field: K): ModelIntelligence[K] =>
     structured[field] !== undefined ? structured[field] as ModelIntelligence[K]
       : inference[field].evidence.length ? inference[field].value as ModelIntelligence[K] : ai[field];
+  const hypothesisAnswers = ai.objectHypothesis?.purpose.status === 'unknown' && ai.userEvidence.length === 0 && answers.purpose?.trim()
+    ? { ...answers, 'object-purpose-description': answers.purpose }
+    : answers;
+  const objectHypothesis = ai.objectHypothesis ? applyObjectHypothesisAnswers(ai.objectHypothesis, hypothesisAnswers) : undefined;
+  if (objectHypothesis && answers.components?.trim()) {
+    objectHypothesis.features = objectHypothesis.features.map(feature => feature.id === 'feature-multiple-components'
+      ? { ...feature, status: 'confirmed', confidence: 1 }
+      : feature);
+  }
+  const unresolvedTopologyQuestions = (ai.questions ?? []).filter(question =>
+    (question.id === 'components' && !answers.components?.trim()) ||
+    (question.id === 'mesh-repair' && !answers['mesh-repair']?.trim()));
+  const purposeEstablished = objectHypothesis?.purpose.status === 'confirmed' || objectHypothesis?.purpose.status === 'user-stated';
+  const intentContext = [ai.userEvidence[0] ?? answers.purpose ?? '', answers['object-purpose-description'] ?? ''].filter(Boolean).join(' ');
+  const manufacturingIntent = applyManufacturingIntentAnswers(buildManufacturingIntent(intentContext, requirements, objectHypothesis), answers);
   return {
     ...ai,
-    likelyPurpose: answers.purpose?.trim() || ai.likelyPurpose,
-    purposeConfirmed: Boolean(answers.purpose?.trim()) || ai.purposeConfirmed,
+    likelyPurpose: objectHypothesis?.purpose.value !== 'Not established' ? objectHypothesis?.purpose.value ?? ai.likelyPurpose : ai.likelyPurpose,
+    purposeConfirmed: purposeEstablished || (!objectHypothesis && (Boolean(answers.purpose?.trim()) || ai.purposeConfirmed)),
     evidence: [...ai.evidence, `User-provided clarification: “${detail}”.`],
     assumptions: [...ai.assumptions, 'Only explicit terms in the user clarification were converted into manufacturing requirements.'],
-    questions: questionsForRequirements(requirements, Boolean(answers.purpose?.trim()) || ai.purposeConfirmed),
+    questions: questionsForRequirements(requirements, purposeEstablished || (!objectHypothesis && (Boolean(answers.purpose?.trim()) || ai.purposeConfirmed)), [...unresolvedTopologyQuestions, ...questionsForObjectHypothesis(objectHypothesis), ...questionsForManufacturingIntent(manufacturingIntent)]),
     environment: inferred('environment'), load: inferred('load'), impact: inferred('impact'), heat: inferred('heat'),
-    priority: inferred('priority'), supportsAllowed: inferred('supportsAllowed'), userEvidence, requirements,
+    priority: inferred('priority'), supportsAllowed: inferred('supportsAllowed'), userEvidence, requirements, objectHypothesis, manufacturingIntent,
   };
 }
 
@@ -291,7 +357,8 @@ export async function analyzeWithOpenAI(
 ): Promise<ModelIntelligence> {
   if (!isTauri()) throw new Error('AI analysis is available in the desktop app.');
   if (!connection.apiKey.trim()) throw new Error('Enter an OpenAI API key or use local preliminary analysis.');
-  const fallback = localModelAnalysis(model);
+  const contextText = followUpAnswers.purpose?.trim() ?? '';
+  const fallback = localModelAnalysis(model, contextText);
   const context = JSON.stringify({
     geometry: model,
     preliminaryAnalysis: fallback,
@@ -305,18 +372,26 @@ export async function analyzeWithOpenAI(
   });
   const cleaned = raw.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, '');
   const normalized = normalizeAI(JSON.parse(cleaned) as Record<string, unknown>, fallback);
+  normalized.objectHypothesis = buildObjectHypothesis(model, contextText, {
+    objectName: normalized.objectName,
+    likelyPurpose: normalized.likelyPurpose,
+    evidence: normalized.evidence,
+  });
+  normalized.manufacturingIntent = applyManufacturingIntentAnswers(buildManufacturingIntent(contextText, normalized.requirements, normalized.objectHypothesis), followUpAnswers);
   const userEvidence = Object.values(followUpAnswers).map(value => value.trim()).filter(Boolean);
   const topologyQuestions = fallback.questions.filter(question => question.id === 'components' || question.id === 'mesh-repair');
-  const purposeConfirmed = Boolean(followUpAnswers.purpose?.trim()) || normalized.purposeConfirmed;
-  return { ...normalized, purposeConfirmed, userEvidence, questions: questionsForRequirements(normalized.requirements, purposeConfirmed, topologyQuestions) };
+  const purposeConfirmed = normalized.objectHypothesis?.purpose.status === 'user-stated' || normalized.objectHypothesis?.purpose.status === 'confirmed';
+  return { ...normalized, purposeConfirmed, userEvidence, questions: questionsForRequirements(normalized.requirements, purposeConfirmed, [...topologyQuestions, ...questionsForObjectHypothesis(normalized.objectHypothesis), ...questionsForManufacturingIntent(normalized.manufacturingIntent)]) };
 }
 
 export function questionnaireFromIntelligence(ai: ModelIntelligence, printer: Questionnaire['printer']): Questionnaire {
+  const purpose = ai.userEvidence.join(' ');
   return {
-    purpose: ai.userEvidence.join(' '),
+    purpose,
     properties: '',
     environment: ai.environment, load: ai.load, impact: ai.impact, heat: ai.heat,
     priority: ai.priority, supportsAllowed: ai.supportsAllowed,
     printerId: printer.id, printer,
+    manufacturingIntent: ai.manufacturingIntent ?? buildManufacturingIntent(purpose, ai.requirements ?? requirementsFromLegacyIntelligence(ai), ai.objectHypothesis),
   };
 }

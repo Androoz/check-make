@@ -68,4 +68,18 @@ describe('decision automation', () => {
       'environment-food', 'environment-chemical', 'failure-safety',
     ]));
   });
+
+  it('asks for confirmation instead of repairing safety-relevant typos', () => {
+    const result = analyzePurposeContext('Foodsafe part exposed to solvant in a saftey-critical use.');
+    expect(result.facets).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'environment-food' }),
+      expect.objectContaining({ id: 'environment-chemical' }),
+      expect.objectContaining({ id: 'failure-safety' }),
+    ]));
+    expect(result.specialistPrompts.map(prompt => prompt.question)).toEqual(expect.arrayContaining([
+      'Did you mean food contact?',
+      'Did you mean solvent exposure?',
+      'Did you mean safety-critical use?',
+    ]));
+  });
 });
