@@ -1,0 +1,10 @@
+import YAML from 'yaml';
+import rulesText from '../../rules/mvp-rules.yaml?raw';
+import evidenceText from '../../rules/rule-evidence.yaml?raw';
+import externalDatasetsText from '../../rules/evidence-datasets.yaml?raw';
+import type { ExternalEvidenceDataset } from '../evidence/types';
+import type { Rule, RuleEvidenceRecord } from '../types';
+export const rules = YAML.parse(rulesText) as Rule[];
+export const ruleEvidence = YAML.parse(evidenceText) as RuleEvidenceRecord[];
+export const ruleEvidenceById = Object.fromEntries(ruleEvidence.map(record => [record.ruleId, record])) as Record<string, RuleEvidenceRecord>;
+export const externalEvidenceDatasets = YAML.parse(externalDatasetsText) as ExternalEvidenceDataset[];

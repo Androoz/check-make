@@ -1,0 +1,825 @@
+{
+  "schemaVersion": 1,
+  "pilotId": "P1-ADHESION-SUPPORT-PILOT-001",
+  "generator": "validation/p1/generate-coupons.mjs",
+  "units": "mm",
+  "specimenCount": 18,
+  "experimentalUnit": "one specimen per print job",
+  "specimens": [
+    {
+      "specimenId": "A01",
+      "family": "adhesion-stability",
+      "file": "coupons/A01_tower_b6_h80_o0.stl",
+      "sha256": "953e9f0e32a376146a7a38e5e916bbd4cc5d4366efb7fb88c7c1eb7cee16f594",
+      "triangleCount": 12,
+      "boundingSizeMm": {
+        "x": 6,
+        "y": 6,
+        "z": 80
+      },
+      "intendedFactors": {
+        "baseWidthMm": 6,
+        "baseDepthMm": 6,
+        "heightMm": 80,
+        "topOffsetMm": 0,
+        "bedContactAreaMm2": 36,
+        "heightToContactWidthRatio": 13.333333333333334,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 12,
+        "boundingSizeMm": {
+          "x": 6,
+          "y": 6,
+          "z": 80
+        },
+        "bedContactAreaMm2": 36,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 36,
+        "bedCoverageRatio": 1,
+        "heightToContactWidthRatio": 13.333333333333334,
+        "surfaceCentroidOffsetMm": 0,
+        "surfaceCentroidOffsetRatio": 0,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "A02",
+      "family": "adhesion-stability",
+      "file": "coupons/A02_tower_b10_h80_o0.stl",
+      "sha256": "553fcf6f60fc30d5460f413a1e917c73ae6c31001e18d03726ac2e902cfbde45",
+      "triangleCount": 12,
+      "boundingSizeMm": {
+        "x": 10,
+        "y": 10,
+        "z": 80
+      },
+      "intendedFactors": {
+        "baseWidthMm": 10,
+        "baseDepthMm": 10,
+        "heightMm": 80,
+        "topOffsetMm": 0,
+        "bedContactAreaMm2": 100,
+        "heightToContactWidthRatio": 8,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 12,
+        "boundingSizeMm": {
+          "x": 10,
+          "y": 10,
+          "z": 80
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 100,
+        "bedCoverageRatio": 1,
+        "heightToContactWidthRatio": 8,
+        "surfaceCentroidOffsetMm": 0,
+        "surfaceCentroidOffsetRatio": 0,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "A03",
+      "family": "adhesion-stability",
+      "file": "coupons/A03_tower_b14_h80_o0.stl",
+      "sha256": "833ac3d92b812ab674d099c27fda2864d300092c2f72f142c8189caef9c39b08",
+      "triangleCount": 12,
+      "boundingSizeMm": {
+        "x": 14,
+        "y": 14,
+        "z": 80
+      },
+      "intendedFactors": {
+        "baseWidthMm": 14,
+        "baseDepthMm": 14,
+        "heightMm": 80,
+        "topOffsetMm": 0,
+        "bedContactAreaMm2": 196,
+        "heightToContactWidthRatio": 5.714285714285714,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 12,
+        "boundingSizeMm": {
+          "x": 14,
+          "y": 14,
+          "z": 80
+        },
+        "bedContactAreaMm2": 196,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 196,
+        "bedCoverageRatio": 1,
+        "heightToContactWidthRatio": 5.714285714285714,
+        "surfaceCentroidOffsetMm": 0,
+        "surfaceCentroidOffsetRatio": 0,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "A04",
+      "family": "adhesion-stability",
+      "file": "coupons/A04_tower_b10_h120_o0.stl",
+      "sha256": "db585fc10ca4a46c9c2b624057eca99817d387a50c88e4bd41386860935ac3ad",
+      "triangleCount": 12,
+      "boundingSizeMm": {
+        "x": 10,
+        "y": 10,
+        "z": 120
+      },
+      "intendedFactors": {
+        "baseWidthMm": 10,
+        "baseDepthMm": 10,
+        "heightMm": 120,
+        "topOffsetMm": 0,
+        "bedContactAreaMm2": 100,
+        "heightToContactWidthRatio": 12,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 12,
+        "boundingSizeMm": {
+          "x": 10,
+          "y": 10,
+          "z": 120
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 100,
+        "bedCoverageRatio": 1,
+        "heightToContactWidthRatio": 12,
+        "surfaceCentroidOffsetMm": 0,
+        "surfaceCentroidOffsetRatio": 0,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "A05",
+      "family": "adhesion-stability",
+      "file": "coupons/A05_tower_b10_h80_o6.stl",
+      "sha256": "78eacb3fe9f160cb7f675f67621bc3d79701da9aaca7aa8f5e9797ecd08c7cad",
+      "triangleCount": 12,
+      "boundingSizeMm": {
+        "x": 16,
+        "y": 10,
+        "z": 80
+      },
+      "intendedFactors": {
+        "baseWidthMm": 10,
+        "baseDepthMm": 10,
+        "heightMm": 80,
+        "topOffsetMm": 6,
+        "bedContactAreaMm2": 100,
+        "heightToContactWidthRatio": 8,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 12,
+        "boundingSizeMm": {
+          "x": 16,
+          "y": 10,
+          "z": 80
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 160,
+        "bedCoverageRatio": 0.625,
+        "heightToContactWidthRatio": 8,
+        "surfaceCentroidOffsetMm": 3,
+        "surfaceCentroidOffsetRatio": 0.3,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "A06",
+      "family": "adhesion-stability",
+      "file": "coupons/A06_tower_b10_h120_o6.stl",
+      "sha256": "138eda03ccc69db25c789e934ee0fc0fd697043c1e836644a400d64d140229ea",
+      "triangleCount": 12,
+      "boundingSizeMm": {
+        "x": 16,
+        "y": 10,
+        "z": 120
+      },
+      "intendedFactors": {
+        "baseWidthMm": 10,
+        "baseDepthMm": 10,
+        "heightMm": 120,
+        "topOffsetMm": 6,
+        "bedContactAreaMm2": 100,
+        "heightToContactWidthRatio": 12,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 12,
+        "boundingSizeMm": {
+          "x": 16,
+          "y": 10,
+          "z": 120
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 160,
+        "bedCoverageRatio": 0.625,
+        "heightToContactWidthRatio": 12,
+        "surfaceCentroidOffsetMm": 3,
+        "surfaceCentroidOffsetRatio": 0.3,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "O01",
+      "family": "inclined-overhang",
+      "file": "coupons/O01_overhang_a20_s20.stl",
+      "sha256": "77673f1a98a705dcd1236a3e0c783eb4e6d167f11d0b0da74d1285f7e70d59b1",
+      "triangleCount": 20,
+      "boundingSizeMm": {
+        "x": 26,
+        "y": 10,
+        "z": 20.27940559387207
+      },
+      "intendedFactors": {
+        "meanDownwardNormalAngleDeg": 20,
+        "projectedSpanMm": 20,
+        "inclinedSurfaceAreaMm2": 212.83555449518244,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 20,
+        "boundingSizeMm": {
+          "x": 26,
+          "y": 10,
+          "z": 20.27940559387207
+        },
+        "bedContactAreaMm2": 60,
+        "overhangAreaMm2": 212.83555760259986,
+        "overhangRatio": 0.1548378517312104,
+        "boundingFootprintAreaMm2": 260,
+        "bedCoverageRatio": 0.23076923076923078,
+        "heightToContactWidthRatio": 2.6180600045350686,
+        "surfaceCentroidOffsetMm": 6.340766983111102,
+        "surfaceCentroidOffsetRatio": 0.8185894975923714,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 212.83555760259986,
+        "largestOverhangRegionSpanMm": 20,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 212.83555760259986,
+            "projectedSpanMm": 20,
+            "minZMm": 10,
+            "maxZMm": 17.27940559387207,
+            "meanDownwardNormalAngleDeg": 20.000002298328756,
+            "horizontalAreaFraction": 0
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "O02",
+      "family": "inclined-overhang",
+      "file": "coupons/O02_overhang_a30_s20.stl",
+      "sha256": "c1c525c4a73fda43edf06c3c5ca4883999ab0499cb743e063639d01dbd315fcc",
+      "triangleCount": 20,
+      "boundingSizeMm": {
+        "x": 26,
+        "y": 10,
+        "z": 24.54700469970703
+      },
+      "intendedFactors": {
+        "meanDownwardNormalAngleDeg": 30,
+        "projectedSpanMm": 20,
+        "inclinedSurfaceAreaMm2": 230.9401076758503,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 20,
+        "boundingSizeMm": {
+          "x": 26,
+          "y": 10,
+          "z": 24.54700469970703
+        },
+        "bedContactAreaMm2": 60,
+        "overhangAreaMm2": 230.94010425542297,
+        "overhangRatio": 0.14691647249091241,
+        "boundingFootprintAreaMm2": 260,
+        "bedCoverageRatio": 0.23076923076923078,
+        "heightToContactWidthRatio": 3.169004680041351,
+        "surfaceCentroidOffsetMm": 6.137886850990565,
+        "surfaceCentroidOffsetRatio": 0.7923977851597315,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 230.94010425542297,
+        "largestOverhangRegionSpanMm": 20,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 230.94010425542297,
+            "projectedSpanMm": 20,
+            "minZMm": 10,
+            "maxZMm": 21.54700469970703,
+            "meanDownwardNormalAngleDeg": 29.999998530179578,
+            "horizontalAreaFraction": 0
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "O03",
+      "family": "inclined-overhang",
+      "file": "coupons/O03_overhang_a40_s20.stl",
+      "sha256": "a66745aaeacf929829e0b5b61db4652701f0fd7cb4204f157e753ee3fa66ab7b",
+      "triangleCount": 20,
+      "boundingSizeMm": {
+        "x": 26,
+        "y": 10,
+        "z": 29.781991958618164
+      },
+      "intendedFactors": {
+        "meanDownwardNormalAngleDeg": 40,
+        "projectedSpanMm": 20,
+        "inclinedSurfaceAreaMm2": 261.0814578664557,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 20,
+        "boundingSizeMm": {
+          "x": 26,
+          "y": 10,
+          "z": 29.781991958618164
+        },
+        "bedContactAreaMm2": 60,
+        "overhangAreaMm2": 261.0814535923846,
+        "overhangRatio": 0.14329977193928567,
+        "boundingFootprintAreaMm2": 260,
+        "bedCoverageRatio": 0.23076923076923078,
+        "heightToContactWidthRatio": 3.8448386290870453,
+        "surfaceCentroidOffsetMm": 5.980002958665126,
+        "surfaceCentroidOffsetRatio": 0.772015062306037,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 261.0814535923846,
+        "largestOverhangRegionSpanMm": 20,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 261.0814535923846,
+            "projectedSpanMm": 20,
+            "minZMm": 10,
+            "maxZMm": 26.781991958618164,
+            "meanDownwardNormalAngleDeg": 39.999998882172406,
+            "horizontalAreaFraction": 0
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "O04",
+      "family": "inclined-overhang",
+      "file": "coupons/O04_overhang_a50_s20.stl",
+      "sha256": "3b460ee29e0413f081f72370d132d7e6aa170f90ebd97e2d4e08b4461be3b3da",
+      "triangleCount": 20,
+      "boundingSizeMm": {
+        "x": 26,
+        "y": 10,
+        "z": 36.8350715637207
+      },
+      "intendedFactors": {
+        "meanDownwardNormalAngleDeg": 50,
+        "projectedSpanMm": 20,
+        "inclinedSurfaceAreaMm2": 311.1447653720824,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 20,
+        "boundingSizeMm": {
+          "x": 26,
+          "y": 10,
+          "z": 36.8350715637207
+        },
+        "bedContactAreaMm2": 60,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 260,
+        "bedCoverageRatio": 0.23076923076923078,
+        "heightToContactWidthRatio": 4.755387290754956,
+        "surfaceCentroidOffsetMm": 5.856396803107712,
+        "surfaceCentroidOffsetRatio": 0.7560575762406175,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "O05",
+      "family": "inclined-overhang",
+      "file": "coupons/O05_overhang_a60_s20.stl",
+      "sha256": "6ea1158dad7a2b16b28f1baf0fde35a03fb2cf7bdf52a2aeb55a826fa86f4038",
+      "triangleCount": 20,
+      "boundingSizeMm": {
+        "x": 26,
+        "y": 10,
+        "z": 47.64101791381836
+      },
+      "intendedFactors": {
+        "meanDownwardNormalAngleDeg": 60,
+        "projectedSpanMm": 20,
+        "inclinedSurfaceAreaMm2": 399.99999999999994,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 20,
+        "boundingSizeMm": {
+          "x": 26,
+          "y": 10,
+          "z": 47.64101791381836
+        },
+        "bedContactAreaMm2": 60,
+        "overhangAreaMm2": 0,
+        "overhangRatio": 0,
+        "boundingFootprintAreaMm2": 260,
+        "bedCoverageRatio": 0.23076923076923078,
+        "heightToContactWidthRatio": 6.150428965886257,
+        "surfaceCentroidOffsetMm": 5.761150155495171,
+        "surfaceCentroidOffsetRatio": 0.7437612869077689,
+        "overhangRegionCount": 0,
+        "largestOverhangRegionAreaMm2": 0,
+        "largestOverhangRegionSpanMm": 0,
+        "overhangRegions": [],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "O06",
+      "family": "inclined-overhang",
+      "file": "coupons/O06_overhang_a40_s10.stl",
+      "sha256": "553457663cbf92e13078aa4d24fcabe48cb432a0407544bd392f650f79ea7b7a",
+      "triangleCount": 20,
+      "boundingSizeMm": {
+        "x": 16,
+        "y": 10,
+        "z": 21.3909969329834
+      },
+      "intendedFactors": {
+        "meanDownwardNormalAngleDeg": 40,
+        "projectedSpanMm": 10,
+        "inclinedSurfaceAreaMm2": 130.54072893322785,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 20,
+        "boundingSizeMm": {
+          "x": 16,
+          "y": 10,
+          "z": 21.3909969329834
+        },
+        "bedContactAreaMm2": 60,
+        "overhangAreaMm2": 130.5407329262927,
+        "overhangRatio": 0.11920955101149891,
+        "boundingFootprintAreaMm2": 160,
+        "bedCoverageRatio": 0.375,
+        "heightToContactWidthRatio": 2.761565829340621,
+        "surfaceCentroidOffsetMm": 2.651950845956562,
+        "surfaceCentroidOffsetRatio": 0.3423653820450145,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 130.5407329262927,
+        "largestOverhangRegionSpanMm": 10,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 130.5407329262927,
+            "projectedSpanMm": 10,
+            "minZMm": 10,
+            "maxZMm": 18.3909969329834,
+            "meanDownwardNormalAngleDeg": 40.00000208866797,
+            "horizontalAreaFraction": 0
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "O07",
+      "family": "inclined-overhang",
+      "file": "coupons/O07_overhang_a40_s30.stl",
+      "sha256": "69fd48874909121395f2854d841753afe85b730db8e6659ca98b3dd03b2a7fbf",
+      "triangleCount": 20,
+      "boundingSizeMm": {
+        "x": 36,
+        "y": 10,
+        "z": 38.17298889160156
+      },
+      "intendedFactors": {
+        "meanDownwardNormalAngleDeg": 40,
+        "projectedSpanMm": 30,
+        "inclinedSurfaceAreaMm2": 391.6221867996836,
+        "bridgeGroundTruth": false
+      },
+      "measuredGeometry": {
+        "triangleCount": 20,
+        "boundingSizeMm": {
+          "x": 36,
+          "y": 10,
+          "z": 38.17298889160156
+        },
+        "bedContactAreaMm2": 60,
+        "overhangAreaMm2": 391.62218651867715,
+        "overhangRatio": 0.14415800929739678,
+        "boundingFootprintAreaMm2": 360,
+        "bedCoverageRatio": 0.16666666666666666,
+        "heightToContactWidthRatio": 4.928111675071119,
+        "surfaceCentroidOffsetMm": 9.442431380274304,
+        "surfaceCentroidOffsetRatio": 1.2190126494502895,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 391.62218651867715,
+        "largestOverhangRegionSpanMm": 30,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 391.62218651867715,
+            "projectedSpanMm": 30,
+            "minZMm": 10,
+            "maxZMm": 35.17298889160156,
+            "meanDownwardNormalAngleDeg": 39.999999951004284,
+            "horizontalAreaFraction": 0
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "B01",
+      "family": "bridge",
+      "file": "coupons/B01_bridge_s5.stl",
+      "sha256": "3e2d094eaf38c938dfdd24703c2c653b78d34e8de0345b43ba9254d47d5d4b0b",
+      "triangleCount": 36,
+      "boundingSizeMm": {
+        "x": 15,
+        "y": 10,
+        "z": 17.400000047683715
+      },
+      "intendedFactors": {
+        "clearSpanMm": 5,
+        "projectedSpanMm": 5,
+        "bridgeGroundTruth": true
+      },
+      "measuredGeometry": {
+        "triangleCount": 36,
+        "boundingSizeMm": {
+          "x": 15,
+          "y": 10,
+          "z": 17.399999618530273
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 150,
+        "overhangRatio": 0.09868421176463946,
+        "boundingFootprintAreaMm2": 150,
+        "bedCoverageRatio": 0.6666666666666666,
+        "heightToContactWidthRatio": 1.7399999618530273,
+        "surfaceCentroidOffsetMm": 5.609547984286078e-17,
+        "surfaceCentroidOffsetRatio": 5.6095479842860785e-18,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 150,
+        "largestOverhangRegionSpanMm": 15,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 150,
+            "projectedSpanMm": 15,
+            "minZMm": 15,
+            "maxZMm": 15,
+            "meanDownwardNormalAngleDeg": 0,
+            "horizontalAreaFraction": 1
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "B02",
+      "family": "bridge",
+      "file": "coupons/B02_bridge_s10.stl",
+      "sha256": "343b254282621930f6a7c3bfb6ed17352ffb1d4af10ec98b29a2c17451bce2c5",
+      "triangleCount": 36,
+      "boundingSizeMm": {
+        "x": 20,
+        "y": 10,
+        "z": 17.400000047683715
+      },
+      "intendedFactors": {
+        "clearSpanMm": 10,
+        "projectedSpanMm": 10,
+        "bridgeGroundTruth": true
+      },
+      "measuredGeometry": {
+        "triangleCount": 36,
+        "boundingSizeMm": {
+          "x": 20,
+          "y": 10,
+          "z": 17.399999618530273
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 200,
+        "overhangRatio": 0.12165450291024976,
+        "boundingFootprintAreaMm2": 200,
+        "bedCoverageRatio": 0.5,
+        "heightToContactWidthRatio": 1.7399999618530273,
+        "surfaceCentroidOffsetMm": 2.496408049778865e-16,
+        "surfaceCentroidOffsetRatio": 2.496408049778865e-17,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 200,
+        "largestOverhangRegionSpanMm": 20,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 200,
+            "projectedSpanMm": 20,
+            "minZMm": 15,
+            "maxZMm": 15,
+            "meanDownwardNormalAngleDeg": 0,
+            "horizontalAreaFraction": 1
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "B03",
+      "family": "bridge",
+      "file": "coupons/B03_bridge_s20.stl",
+      "sha256": "79b19e34c834055c3c11b250ccd940bb83112f79f197f6f1c7dfe596fb4003a7",
+      "triangleCount": 36,
+      "boundingSizeMm": {
+        "x": 30,
+        "y": 10,
+        "z": 17.400000047683715
+      },
+      "intendedFactors": {
+        "clearSpanMm": 20,
+        "projectedSpanMm": 20,
+        "bridgeGroundTruth": true
+      },
+      "measuredGeometry": {
+        "triangleCount": 36,
+        "boundingSizeMm": {
+          "x": 30,
+          "y": 10,
+          "z": 17.399999618530273
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 300,
+        "overhangRatio": 0.15856237042227248,
+        "boundingFootprintAreaMm2": 300,
+        "bedCoverageRatio": 0.3333333333333333,
+        "heightToContactWidthRatio": 1.7399999618530273,
+        "surfaceCentroidOffsetMm": 5.684341886080802e-16,
+        "surfaceCentroidOffsetRatio": 5.684341886080802e-17,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 300,
+        "largestOverhangRegionSpanMm": 30,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 300,
+            "projectedSpanMm": 30,
+            "minZMm": 15,
+            "maxZMm": 15,
+            "meanDownwardNormalAngleDeg": 0,
+            "horizontalAreaFraction": 1
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "B04",
+      "family": "bridge",
+      "file": "coupons/B04_bridge_s30.stl",
+      "sha256": "63ba18df5511395e4b266e14b642e63b8190b30dc02cdf8af7b991ab7c97bd65",
+      "triangleCount": 36,
+      "boundingSizeMm": {
+        "x": 40,
+        "y": 10,
+        "z": 17.400000047683715
+      },
+      "intendedFactors": {
+        "clearSpanMm": 30,
+        "projectedSpanMm": 30,
+        "bridgeGroundTruth": true
+      },
+      "measuredGeometry": {
+        "triangleCount": 36,
+        "boundingSizeMm": {
+          "x": 40,
+          "y": 10,
+          "z": 17.399999618530273
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 400,
+        "overhangRatio": 0.18691589118237167,
+        "boundingFootprintAreaMm2": 400,
+        "bedCoverageRatio": 0.25,
+        "heightToContactWidthRatio": 1.7399999618530273,
+        "surfaceCentroidOffsetMm": 4.621848056658725e-16,
+        "surfaceCentroidOffsetRatio": 4.621848056658725e-17,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 400,
+        "largestOverhangRegionSpanMm": 40,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 400,
+            "projectedSpanMm": 40,
+            "minZMm": 15,
+            "maxZMm": 15,
+            "meanDownwardNormalAngleDeg": 0,
+            "horizontalAreaFraction": 1
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    },
+    {
+      "specimenId": "B05",
+      "family": "bridge",
+      "file": "coupons/B05_bridge_s40.stl",
+      "sha256": "5a6c7b23ca46c4ba7dc910d999b52e9709425eb475233f424528a644a2c49642",
+      "triangleCount": 36,
+      "boundingSizeMm": {
+        "x": 50,
+        "y": 10,
+        "z": 17.400000047683715
+      },
+      "intendedFactors": {
+        "clearSpanMm": 40,
+        "projectedSpanMm": 40,
+        "bridgeGroundTruth": true
+      },
+      "measuredGeometry": {
+        "triangleCount": 36,
+        "boundingSizeMm": {
+          "x": 50,
+          "y": 10,
+          "z": 17.399999618530273
+        },
+        "bedContactAreaMm2": 100,
+        "overhangAreaMm2": 500,
+        "overhangRatio": 0.20938023851954216,
+        "boundingFootprintAreaMm2": 500,
+        "bedCoverageRatio": 0.2,
+        "heightToContactWidthRatio": 1.7399999618530273,
+        "surfaceCentroidOffsetMm": 9.464381596266848e-16,
+        "surfaceCentroidOffsetRatio": 9.464381596266848e-17,
+        "overhangRegionCount": 1,
+        "largestOverhangRegionAreaMm2": 500,
+        "largestOverhangRegionSpanMm": 50,
+        "overhangRegions": [
+          {
+            "triangleCount": 2,
+            "areaMm2": 500,
+            "projectedSpanMm": 50,
+            "minZMm": 15,
+            "maxZMm": 15,
+            "meanDownwardNormalAngleDeg": 0,
+            "horizontalAreaFraction": 1
+          }
+        ],
+        "bridgeClassification": "not-evaluated"
+      }
+    }
+  ]
+}

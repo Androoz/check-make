@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible Check Make problem
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Check Make. Remove API keys, private model files, serial numbers, and personal paths before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Check Make version
+      placeholder: 0.2.6-beta.1
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - macOS Apple Silicon
+        - macOS Intel
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the expected behavior, actual behavior, and minimal reproduction steps.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Printer and slicer context
+      description: Include printer, slicer, slicer version, and export target when relevant.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Additional evidence
+      description: Add sanitized logs, screenshots, or a minimal non-private model if useful.
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Safety and privacy
+      options:
+        - label: I removed credentials and private information from this report.
+          required: true
+        - label: This is not a confidential security report.
+          required: true

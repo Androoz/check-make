@@ -1,0 +1,153 @@
+# Reference scopes expose evidence gaps before a real printer/material lot is locked.
+- id: P1-X1C-PLA-ADHESION
+  label: Consumer PLA adhesion screening on the default X1 Carbon reference profile
+  ruleIds: [G03, G04, G09, P07]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: adhesion-test-specimen
+    outcomeDomain: adhesion-failure
+
+- id: P3-X1C-PLA-ADHESION-FORCE
+  label: Quantitative PLA first-layer adhesion force on the locked X1 Carbon reference profile
+  ruleIds: [G03, G04, G09, P07]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: adhesion-shear-strand
+    outcomeDomain: bed-adhesion-force
+
+- id: P1-X1C-PLA-OVERHANG
+  label: Consumer PLA unsupported-overhang screening on the default X1 Carbon reference profile
+  ruleIds: [G05, G06, G07, Q09, Q10]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: inclined-overhang
+    outcomeDomain: support-need
+
+- id: P3-X1C-PLA-SURFACE
+  label: Consumer PLA inclined-surface quality on the default X1 Carbon reference profile
+  ruleIds: [G01, G08, Q03, Q05]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: inclined-surface
+    outcomeDomain: surface-roughness
+
+- id: P2-X1C-PLA-TENSILE
+  label: Consumer PLA tensile behavior on the default X1 Carbon reference profile
+  ruleIds: [U01, U06, P02, Q01, Q02]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: tensile-coupon
+    outcomeDomain: tensile-properties
+
+- id: P3-X1C-PLA-PROCESS-SURFACE
+  label: Consumer PLA process-to-surface-quality evidence on the locked X1 Carbon reference profile
+  ruleIds: [G08, P01, Q03, Q05, Q07, Q08]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: cube-metrology
+    outcomeDomain: surface-roughness
+
+- id: P3-X1C-PLA-DIMENSIONAL
+  label: Consumer PLA dimensional-error evidence on the locked X1 Carbon reference profile
+  ruleIds: [Q03, Q04]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: cube-metrology
+    outcomeDomain: dimensional-error
+
+- id: P3-X1C-PLA-HORIZONTAL-OVERHANG
+  label: Support-free horizontal-overhang evidence on the locked X1 Carbon reference profile
+  ruleIds: [G05, G06, G07, Q09, Q10]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: horizontal-overhang-monolayer
+    outcomeDomain: overhang-sagging
+
+- id: P3-X1C-PLA-FLEXURAL
+  label: PLA flexural evidence on the locked X1 Carbon reference profile
+  ruleIds: [U06]
+  scope:
+    process: material-extrusion
+    materialFamily: PLA
+    printerManufacturer: Bambu Lab
+    printerModel: X1 Carbon
+    kinematicClass: corexy
+    nozzleDiameterMm: 0.4
+    layerHeightMm: 0.2
+    enclosure: true
+    buildSurface: textured PEI
+    slicer: Bambu Studio
+    geometryClass: flexural-coupon
+    outcomeDomain: flexural-properties

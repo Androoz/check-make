@@ -1,0 +1,101 @@
+name: Build draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version in package.json and tauri.conf.json, without a v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify release source
+    runs-on: ubuntu-22.04
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Verify synchronized version
+        id: version
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          TAURI_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
+          test "$PACKAGE_VERSION" = "${{ inputs.version }}"
+          test "$TAURI_VERSION" = "$PACKAGE_VERSION"
+          test "$CARGO_VERSION" = "$PACKAGE_VERSION"
+          if [[ "$PACKAGE_VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS Apple Silicon
+            platform: macos-latest
+            args: --target aarch64-apple-darwin --bundles dmg
+          - label: macOS Intel
+            platform: macos-15-intel
+            args: --target x86_64-apple-darwin --bundles dmg
+          - label: Windows x64
+            platform: windows-latest
+            args: --bundles nsis
+          - label: Linux x64
+            platform: ubuntu-22.04
+            args: --bundles appimage,deb
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.platform, 'macos-') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - name: Build and upload to a draft release
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos-') && '-' || '' }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Check Make v__VERSION__
+          releaseBody: |
+            Draft build generated from a verified source revision.
+
+            Before publishing, record installation and smoke-test results for every attached platform in docs/RELEASING.md. macOS builds use ad-hoc signing until Developer ID signing and notarization are configured. Windows builds are unsigned until a code-signing certificate is configured. Linux slicer integration is not yet release-validated.
+          releaseDraft: true
+          prerelease: ${{ needs.preflight.outputs.prerelease }}
+          generateReleaseNotes: true
+          args: ${{ matrix.args }}
+          releaseAssetNamePattern: Check-Make-[version]-[platform]-[arch][setup][ext]

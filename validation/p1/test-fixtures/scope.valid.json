@@ -1,0 +1,27 @@
+{
+  "scopeId": "P1-TEST-SCOPE-NOT-FOR-PHYSICAL-USE",
+  "pilotId": "P1-ADHESION-SUPPORT-PILOT-001",
+  "lockedAt": "2026-07-14T00:00:00Z",
+  "randomizationSeed": "check-make-p1-test-seed",
+  "printer": {
+    "id": "bambu-x1c", "manufacturer": "Bambu Lab", "model": "X1 Carbon",
+    "serial": "TEST-SERIAL", "firmware": "TEST-FIRMWARE", "kinematicClass": "corexy"
+  },
+  "material": {
+    "manufacturer": "Test manufacturer", "product": "Test PLA", "color": "natural",
+    "lot": "TEST-LOT", "diameterMm": 1.75, "conditioning": "test only", "moistureHandling": "test only"
+  },
+  "process": {
+    "slicer": "Test slicer", "slicerVersion": "0", "machineProfile": "test", "processProfile": "test",
+    "materialProfile": "test", "nozzleMm": 0.4, "extrusionWidthMm": 0.45, "layerHeightMm": 0.2,
+    "nozzleTemperatureC": 210, "bedTemperatureC": 60, "coolingPercent": 100,
+    "accelerationMmS2": 1000, "supportMode": "off", "brimWidthMm": 0,
+    "enclosure": "closed", "plate": "test plate", "platePreparation": "test only"
+  },
+  "environment": { "ambientTemperatureC": 22, "relativeHumidityPercent": 45 },
+  "measurement": {
+    "caliperId": "TEST-CALIPER", "caliperResolutionMm": 0.01, "caliperCalibration": "test only",
+    "massScaleId": "TEST-SCALE", "massScaleResolutionGrams": 0.1,
+    "photoDevice": "TEST-CAMERA", "undersideMetricMethod": "test only"
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "description": "English contract-level eval cases for Local Semantic Interpreter v3. Expected values score typed semantics, not wording.",
+  "cases": [
+    {
+      "id": "en-parasol-distance",
+      "language": "en",
+      "text": "Distance for a parasol base",
+      "expectedCandidates": [{ "key": "primary_function", "value": "space", "certainty": "strong_hypothesis" }],
+      "expectedUnknown": ["environment.location", "load.type"]
+    },
+    {
+      "id": "en-umbrella-spacer",
+      "language": "en",
+      "text": "Spacer for an umbrella stand",
+      "equivalentTo": "en-parasol-distance",
+      "expectedCandidates": [{ "key": "primary_function", "value": "space", "certainty": "strong_hypothesis" }],
+      "expectedUnknown": ["environment.location", "load.type"]
+    },
+    {
+      "id": "en-parasol-base-spacer",
+      "language": "en",
+      "text": "Parasol base spacer",
+      "equivalentTo": "en-parasol-distance",
+      "expectedCandidates": [{ "key": "primary_function", "value": "space", "certainty": "strong_hypothesis" }],
+      "expectedUnknown": ["environment.location", "load.type"]
+    },
+    {
+      "id": "en-stand-spacing-piece",
+      "language": "en",
+      "text": "Spacing piece for an umbrella stand",
+      "equivalentTo": "en-parasol-distance",
+      "expectedCandidates": [{ "key": "primary_function", "value": "space", "certainty": "explicit" }],
+      "expectedUnknown": ["environment.location", "load.type"]
+    },
+    {
+      "id": "en-function-no-object",
+      "language": "en",
+      "text": "Keeps two plates 8 mm apart and carries a constant compressive load.",
+      "expectedCandidates": [
+        { "key": "primary_function", "value": "space", "certainty": "explicit" },
+        { "key": "load.type", "value": "static", "certainty": "explicit" },
+        { "key": "load.role", "value": "load_bearing", "certainty": "explicit" }
+      ]
+    },
+    {
+      "id": "en-negated-outdoor",
+      "language": "en",
+      "text": "This cover will not be used outdoors; it stays indoors.",
+      "expectedCandidates": [{ "key": "environment.location", "value": "indoor", "certainty": "explicit" }],
+      "forbiddenCandidates": [{ "key": "environment.location", "value": "outdoor" }]
+    },
+    {
+      "id": "en-correction",
+      "language": "en",
+      "text": "Correction: it does not hold the motor. It only protects the connector indoors.",
+      "expectedCandidates": [
+        { "key": "primary_function", "value": "protect", "certainty": "explicit" },
+        { "key": "environment.location", "value": "indoor", "certainty": "explicit" }
+      ],
+      "forbiddenCandidates": [{ "key": "primary_function", "value": "hold" }]
+    },
+    {
+      "id": "en-conflict",
+      "language": "en",
+      "text": "Normally indoors, but permanently mounted outdoors.",
+      "expectedConflictKeys": ["environment.location"]
+    },
+    {
+      "id": "en-insufficient",
+      "language": "en",
+      "text": "Replacement part",
+      "expectedCandidates": [],
+      "expectedUnknown": ["primary_function", "environment.location", "load.type", "thermal.exposure"]
+    },
+    {
+      "id": "en-function-paraphrase",
+      "language": "en",
+      "text": "Creates an 8 mm gap between two plates under steady compression.",
+      "equivalentTo": "en-function-no-object",
+      "expectedCandidates": [
+        { "key": "primary_function", "value": "space", "certainty": "explicit" },
+        { "key": "load.type", "value": "static", "certainty": "explicit" },
+        { "key": "load.role", "value": "load_bearing", "certainty": "explicit" }
+      ]
+    },
+    {
+      "id": "en-dishwasher-wear",
+      "language": "en",
+      "text": "Replacement dishwasher rack clip that slides on the rail.",
+      "expectedCandidates": [
+        { "key": "primary_function", "value": "fasten", "certainty": "strong_hypothesis" },
+        { "key": "environment.service", "value": "dishwasher", "certainty": "explicit" },
+        { "key": "mechanical.wear", "value": "sliding", "certainty": "explicit" }
+      ]
+    },
+    {
+      "id": "en-cold-quantified-load",
+      "language": "en",
+      "text": "Freezer shelf bracket carrying 6 kg at -20 C.",
+      "expectedCandidates": [
+        { "key": "thermal.exposure", "value": "freezing", "certainty": "explicit" },
+        { "key": "load.magnitude", "value": "quantified", "certainty": "explicit" }
+      ]
+    },
+    {
+      "id": "en-pressure-abstention",
+      "language": "en",
+      "text": "Manifold exposed to internal pressure, exact pressure unknown.",
+      "expectedCandidates": [
+        { "key": "pressure.exposure", "value": "internal", "certainty": "explicit" }
+      ]
+    }
+  ]
+}

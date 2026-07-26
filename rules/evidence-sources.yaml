@@ -1,0 +1,304 @@
+# Source catalog for Check Make manufacturing knowledge.
+# Sources support claims, not necessarily the exact thresholds used by MVP rules.
+# `accessed` is ISO 8601 and should be refreshed during evidence reviews.
+- id: PRUSA-MATERIAL-GUIDE
+  type: manufacturer-guidance
+  title: Filament Material Guide
+  organization: Prusa Research
+  url: https://help.prusa3d.com/filament-material-guide
+  accessed: 2026-07-14
+  supports: Material-dependent temperature ranges, enclosure needs, hardened-nozzle needs, and broad material properties.
+  limitations: Vendor guidance spans material families and cannot validate one temperature for every filament brand, printer, or nozzle.
+
+- id: PRUSA-PLA
+  type: manufacturer-guidance
+  title: PLA
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/pla_2062
+  accessed: 2026-07-14
+  supports: PLA as an easy-printing baseline for detailed models and prototypes, with limited heat, UV, and impact resistance.
+  limitations: Temperatures are Prusa-specific recommendations and are not universal setpoints.
+
+- id: PRUSA-PETG
+  type: manufacturer-guidance
+  title: PETG
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/petg_2059
+  accessed: 2026-07-14
+  supports: PETG toughness, layer adhesion, low warping, mechanical use, and use outdoors below its service-temperature limit.
+  limitations: Does not justify mapping every outdoor or impact case to PETG; temperatures are material-profile specific.
+
+- id: PRUSA-ASA
+  type: manufacturer-guidance
+  title: ASA
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/asa_1809
+  accessed: 2026-07-14
+  supports: ASA for outdoor use because of UV and temperature resistance, with enclosure recommended.
+  limitations: Does not define Check Make's warm/hot categories or a universal temperature setpoint.
+
+- id: PRUSA-FLEX
+  type: manufacturer-guidance
+  title: Flexible materials
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/flexible-materials_2057
+  accessed: 2026-07-14
+  supports: TPU/TPE for flexible functions and the dependence of printing behavior on hardness, brand, speed, and geometry.
+  limitations: TPU is a family with materially different grades; one temperature pair cannot represent the family.
+
+- id: PRUSA-COMPOSITES
+  type: manufacturer-guidance
+  title: Composite materials filled with carbon, kevlar or glass
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/composite-materials-filled-with-carbon-kevlar-or-glass_167387
+  accessed: 2026-07-14
+  supports: Abrasion-resistant nozzle requirements and possible gains in dimensional stability and tensile yield strength.
+  limitations: Also reports reduced Charpy impact resistance and layer adhesion; carbon-filled material is not a universal high-impact choice.
+
+- id: PRUSA-NYLON
+  type: manufacturer-guidance
+  title: Polyamide Nylon
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/polyamide-nylon_167188
+  accessed: 2026-07-14
+  supports: Polyamide mechanical and thermal resistance, moisture sensitivity, warping risk, and benefit from high ambient temperature.
+  limitations: Unfilled PA guidance does not establish the properties of a specific PA-CF grade.
+
+- id: PRUSA-LAYERS-PERIMETERS
+  type: manufacturer-guidance
+  title: Layers and perimeters
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/layers-and-perimeters_1748
+  accessed: 2026-07-14
+  supports: Layer height below about 80 percent of nozzle diameter, perimeters as a major strength control, top-layer thickness, Arachne behavior, and the dimensional tradeoff of external perimeters first.
+  limitations: Does not validate Check Make's exact layer heights, wall counts, shell counts, or a universal wall order.
+
+- id: PRUSA-INFILL
+  type: manufacturer-guidance
+  title: Infill
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/infill_42
+  accessed: 2026-07-14
+  supports: Typical 10-15 percent infill, infill effects on compression and stiffness, and preference for adding perimeters for strength.
+  limitations: Does not prove Gyroid is optimal or validate 20/25 percent thresholds for impact classes.
+
+- id: PRUSA-BRIM
+  type: manufacturer-guidance
+  title: Skirt and Brim
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/skirt-and-brim_133969
+  accessed: 2026-07-14
+  supports: Brim increases first-layer area and is useful for tall objects with a small base; at least 3 mm is general guidance.
+  limitations: Does not support an absolute 400 mm2 contact threshold or fixed 8/10 mm brim widths.
+
+- id: PRUSA-SUPPORTS
+  type: manufacturer-guidance
+  title: Paint-on supports
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/paint-on-supports_168584
+  accessed: 2026-07-14
+  supports: Support need depends on overhang threshold, mass, center of gravity, bed movement, adhesion, material, and bridging.
+  limitations: Demonstrates why surface-area ratio alone is insufficient; it does not validate Check Make's 8/20 percent rules.
+
+- id: ORCA-SEAM
+  type: software-maintainer-guidance
+  title: Quality settings - seam
+  organization: OrcaSlicer project
+  url: https://github.com/SoftFever/OrcaSlicer/wiki/quality_settings_seam
+  accessed: 2026-07-14
+  supports: Seam placement affects appearance and strength, and interacts with wall order, retraction, pressure advance, and travel.
+  limitations: Does not identify a model's mating or hidden surfaces and does not make Back or Aligned universally optimal.
+
+- id: PRUSA-SEAM
+  type: manufacturer-guidance
+  title: Seam position
+  organization: Prusa Research
+  url: https://help.prusa3d.com/article/seam-position_151069
+  accessed: 2026-07-14
+  supports: Every perimeter loop has a start/end artifact and seam placement can be deliberately controlled.
+  limitations: Does not identify which side of an arbitrary STL is visually or functionally non-critical.
+
+- id: RODRIGUEZ-PANES-2020
+  type: peer-reviewed-experiment
+  title: An experimental methodology to analyse the structural behaviour of FDM parts with variable process parameters
+  authors: Rodriguez-Panes, Claver, and Camacho
+  doi: 10.1108/RPJ-12-2019-0312
+  url: https://doi.org/10.1108/RPJ-12-2019-0312
+  accessed: 2026-07-14
+  supports: Infill and build orientation materially affect elastic modulus and ultimate tensile stress in tested FDM PLA specimens.
+  limitations: Uniaxial PLA specimens and a bounded parameter set do not justify universal thresholds across materials and part geometries.
+
+- id: DAVE-2021
+  type: peer-reviewed-experiment
+  title: Effect of infill pattern and infill density at varying part orientation on tensile properties of fused deposition modeling-printed poly-lactic acid part
+  authors: Dave, Patadiya, Prajapati, and Rajpurohit
+  doi: 10.1177/0954406219856383
+  url: https://doi.org/10.1177/0954406219856383
+  accessed: 2026-07-14
+  supports: Orientation, infill density, and infill pattern significantly affect tensile behavior in tested PLA specimens.
+  limitations: Results are specimen-, machine-, material-, and load-case-specific.
+
+- id: SHEN-2020
+  type: peer-reviewed-research
+  title: Building Orientation Determination Based on Multi-Objective Optimization for Additive Manufacturing
+  authors: Shen, Guo, Fu, Lin, and Liu
+  doi: 10.1089/3dp.2019.0106
+  url: https://doi.org/10.1089/3dp.2019.0106
+  accessed: 2026-07-14
+  supports: Build orientation is multi-objective and affects efficiency, surface quality, support demand, and mechanical properties.
+  limitations: Does not validate Check Make's six candidates or fixed scoring weights.
+
+- id: OVERHANG-PLA-2025
+  type: peer-reviewed-experiment
+  title: The Effect of Inclination Angle and Nozzle Temperature on Surface Roughness of Overhang Parts in 3D Printed PLA Material
+  authors: Fikri and colleagues
+  doi: 10.56862/irajtma.v4i2.248
+  url: https://doi.org/10.56862/irajtma.v4i2.248
+  accessed: 2026-07-14
+  supports: Overhang surface quality varies with inclination angle and nozzle temperature in the tested PLA process.
+  limitations: Small PLA-specific experiment; it does not establish a universal 45-degree or area-ratio support threshold.
+
+- id: ASTM-F2971
+  type: consensus-standard
+  title: Standard Practice for Reporting Data for Test Specimens Prepared by Additive Manufacturing
+  organization: ASTM International
+  designation: ASTM F2971-13R21
+  url: https://store.astm.org/f2971-13r21.html
+  accessed: 2026-07-14
+  supports: Minimum reporting data for traceable AM specimen, material, process, and property-parameter-performance results.
+  limitations: Reporting practice, not a source of recommended slicer values.
+
+- id: ISO-ASTM-52902
+  type: consensus-standard
+  title: Additive manufacturing - Test artifacts - Geometric capability assessment of additive manufacturing systems
+  organization: ISO and ASTM International
+  designation: ISO/ASTM 52902
+  url: https://store.astm.org/f3345-19.html
+  accessed: 2026-07-14
+  supports: Standard artifact approach for measuring the effect of process parameters and materials on geometric performance.
+  limitations: Does not define acceptable values for a consumer FFF recommendation engine.
+
+- id: ASTM-D638
+  type: consensus-standard
+  title: Standard Test Method for Tensile Properties of Plastics
+  organization: ASTM International
+  designation: ASTM D638-22
+  url: https://store.astm.org/d0638-22.html
+  accessed: 2026-07-14
+  supports: Repeatable tensile-property measurement and reporting for plastics.
+  limitations: FFF specimen preparation, orientation, conditioning, and process metadata must additionally be controlled and reported.
+
+- id: ASTM-D790
+  type: consensus-standard
+  title: Standard Test Methods for Flexural Properties of Unreinforced and Reinforced Plastics and Electrical Insulating Materials
+  organization: ASTM International
+  designation: ASTM D790-25
+  url: https://store.astm.org/standards/d790
+  accessed: 2026-07-14
+  supports: Repeatable three-point flexural testing of unreinforced and reinforced plastics.
+  limitations: Results depend on specimen depth, conditioning, temperature, and strain rate and are not direct part allowables.
+
+- id: ISO-527-2
+  type: consensus-standard
+  title: Plastics - Determination of tensile properties - Part 2 - Test conditions for moulding and extrusion plastics
+  organization: International Organization for Standardization
+  designation: ISO 527-2:2025
+  url: https://www.iso.org/standard/527-2
+  accessed: 2026-07-14
+  supports: Consistent tensile testing and specimen preparation for rigid and semi-rigid plastics, including reinforced grades.
+  limitations: FFF process metadata and anisotropic specimen preparation must additionally be controlled and reported.
+
+- id: NIST-AMB2018-03
+  type: public-benchmark-dataset
+  title: AMB2018-03 Material Extrusion Polymer 3D Builds
+  organization: National Institute of Standards and Technology
+  url: https://www.nist.gov/ambench/amb2018-03-description
+  accessed: 2026-07-18
+  supports: Open benchmark data and metadata for mass, shape, voids, and tensile properties of material-extruded polycarbonate with declared equipment and process scope.
+  limitations: Stratasys Fortus 400mc, polycarbonate sheet, proprietary substrate, and benchmark geometry differ materially from Check Make's consumer-printer scope.
+
+- id: METU-FFF-ROUGHNESS-2026
+  type: research-dataset-record
+  title: Surface Roughness Dataset for Fused Filament Fabrication
+  organization: Middle East Technical University
+  url: https://open.metu.edu.tr/handle/11511/118881
+  accessed: 2026-07-18
+  supports: A tabular-data concept linking printing parameters and surface inclination to measured FFF surface roughness.
+  limitations: Check Make has not yet inspected or checksum-verified the raw asset, columns, process scope, or applicability of the recorded CC BY-NC-ND terms.
+
+- id: MENDELEY-PLA-PROCESS-QUALITY-2026
+  type: research-dataset
+  title: Digital photographs and numerical dataset of hardness, surface roughness, and dimensional error of PLA specimens fabricated by fused filament fabrication under varying layer height, print speed, raster orientation and infill density
+  organization: Mendeley Data
+  doi: 10.17632/mf76r4zxg4.2
+  url: https://data.mendeley.com/datasets/mf76r4zxg4/2
+  accessed: 2026-07-20
+  supports: Sixteen CC BY 4.0 PLA experiments with measured build time, surface roughness, Shore D hardness, and dimensional error across layer height, raster orientation, print speed, and infill density.
+  limitations: The Pratham 5.0 process, rectilinear infill, unspecified filament product, unspecified build surface, and non-X1C software/profile prevent direct numerical transfer to the locked Check Make reference environment.
+
+- id: ANDERSONS-WAVE-OVERHANG-2026
+  type: peer-reviewed-research
+  title: Wave-inspired path-planning strategy for support-free horizontal overhangs in FDM
+  organization: Additive Manufacturing Letters
+  doi: 10.1016/j.addlet.2026.100392
+  url: https://doi.org/10.1016/j.addlet.2026.100392
+  accessed: 2026-07-20
+  supports: Toolpath strategy can materially change sagging and coverage for support-free horizontal PLA overhangs, including geometrically difficult monolayer cases.
+  limitations: The novel wave path is not conventional slicer behavior, and the demonstrated operating boundary is not a universal support-angle threshold.
+
+- id: MENDELEY-WAVE-OVERHANG-2026
+  type: research-dataset
+  title: Data for Wave-inspired path-planning strategy for support-free horizontal overhangs in FDM
+  organization: Mendeley Data
+  doi: 10.17632/xhw8xkjyc2.2
+  url: https://data.mendeley.com/datasets/xhw8xkjyc2/2
+  accessed: 2026-07-20
+  supports: CC BY 4.0 raw 3D-scan deviations for 18 randomized PLA monolayer overhang prints, plus G-code, slicer projects, geometry, and caliper measurements.
+  limitations: The A1 mini, custom Grasshopper-generated paths, and experimental horizontal monolayers are not an exact X1 Carbon or standard Bambu Studio support-decision scope.
+
+- id: KONTAXIS-X1C-PLA-2025
+  type: peer-reviewed-research
+  title: 3D-Printed PLA Mechanical and Viscoelastic Behavior Dependence on the Nozzle Temperature and Printing Orientation
+  organization: Polymers
+  doi: 10.3390/polym17070913
+  url: https://www.mdpi.com/2073-4360/17/7/913
+  accessed: 2026-07-20
+  supports: X1 Carbon and Bambu Studio observations show that printing orientation and nozzle temperature affect scoped PLA flexural and viscoelastic response at 0.20 mm layer height.
+  limitations: The article reports aggregates, while raw specimen data are available only on request; it uses Bambu Lab PLA Basic and does not record build surface or nozzle diameter.
+
+- id: ZENODO-FFF-DEFECTS-2026
+  type: restricted-research-dataset
+  title: A Multi-Material PLA and ABS Image Dataset for Layerwise Defect Detection
+  organization: Zenodo record by IIITDM Jabalpur researcher
+  url: https://zenodo.org/records/19200472
+  accessed: 2026-07-18
+  supports: Structured FFF image labels for warping, stringing, and cracking under varied process parameters.
+  limitations: Files are restricted and the public record does not provide enough row-level geometry and process linkage for Check Make threshold fitting.
+
+- id: MENDELEY-FDM-DEFECTS-2024
+  type: research-dataset
+  title: Fused Deposition Modeling Defects
+  organization: Mendeley Data
+  url: https://data.mendeley.com/datasets/y74xtkk72z/1
+  accessed: 2026-07-18
+  supports: CC BY 4.0 processed images labeled for warping, layer delamination, and raster gaps.
+  limitations: The public description does not establish material, geometry, printer, or process variables needed for quantitative manufacturing-rule calibration.
+
+- id: FFF-BED-ADHESION-DEVICE-2022
+  type: peer-reviewed-experiment
+  title: Device for measuring part adhesion in FFF process
+  organization: HardwareX publication indexed by PubMed Central
+  url: https://pmc.ncbi.nlm.nih.gov/articles/PMC9058659/
+  accessed: 2026-07-18
+  supports: An open measurement device, specimen geometry, and repeatable approach for quantifying part-to-build-surface adhesion force.
+  limitations: The method improves pilot design but does not itself establish Check Make's geometry-to-brim decision boundary across materials and plates.
+
+- id: SPOERK-PLA-BED-TEMP-2018
+  type: peer-reviewed-experiment
+  title: Effect of the printing bed temperature on the adhesion of parts produced by fused filament fabrication
+  organization: Plastics, Rubber and Composites
+  doi: 10.1080/14658011.2017.1399531
+  url: https://www.tandfonline.com/doi/full/10.1080/14658011.2017.1399531
+  accessed: 2026-07-21
+  supports: PLA bed temperature and build surface strongly affect measured first-layer shear-off force around the material glass-transition region.
+  limitations: The article exposes aggregate means and deviations rather than the sixteen strand-level force observations per setting; its glass and polyimide surfaces, 0.5 mm nozzle, and industrial printer do not match textured PEI on X1 Carbon.

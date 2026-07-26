@@ -1,0 +1,13 @@
+schemaVersion: 1
+datasetId: TEST-OVERHANG
+format: csv
+idColumn: id
+scope:
+  process: {constant: material-extrusion}
+  materialFamily: {column: material}
+  geometryClass: {constant: inclined-overhang}
+factors:
+  - {name: angleDeg, column: angle_deg, type: number, unit: deg}
+  - {name: nozzleTemperatureC, column: temp_c, type: number, unit: C}
+outcomes:
+  - {name: roughnessUm, column: roughness_mm, type: number, scale: 1000, unit: um}

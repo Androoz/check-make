@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "1.1.0",
+  "description": "Curated English manufacturing-context cases. Expected unknowns are intentional abstentions, not missing labels. Reviewed corrections are distinct from safety-relevant confirmation cues.",
+  "cases": [
+    {
+      "id": "generic-replacement-part",
+      "language": "en",
+      "text": "A useful replacement part.",
+      "expectedUnknown": ["environment", "load", "impact", "heat", "priority", "supportsAllowed"]
+    },
+    {
+      "id": "outdoor-hinge-fit",
+      "language": "en",
+      "text": "Outdoor hinge that opens repeatedly, gets knocked, and needs an accurate fit.",
+      "expected": { "environment": "outdoor", "load": "cyclic", "impact": "medium", "priority": "accuracy" },
+      "expectedUnknown": ["heat", "supportsAllowed"],
+      "expectedFacets": ["function-move"]
+    },
+    {
+      "id": "negated-outdoor-no-impact",
+      "language": "en",
+      "text": "Indoor bracket, not used outside, no impacts, and supports are fine.",
+      "expected": { "environment": "indoor", "impact": "none", "supportsAllowed": true },
+      "expectedUnknown": ["heat"]
+    },
+    {
+      "id": "explicit-warm-temperature",
+      "language": "en",
+      "text": "Electronics cover exposed to a maximum of 55 °C.",
+      "expected": { "heat": "warm" },
+      "expectedFacets": ["function-protect"]
+    },
+    {
+      "id": "conflicting-environment",
+      "language": "en",
+      "text": "Used indoors and outdoors.",
+      "expectedUnknown": ["environment"],
+      "expectedIssues": ["environment"]
+    },
+    {
+      "id": "terse-heat-sun",
+      "language": "en",
+      "text": "heat sun",
+      "expected": { "environment": "outdoor" },
+      "expectedUnknown": ["heat"],
+      "expectedIssues": ["heat"]
+    },
+    {
+      "id": "reviewed-typo-functional-bracket",
+      "language": "en",
+      "text": "Outdor bracket with repeted movement, no impacts, and suports are fine.",
+      "expected": { "environment": "outdoor", "load": "cyclic", "impact": "none", "priority": "strength", "supportsAllowed": true },
+      "expectedCorrections": ["typo-outdoor", "typo-repeated", "typo-support"]
+    },
+    {
+      "id": "negated-water-and-chemicals",
+      "language": "en",
+      "text": "Indoor cover with no water or chemical exposure.",
+      "expected": { "environment": "indoor" },
+      "expectedAbsentFacets": ["environment-moisture", "environment-chemical"]
+    },
+    {
+      "id": "specialist-domains",
+      "language": "en",
+      "text": "Food contact part cleaned with solvents; failure could injure someone.",
+      "expectedFacets": ["environment-food", "environment-chemical", "failure-safety"]
+    },
+    {
+      "id": "rich-protective-cover",
+      "language": "en",
+      "text": "Long-term protective cover in direct sun and rain. It snaps onto a housing and the visible face must remain smooth.",
+      "expected": { "environment": "outdoor", "priority": "finish" },
+      "expectedUnknown": ["heat"],
+      "expectedIssues": ["heat"],
+      "expectedFacets": ["function-protect", "environment-uv", "environment-moisture", "fit-snap", "surface-visible", "lifetime-long"]
+    },
+    {
+      "id": "bending-direction-only",
+      "language": "en",
+      "text": "The part experiences bending.",
+      "expectedUnknown": ["load"],
+      "expectedFacets": ["load-bending"]
+    },
+    {
+      "id": "press-fit-interface",
+      "language": "en",
+      "text": "Press-fit adapter with a mating surface.",
+      "expected": { "priority": "accuracy" },
+      "expectedFacets": ["function-connect", "fit-press", "surface-mating"]
+    },
+    {
+      "id": "visible-cosmetic-face",
+      "language": "en",
+      "text": "The visible face is cosmetic and surface finish matters.",
+      "expected": { "priority": "finish" },
+      "expectedFacets": ["surface-visible"]
+    },
+    {
+      "id": "support-free-requirement",
+      "language": "en",
+      "text": "The print must be support-free.",
+      "expected": { "supportsAllowed": false },
+      "expectedFacets": ["preference-support-free"]
+    },
+    {
+      "id": "flexible-gasket",
+      "language": "en",
+      "text": "Flexible soft gasket that seals a lid.",
+      "expected": { "priority": "flexibility" },
+      "expectedFacets": ["function-seal"]
+    },
+    {
+      "id": "temporary-fast-prototype",
+      "language": "en",
+      "text": "Temporary quick prototype where print time matters.",
+      "expected": { "priority": "speed" },
+      "expectedFacets": ["lifetime-temporary", "preference-speed"]
+    },
+    {
+      "id": "decorative-display",
+      "language": "en",
+      "text": "Decorative ornament for display quality with no load.",
+      "expected": { "load": "none", "priority": "finish" },
+      "expectedFacets": ["function-display"]
+    },
+    {
+      "id": "hard-impact",
+      "language": "en",
+      "text": "The part must withstand frequent hard impacts.",
+      "expected": { "impact": "high" }
+    },
+    {
+      "id": "hot-temperature-range",
+      "language": "en",
+      "text": "Operating temperature is 20–85 °C.",
+      "expected": { "heat": "hot" }
+    },
+    {
+      "id": "compound-dimensional-fit",
+      "language": "en",
+      "text": "Dimensionally-accurate pressfit adapter with a mating surface.",
+      "expected": { "priority": "accuracy" },
+      "expectedFacets": ["function-connect", "fit-press", "surface-mating"],
+      "expectedCorrections": ["hyphen-dimensional", "compound-press-fit"]
+    },
+    {
+      "id": "indoor-humidity",
+      "language": "en",
+      "text": "Indoor bathroom hook exposed to humidity.",
+      "expected": { "environment": "indoor", "load": "static", "priority": "strength" },
+      "expectedFacets": ["environment-moisture"]
+    },
+    {
+      "id": "compound-support-and-inflection",
+      "language": "en",
+      "text": "Supportfree outdoor holder with a repeatedly moving arm and no impact.",
+      "expected": { "environment": "outdoor", "load": "cyclic", "impact": "none", "priority": "strength", "supportsAllowed": false },
+      "expectedFacets": ["preference-support-free"],
+      "expectedCorrections": ["compound-support-free", "inflection-repeatedly"]
+    },
+    {
+      "id": "safety-relevant-typos-require-confirmation",
+      "language": "en",
+      "text": "Foodsafe component exposed to solvant in a saftey-critical use.",
+      "expectedUnknown": ["environment", "load", "impact", "heat", "priority", "supportsAllowed"],
+      "expectedLanguageCues": ["food-contact", "chemical", "safety"],
+      "expectedAbsentFacets": ["environment-food", "environment-chemical", "failure-safety"]
+    },
+    {
+      "id": "negated-corrected-outdoor-typo",
+      "language": "en",
+      "text": "Indoor enclosure, not used outdor.",
+      "expected": { "environment": "indoor" },
+      "expectedCorrections": ["typo-outdoor"]
+    },
+    {
+      "id": "load-bearing-is-not-bearing-fit",
+      "language": "en",
+      "text": "Load-bearing outdoor bracket with repeated movement and no supports.",
+      "expected": { "environment": "outdoor", "load": "cyclic", "priority": "strength", "supportsAllowed": false }
+    }
+  ]
+}

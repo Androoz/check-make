@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "MENDELEY-PLA-PROCESS-QUALITY-2026",
+  "importedAt": "2026-07-20T21:41:36.734Z",
+  "sourceFile": "mf76r4zxg4-v2-measurements.csv",
+  "sourceSha256": "3869827e45138810f8b3555fcdc08c69bd96114c17d2f1f300be0575b845dfb8",
+  "upstreamSourceFile": "Process_Parameters_and_Measurements.xlsx",
+  "upstreamSourceSha256": "d62f2cb8bcae0c69d72d2e702db024ae4651c3d359c23f71863d794814416fda",
+  "mappingFile": "mf76r4zxg4-v2.yaml",
+  "mappingSha256": "7a271a9b6d32959d2f91637274267c803b21f339e8603964a90640838d04a550",
+  "observationCount": 16,
+  "observationsFile": "observations.jsonl",
+  "observationsSha256": "fdb379a0d1cbdf265ce2b42b4bd082163dcfeabf3a11cbb1bac01c85f3611546"
+}

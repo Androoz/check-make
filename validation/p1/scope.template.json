@@ -1,0 +1,55 @@
+{
+  "scopeId": "REQUIRED-UNIQUE-SCOPE-ID",
+  "pilotId": "P1-ADHESION-SUPPORT-PILOT-001",
+  "lockedAt": "REQUIRED-ISO-8601-TIMESTAMP",
+  "randomizationSeed": "REQUIRED-FIXED-SEED",
+  "printer": {
+    "id": "bambu-x1c",
+    "manufacturer": "Bambu Lab",
+    "model": "X1 Carbon",
+    "serial": "REQUIRED",
+    "firmware": "REQUIRED",
+    "kinematicClass": "corexy"
+  },
+  "material": {
+    "manufacturer": "REQUIRED",
+    "product": "REQUIRED",
+    "color": "REQUIRED",
+    "lot": "REQUIRED",
+    "diameterMm": 1.75,
+    "conditioning": "REQUIRED",
+    "moistureHandling": "REQUIRED"
+  },
+  "process": {
+    "slicer": "REQUIRED",
+    "slicerVersion": "REQUIRED",
+    "machineProfile": "REQUIRED",
+    "processProfile": "REQUIRED",
+    "materialProfile": "REQUIRED",
+    "nozzleMm": 0.4,
+    "extrusionWidthMm": "REQUIRED",
+    "layerHeightMm": 0.2,
+    "nozzleTemperatureC": "REQUIRED",
+    "bedTemperatureC": "REQUIRED",
+    "coolingPercent": "REQUIRED",
+    "accelerationMmS2": "REQUIRED",
+    "supportMode": "off",
+    "brimWidthMm": 0,
+    "enclosure": "closed",
+    "plate": "REQUIRED",
+    "platePreparation": "REQUIRED"
+  },
+  "environment": {
+    "ambientTemperatureC": "REQUIRED",
+    "relativeHumidityPercent": "REQUIRED"
+  },
+  "measurement": {
+    "caliperId": "REQUIRED",
+    "caliperResolutionMm": "REQUIRED",
+    "caliperCalibration": "REQUIRED",
+    "massScaleId": "REQUIRED",
+    "massScaleResolutionGrams": "REQUIRED",
+    "photoDevice": "REQUIRED",
+    "undersideMetricMethod": "REQUIRED"
+  }
+}

@@ -1,0 +1,29 @@
+schemaVersion: 1
+datasetId: MENDELEY-WAVE-OVERHANG-2026
+format: csv
+idColumn: observation_id
+scope:
+  process: {constant: material-extrusion}
+  materialFamily: {constant: PLA}
+  printerManufacturer: {constant: Bambu Lab}
+  printerModel: {constant: A1 mini}
+  kinematicClass: {constant: bed-slinger}
+  nozzleDiameterMm: {constant: 0.4, type: number}
+  enclosure: {constant: false, type: boolean}
+  buildSurface: {constant: textured PEI}
+  slicer: {constant: Bambu Studio with custom Grasshopper path planning}
+  geometryClass: {constant: horizontal-overhang-monolayer}
+factors:
+  - {name: pathStrategy, column: strategy}
+  - {name: geometryDifficulty, column: difficulty}
+  - {name: replication, column: replication, type: number, unit: count}
+  - {name: scanPointCount, column: point_count, type: number, unit: count}
+outcomes:
+  - {name: meanDeviationMm, column: mean_deviation_mm, type: number, unit: mm}
+  - {name: sdDeviationMm, column: sd_deviation_mm, type: number, unit: mm}
+  - {name: minDeviationMm, column: min_deviation_mm, type: number, unit: mm}
+  - {name: maxDeviationMm, column: max_deviation_mm, type: number, unit: mm}
+  - {name: meanAbsoluteDeviationMm, column: mean_absolute_deviation_mm, type: number, unit: mm}
+  - {name: rmseDeviationMm, column: rmse_deviation_mm, type: number, unit: mm}
+  - {name: p95AbsoluteDeviationMm, column: p95_absolute_deviation_mm, type: number, unit: mm}
+  - {name: negativePointFraction, column: negative_point_fraction, type: number, unit: fraction}

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Androoz/check-make/security/advisories/new
+    about: Use private vulnerability reporting instead of a public issue.
+  - name: Support scope
+    url: https://github.com/Androoz/check-make/blob/main/SUPPORT.md
+    about: Read the best-effort support and privacy boundaries.
