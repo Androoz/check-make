@@ -1,4 +1,4 @@
-<img src="assets/check-make-wordmark.svg" alt="CHECK / MAKE" width="420">
+<img src="assets/check-make-wordmark.png" alt="CHECK / MAKE" width="420">
 
 **Let the model explain itself.**
 
