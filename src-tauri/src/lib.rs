@@ -3924,6 +3924,31 @@ fn validate_manufacturing_package(
         checks,
     })
 }
+
+#[tauri::command]
+fn reveal_file_in_folder(path: String) -> Result<(), String> {
+    let file = PathBuf::from(path);
+    if !file.is_absolute() || !file.is_file() {
+        return Err("The exported file no longer exists at the recorded location.".into());
+    }
+
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open").arg("-R").arg(&file).status();
+    #[cfg(target_os = "windows")]
+    let status = Command::new("explorer")
+        .arg(format!("/select,{}", file.display()))
+        .status();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let status = Command::new("xdg-open")
+        .arg(file.parent().ok_or("The exported file has no parent folder.")?)
+        .status();
+
+    let status = status.map_err(|error| format!("Could not open the system file manager: {error}"))?;
+    if !status.success() {
+        return Err("The system file manager could not reveal the exported file.".into());
+    }
+    Ok(())
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -3993,7 +4018,8 @@ pub fn run() {
             create_manufacturing_package,
             create_and_open_bambu_project,
             estimate_plan_metrics,
-            validate_manufacturing_package
+            validate_manufacturing_package,
+            reveal_file_in_folder
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Check Make")

@@ -5,6 +5,7 @@ const css = readFileSync(new URL('../accessibility-v5.css', import.meta.url), 'u
 const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const results = readFileSync(new URL('../results/RecommendationResults.tsx', import.meta.url), 'utf8');
 const applicationPreferences = readFileSync(new URL('../preferences/application.ts', import.meta.url), 'utf8');
+const modelPreview = readFileSync(new URL('../components/ModelPreview.tsx', import.meta.url), 'utf8');
 
 function luminance(hex: string) {
   const channels = hex.match(/[a-f\d]{2}/gi)!.map(value => parseInt(value, 16) / 255)
@@ -104,6 +105,11 @@ describe('accessible Check Make design system', () => {
     expect(css).toContain('.extended-ai-settings');
     expect(app).not.toContain('Local preliminary analysis');
     expect(app).not.toContain('Functional regions');
+  });
+
+  it('keeps 3D labels below application popovers', () => {
+    expect(modelPreview.match(/<Html[^>]*zIndexRange=\{\[12, 0\]\}/g)).toHaveLength(5);
+    expect(css).toMatch(/\.printer-picker-menu \{[^}]*z-index: 200/);
   });
 
   it('makes important-area consequences and model highlighting visible', () => {
@@ -228,7 +234,13 @@ describe('accessible Check Make design system', () => {
     expect(app).toContain('Export notes');
     expect(app).toContain('Validation checks');
     expect(app).toContain('of {validationReport.checks.length} passed');
+    expect(app).toContain("invoke('reveal_file_in_folder', { path })");
+    expect(app).toContain('Show in Finder');
+    expect(app).toContain('Show in Explorer');
+    expect(app).toContain('<UiIcon name="info"/>');
     expect(css).toContain('.export-location p');
+    expect(css).toContain('.export-reveal-file');
+    expect(css).toContain('.export-note-icon');
     expect(css).toContain('.export-notes > ul');
     expect(css).toContain('.export-validation > ul');
     expect(css).toContain('.export-actions');
@@ -260,6 +272,7 @@ describe('accessible Check Make design system', () => {
     expect(css).toContain('@media (max-width: 900px)');
     expect(css).toContain('--control-height: 34px');
     expect(css).toContain('.process-step.locked .process-marker');
+    expect(css).toMatch(/\.process-step\.complete \.process-copy b \{ color: var\(--header-primary\)/);
     expect(css).toContain('.printer-glyph, .spool-glyph');
     expect(css).toContain('.back-to-prepare');
     expect(css).toContain('.orientation-comparison button small');

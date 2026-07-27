@@ -106,6 +106,23 @@ describe('reviewed filament product profiles', () => {
     });
   });
 
+  it('accepts Bambu PETG HF on the X1 Carbon and applies its reviewed temperatures', () => {
+    const profile = filamentProductProfile('bambu-petg-hf')!;
+    expect(assessFilamentProduct(profile, getPrinter('bambu-x1c'))).toMatchObject({
+      compatible: true,
+      limitations: [],
+    });
+    const recommendation = (setting: Recommendation['setting'], value: Recommendation['value']): Recommendation => ({
+      setting, value, reason: 'base', ruleIds: ['base'], matchedRuleIds: ['base'], evidenceLevel: 'C', validationStatus: 'provisional', trace: [],
+    });
+    const result = planForFilamentProduct([
+      recommendation('material', 'PETG'),
+      recommendation('nozzle_temperature', '250 °C'),
+      recommendation('bed_temperature', '75 °C'),
+    ], profile);
+    expect(result.map(item => item.value)).toEqual(['PETG', '250 °C', '70 °C']);
+  });
+
   it('maps a selected product into material and temperature recommendations without changing structure settings', () => {
     const recommendation = (setting: Recommendation['setting'], value: Recommendation['value']): Recommendation => ({
       setting, value, reason: 'base', ruleIds: ['base'], matchedRuleIds: ['base'], evidenceLevel: 'C', validationStatus: 'provisional', trace: [],

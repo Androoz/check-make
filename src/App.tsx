@@ -39,7 +39,7 @@ import './accessibility-v5.css';
 
 type View = 'import' | 'analysis' | 'export';
 type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare' | 'spatial';
-type UiIconName = 'model' | 'printer' | 'material' | 'orientation' | 'support' | 'layer' | 'walls' | 'infill' | 'package' | 'check' | 'lock' | 'settings';
+type UiIconName = 'model' | 'printer' | 'material' | 'orientation' | 'support' | 'layer' | 'walls' | 'infill' | 'package' | 'check' | 'lock' | 'settings' | 'folder' | 'info';
 const LazyModelPreview = lazy(() => import('./components/ModelPreview'));
 
 const slicerIcon: Partial<Record<SlicerTarget, string>> = {
@@ -78,6 +78,8 @@ function UiIcon({ name }: { name: UiIconName }) {
     {name === 'check' && <path d="m5 12.5 4.2 4.2L19 7"/>}
     {name === 'lock' && <><rect x="5.5" y="10" width="13" height="10" rx="2"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></>}
     {name === 'settings' && <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.51-1H3v-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.5 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.51 1H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></>}
+    {name === 'folder' && <><path d="M3.5 6.5h6l2 2h9v10.5h-17z"/><path d="M3.5 8.5v-3h6l2 2"/></>}
+    {name === 'info' && <><circle cx="12" cy="12" r="9"/><path d="M12 10.5V17M12 7.2h.01"/></>}
   </svg>;
 }
 
@@ -1076,6 +1078,14 @@ export default function App() {
     } catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
   };
+  const revealExportedFile = async (path: string) => {
+    setError('');
+    try {
+      await invoke('reveal_file_in_folder', { path });
+    } catch (reason) {
+      setError(`Could not show the exported file: ${String(reason)}`);
+    }
+  };
 
   const assumptionReviewCount = intelligence
     ? (['environment', 'load', 'impact', 'heat', 'priority'] as ChecklistField[]).filter(field => intelligence.requirements[field].status === 'assumed').length
@@ -1107,6 +1117,9 @@ export default function App() {
 
   const prepareReadyLabel = printer ? 'Plan ready' : 'Plan ready · printer not validated';
   const prepareReadySummary = printer ? 'Ready for export' : 'Portable export ready';
+  const fileManagerActionLabel = /Mac/i.test(navigator.platform)
+    ? 'Show in Finder'
+    : /Win/i.test(navigator.platform) ? 'Show in Explorer' : 'Show in folder';
 
   return <div className="window workflow-window">
     <ProcessBar stage={workflowStage} decisions={decisionCount} settingsOpen={settingsOpen} onToggleSettings={() => setSettingsOpen(current => !current)}/>
@@ -1250,8 +1263,8 @@ export default function App() {
           <div className="export-actions"><button type="button" className="export-save-project" disabled={!sourceModelPath || busy} onClick={() => void saveProject()}>Save Check Make project…</button><button className="primary" disabled={busy || materialPlanBlocked || !sourcePath || !selectedAdapter?.available || !selectedPrinterSupported} onClick={() => void createPackage(packageTarget === 'bambu' ? 'open' : 'save')}>{busy ? 'Creating…' : packageTarget === 'generic' ? 'Create Core 3MF…' : packageTarget === 'bambu' ? 'Open in Bambu Studio' : `Export for ${selectedAdapter?.label ?? packageTarget}…`}</button></div>
           {status && <p className="save-status">{status.startsWith('Project saved:') ? 'Check Make project saved.' : status === 'Export cancelled' ? status : 'Export completed successfully.'}</p>}
           {(packageResult || status.startsWith('Project saved:') || validationReport) && <details className="export-details"><summary><span>{packageResult || validationReport ? 'Export details & checks' : 'Saved project details'}</span><em>{validationReport ? `${validationReport.checks.length} checks` : 'Details'}</em></summary><div className="export-detail-content">
-            {(packageResult?.path || status.startsWith('Project saved:')) && <section className="export-detail-section export-location"><h3>{packageResult ? 'Exported file' : 'Saved project'}</h3><p>{packageResult?.path ?? status.slice('Project saved:'.length).trim()}</p></section>}
-            {packageResult && packageResult.warnings.length > 0 && <section className="export-detail-section export-notes"><h3>Export notes</h3><ul>{packageResult.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></section>}
+            {(packageResult?.path || status.startsWith('Project saved:')) && <section className="export-detail-section export-location"><h3>{packageResult ? 'Exported file' : 'Saved project'}</h3><div className="export-location-row"><p>{packageResult?.path ?? status.slice('Project saved:'.length).trim()}</p>{packageResult && <button type="button" className="export-reveal-file" onClick={() => void revealExportedFile(packageResult.path)}><UiIcon name="folder"/><span>{fileManagerActionLabel}</span></button>}</div></section>}
+            {packageResult && packageResult.warnings.length > 0 && <section className="export-detail-section export-notes"><h3>Export notes</h3><ul>{packageResult.warnings.map(warning => <li key={warning}><span className="export-note-icon" aria-hidden="true"><UiIcon name="info"/></span><span>{warning}</span></li>)}</ul></section>}
             {validationReport && <section className="export-detail-section export-validation"><div className="export-validation-heading"><h3>Validation checks</h3><span>{validationReport.checks.filter(check => check.passed).length} of {validationReport.checks.length} passed</span></div><ul>{validationReport.checks.map(check => <li className={check.passed ? 'passed' : 'failed'} key={check.id}><span>{check.passed ? '✓' : '!'}</span><p><b>{check.label}</b>{check.detail}</p></li>)}</ul></section>}
           </div></details>}
         </section>}

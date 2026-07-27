@@ -112,7 +112,7 @@ function BuildPlate({ width, depth, ghost, dark }: { width: number; depth: numbe
       <meshStandardMaterial color={dark ? '#0b2a3f' : '#e8efec'} roughness={0.82} transparent opacity={ghost ? 0.13 : 0.96} depthWrite={!ghost}/>
     </mesh>
     <Grid args={[width, depth]} position={[0, 0.03, 0]} cellSize={10} sectionSize={50} cellColor={dark ? '#3d7898' : '#91bdd4'} sectionColor={dark ? '#75bce2' : '#0b5e91'} cellThickness={0.48} sectionThickness={0.9} fadeDistance={Math.max(width, depth) * 1.5} fadeStrength={0.5} infiniteGrid={false}/>
-    <Html position={[-width / 2 + 8, 0.3, depth / 2 - 8]} center><span className="plate-origin">0,0</span></Html>
+    <Html position={[-width / 2 + 8, 0.3, depth / 2 - 8]} center zIndexRange={[12, 0]}><span className="plate-origin">0,0</span></Html>
   </group>;
 }
 
@@ -123,9 +123,9 @@ function PrinterAxes({ width, depth }: { width: number; depth: number }) {
     <arrowHelper args={[new THREE.Vector3(1, 0, 0), origin, length, '#e77878', 5, 3]}/>
     <arrowHelper args={[new THREE.Vector3(0, 0, -1), origin, length, '#63c888', 5, 3]}/>
     <arrowHelper args={[new THREE.Vector3(0, 1, 0), origin, length, '#6f8fe8', 5, 3]}/>
-    <Html position={[origin.x + length + 3, origin.y, origin.z]} center><span className="axis-label axis-x">X</span></Html>
-    <Html position={[origin.x, origin.y, origin.z - length - 3]} center><span className="axis-label axis-y">Y</span></Html>
-    <Html position={[origin.x, origin.y + length + 3, origin.z]} center><span className="axis-label axis-z">Z</span></Html>
+    <Html position={[origin.x + length + 3, origin.y, origin.z]} center zIndexRange={[12, 0]}><span className="axis-label axis-x">X</span></Html>
+    <Html position={[origin.x, origin.y, origin.z - length - 3]} center zIndexRange={[12, 0]}><span className="axis-label axis-y">Y</span></Html>
+    <Html position={[origin.x, origin.y + length + 3, origin.z]} center zIndexRange={[12, 0]}><span className="axis-label axis-z">Z</span></Html>
   </group>;
 }
 

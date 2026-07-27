@@ -76,6 +76,22 @@ describe('material candidate constraints', () => {
     expect(result.candidates.find(candidate => candidate.material === 'PLA')?.whyNotRecommended).toContain('impact toughness');
   });
 
+  it('keeps the warm-service PETG recommendation exportable', () => {
+    const result = evaluateMaterialPlan(answers({ heat: 'warm' }), 'PETG');
+    expect(result.requirements).toContainEqual(expect.objectContaining({
+      id: 'heat-margin',
+      benefit: 'heat',
+      kind: 'required',
+    }));
+    expect(result.recommended).toMatchObject({
+      material: 'PETG',
+      meetsRequirements: true,
+      printerCompatible: true,
+      selectable: true,
+    });
+    expect(result.blocked).toBe(false);
+  });
+
   it('uses cyclic loading as a fatigue preference for ordinary functional parts', () => {
     const result = evaluateMaterialPlan(answers({ load: 'cyclic', priority: 'strength' }), 'PETG');
     expect(result.requirements).toContainEqual(expect.objectContaining({ id: 'fatigue-resistance', kind: 'preferred' }));

@@ -78,7 +78,7 @@ export const materialCatalog: MaterialCatalogEntry[] = [
   {
     id: 'PETG', label: 'PETG', nominalDensityGcm3: 1.27, nozzleTemperature: '250 °C', bedTemperature: '75 °C',
     notes: 'General weather- and impact-tolerant baseline.',
-    strengths: ['outdoor', 'moisture', 'toughness', 'fatigue'],
+    strengths: ['outdoor', 'moisture', 'toughness', 'fatigue', 'heat'],
     disadvantages: ['More stringing and surface sensitivity than PLA', 'Lower stiffness than PLA or PA-CF', 'Not the high-temperature baseline'],
     printerRequirements: ['Nozzle capable of at least 260 °C', 'Build plate capable of at least 80 °C'],
   },

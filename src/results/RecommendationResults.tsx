@@ -31,11 +31,14 @@ interface MaterialOptionsProps {
   onSelectProduct: (productId?: string) => void;
 }
 
+export const compatibleMaterialAlternatives = (candidates: MaterialAlternativeCandidate[]) =>
+  candidates.filter(candidate => !candidate.recommended && candidate.selectable);
+
 function MaterialOptions({
   candidates, selected, printerSelected, recommended, decisionReason, onSelect,
   productOptions, selectedProduct, onSelectProduct,
 }: MaterialOptionsProps) {
-  const alternatives = candidates.filter(candidate => !candidate.recommended);
+  const alternatives = compatibleMaterialAlternatives(candidates);
   return <div className="inline-material-options">
     <div className="material-decision-reason"><b>Why Check Make selected {recommended}</b><p>{decisionReason}</p></div>
     <div className="filament-product-picker">
@@ -66,9 +69,9 @@ function MaterialOptions({
     {!printerSelected
       ? <div className="inline-material-options empty"><b>Alternative materials require a target printer.</b><p>Select a printer so Check Make can validate temperature, enclosure, and nozzle requirements.</p></div>
       : !alternatives.length
-        ? <div className="inline-material-options empty"><b>No material alternative is established.</b><p>Check Make keeps {recommended} because no other catalog material has been evaluated for this requirement set.</p></div>
+        ? <div className="inline-material-options empty"><b>No compatible material alternative is established.</b><p>No other evaluated material family preserves the confirmed requirements for the selected printer.</p></div>
         : <>
-    <div className="inline-material-heading"><div><b>{alternatives.filter(candidate => candidate.selectable).length} compatible alternative{alternatives.filter(candidate => candidate.selectable).length === 1 ? '' : 's'}</b><p>Other families remain visible when they have a requirement or printer limitation, but only compatible alternatives can be selected.</p></div>{selected !== recommended && <button type="button" className="quiet" onClick={() => onSelect(recommended)}>Restore {recommended}</button>}</div>
+    <div className="inline-material-heading"><div><b>{alternatives.length} compatible alternative{alternatives.length === 1 ? '' : 's'}</b><p>Only material families that preserve the confirmed requirements and match the selected printer are shown.</p></div>{selected !== recommended && <button type="button" className="quiet" onClick={() => onSelect(recommended)}>Restore {recommended}</button>}</div>
     <div className="inline-material-list">{alternatives.map(candidate => <article className={`inline-material-option ${selected === candidate.material ? 'selected' : ''}`} key={candidate.material}>
       <div className="inline-material-summary"><span className="inline-material-title"><b>{candidate.material}</b><small>{candidate.status === 'compatible' ? candidate.fitLabels.join(' · ') : candidate.status === 'printer-incompatible' ? 'Printer limitation' : candidate.status === 'specialist-review' ? 'Product-specific evidence required' : 'Does not preserve all requirements'}</small></span><button type="button" disabled={!candidate.selectable} aria-pressed={selected === candidate.material} onClick={() => onSelect(candidate.material)}>{selected === candidate.material ? 'Selected' : candidate.selectable ? `Use ${candidate.material}` : 'Unavailable'}</button></div>
       <p className="material-description">{candidate.improvement}</p>
