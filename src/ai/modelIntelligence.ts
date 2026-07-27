@@ -248,12 +248,6 @@ function questionsForManufacturingIntent(intent?: ManufacturingIntent): FollowUp
     why: 'Food contact needs an explicit confirmation and cannot be inferred into a qualified material claim.',
     options: choices(['confirmed', 'Yes, direct food contact'], ['rejected', 'No food contact']),
   });
-  if (intent.failureConsequence.value === 'safety-critical' && intent.failureConsequence.status !== 'confirmed') questions.push({
-    id: 'intent-safety-critical', field: 'intent', kind: 'single',
-    question: 'Could failure of this printed part injure someone?',
-    why: 'A safety-critical use must be explicitly confirmed. Check Make cannot validate structural safety.',
-    options: choices(['confirmed', 'Yes, failure could cause injury'], ['rejected', 'No, failure is not safety-critical']),
-  });
   return questions;
 }
 
@@ -269,7 +263,7 @@ function questionsForSemanticInterpretation(
     'priority', 'flexibility', 'appearance.requirement',
   ]);
   const consequentialSemanticQuestions = new Set([
-    'failure.consequence', 'pressure.exposure', 'electrical.requirement', 'interface.fit',
+    'pressure.exposure', 'electrical.requirement', 'interface.fit',
   ]);
   const generated = interpretation.candidateFacts.flatMap(fact => {
     const id = semanticFactAnswerId(fact);

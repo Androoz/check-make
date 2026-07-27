@@ -1,8 +1,4 @@
 import * as THREE from 'three';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
 import { analyzeGeometry, analyzeStl } from './stl';
 import type { ModelAnalysis, ModelFormat, ModelMetadata } from '../types';
 
@@ -40,7 +36,7 @@ function metadataFor(fileName: string, names: string[] = []): ModelMetadata {
   };
 }
 
-function geometryFromObject(root: THREE.Object3D) {
+async function geometryFromObject(root: THREE.Object3D) {
   root.updateMatrixWorld(true);
   const parts: THREE.BufferGeometry[] = [];
   root.traverse(child => {
@@ -53,13 +49,15 @@ function geometryFromObject(root: THREE.Object3D) {
     parts.push(geometry);
   });
   if (!parts.length) throw new Error('The file contains no printable triangle mesh.');
+  const { mergeGeometries } = await import('three/examples/jsm/utils/BufferGeometryUtils.js');
   const merged = mergeGeometries(parts, false);
   parts.forEach(part => part.dispose());
   if (!merged) throw new Error('The model meshes could not be combined.');
   return merged;
 }
 
-function normalizedStl(geometry: THREE.BufferGeometry) {
+async function normalizedStl(geometry: THREE.BufferGeometry) {
+  const { STLExporter } = await import('three/examples/jsm/exporters/STLExporter.js');
   const data = new STLExporter().parse(new THREE.Mesh(geometry), { binary: true });
   const view = data instanceof DataView ? data : new DataView(data as ArrayBuffer);
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
@@ -75,14 +73,16 @@ export async function importModel(buffer: ArrayBuffer, fileName: string): Promis
   let geometry: THREE.BufferGeometry;
   let names: string[] = [];
   if (extension === 'obj') {
+    const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
     const root = new OBJLoader().parse(new TextDecoder().decode(buffer));
     names = root.children.map(child => child.name).filter(Boolean);
-    geometry = geometryFromObject(root);
+    geometry = await geometryFromObject(root);
   } else if (extension === '3mf') {
+    const { ThreeMFLoader } = await import('three/examples/jsm/loaders/3MFLoader.js');
     const root = new ThreeMFLoader().parse(buffer);
     names = root.children.map(child => child.name).filter(Boolean);
-    geometry = geometryFromObject(root);
+    geometry = await geometryFromObject(root);
   } else throw new Error('Unsupported model format.');
   const result = analyzeGeometry(geometry, fileName, metadataFor(fileName, names));
-  return { ...result, normalizedStl: normalizedStl(result.geometry) };
+  return { ...result, normalizedStl: await normalizedStl(result.geometry) };
 }

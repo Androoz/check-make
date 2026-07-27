@@ -37,7 +37,7 @@ const scenarios: V37AcceptanceCase[] = [
   { id: 'electrical-cover', description: 'Non-conductive protective cover that electrically insulates exposed terminals.', identity: 'protective cover or enclosure', function: 'protect', expectedFacts: ['electrical.requirement:insulating'] },
   { id: 'food-contact-tray', description: 'Tray that directly contacts food.', identity: 'container, pot, tray, or vessel', function: 'contain', expectedFacts: ['environment.exposure:food_contact'], requiredQuestions: ['intent-food-contact'] },
   { id: 'solvent-cover', description: 'Protective cover cleaned with solvents.', identity: 'protective cover or enclosure', function: 'protect', expectedFacts: ['environment.exposure:chemical'], requiredQuestions: ['intent-chemical-details'] },
-  { id: 'safety-bracket', description: 'Safety-critical overhead mounting bracket supporting a load.', identity: 'mounting bracket', function: 'support', expectedFacts: ['failure.consequence:safety_critical'], requiredQuestions: ['intent-safety-critical'] },
+  { id: 'safety-bracket', description: 'Safety-critical overhead mounting bracket supporting a load.', identity: 'mounting bracket', function: 'support', expectedFacts: ['failure.consequence:safety_critical'], requiredQuestions: [] },
   { id: 'vague-replacement', description: 'Replacement part.', requiredQuestions: ['purpose'], forbiddenFacts: ['primary_function:hold', 'primary_function:protect', 'environment.location:outdoor'] },
   { id: 'location-conflict', description: 'Normally used indoors but permanently mounted outdoors.', expectedConflictKeys: ['environment.location'] },
   { id: 'negated-outdoor', description: 'This cover is not used outdoors; it stays indoors.', identity: 'protective cover or enclosure', function: 'protect', expectedFacts: ['environment.location:indoor'], forbiddenFacts: ['environment.location:outdoor'] },
@@ -156,4 +156,3 @@ export function evaluateV37Acceptance(): V37AcceptanceReport {
 }
 
 export const v37AcceptanceScenarios = scenarios;
-

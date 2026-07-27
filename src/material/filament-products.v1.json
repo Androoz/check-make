@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "check-make-filament-products",
+  "profiles": [
+    {
+      "schemaVersion": 1,
+      "id": "prusament-pla",
+      "manufacturer": "Prusa Polymers",
+      "product": "Prusament PLA",
+      "family": "PLA",
+      "nozzleTemperatureC": { "minimum": 200, "maximum": 220, "starting": 210 },
+      "bedTemperatureC": { "minimum": 40, "maximum": 60, "starting": 55 },
+      "enclosure": "not-required",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "standard", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["No scope-matched comparative product evidence has passed the promotion gate."] },
+      "strengths": ["easy-to-print", "stiffness", "dimensional-stability"],
+      "limitations": ["Low temperature margin", "Brittle behavior", "Not recommended by the manufacturer for outdoor use"],
+      "source": {
+        "evidenceId": "PRUSAMENT-PRODUCT-PLA",
+        "title": "Prusament PLA",
+        "url": "https://prusament.com/materials/pla/",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "prusament-petg",
+      "manufacturer": "Prusa Polymers",
+      "product": "Prusament PETG",
+      "family": "PETG",
+      "nozzleTemperatureC": { "minimum": 240, "maximum": 260, "starting": 250 },
+      "bedTemperatureC": { "minimum": 70, "maximum": 90, "starting": 80 },
+      "enclosure": "not-required",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "standard", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["No scope-matched comparative product evidence has passed the promotion gate."] },
+      "strengths": ["outdoor", "moisture", "toughness", "fatigue"],
+      "limitations": ["Can string", "Supports may be harder to remove", "Exact fatigue life is not established by the product page"],
+      "source": {
+        "evidenceId": "PRUSAMENT-PRODUCT-PETG",
+        "title": "Prusament PETG",
+        "url": "https://prusament.com/materials/prusament-petg/",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "prusament-asa",
+      "manufacturer": "Prusa Polymers",
+      "product": "Prusament ASA",
+      "family": "ASA",
+      "nozzleTemperatureC": { "minimum": 255, "maximum": 265, "starting": 260 },
+      "bedTemperatureC": { "minimum": 105, "maximum": 115, "starting": 110 },
+      "enclosure": "recommended",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "standard", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["No scope-matched comparative product evidence has passed the promotion gate."] },
+      "strengths": ["outdoor", "moisture", "toughness", "heat", "high-heat", "stiffness", "dimensional-stability"],
+      "limitations": ["Large parts can warp", "Ventilation is important", "An enclosure or tall skirt is recommended"],
+      "source": {
+        "evidenceId": "PRUSAMENT-PRODUCT-ASA",
+        "title": "Prusament ASA",
+        "url": "https://prusament.com/materials/prusament-asa/",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "prusament-tpu-95a",
+      "manufacturer": "Prusa Polymers",
+      "product": "Prusament TPU 95A",
+      "family": "TPU",
+      "nozzleTemperatureC": { "minimum": 220, "maximum": 240, "starting": 230 },
+      "bedTemperatureC": { "minimum": 55, "maximum": 75, "starting": 65 },
+      "enclosure": "not-required",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "95A", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["No scope-matched comparative product evidence has passed the promotion gate."] },
+      "strengths": ["flexibility", "toughness", "fatigue", "moisture"],
+      "limitations": ["Printer-specific feed tuning may be required", "Large parts can warp", "A separation layer may be required on smooth PEI"],
+      "source": {
+        "evidenceId": "PRUSAMENT-PRODUCT-TPU95A",
+        "title": "Prusament TPU 95A",
+        "url": "https://prusament.com/materials/prusament-tpu-95a/",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "prusament-pa11-cf",
+      "manufacturer": "Prusa Polymers",
+      "product": "Prusament PA11 Carbon Fiber",
+      "family": "PA-CF",
+      "nozzleTemperatureC": { "minimum": 275, "maximum": 295, "starting": 285 },
+      "bedTemperatureC": { "minimum": 100, "maximum": 120, "starting": 110 },
+      "enclosure": "recommended",
+      "hardenedNozzle": true,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "PA11 Carbon Fiber", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["No scope-matched comparative product evidence has passed the promotion gate."] },
+      "strengths": ["moisture", "heat", "high-heat", "stiffness", "creep-resistance", "dimensional-stability"],
+      "limitations": ["Hardened nozzle required", "A PA-compatible print surface or separation layer is required", "Drying may be required", "Lower interlayer adhesion than unfilled PA"],
+      "source": {
+        "evidenceId": "PRUSAMENT-PRODUCT-PA11CF",
+        "title": "Prusament PA11 (Nylon) Carbon Fiber",
+        "url": "https://prusament.com/materials/prusament-pa11-nylon-carbon-fiber/",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "bambu-pla-basic",
+      "manufacturer": "Bambu Lab",
+      "product": "Bambu PLA Basic",
+      "family": "PLA",
+      "nozzleTemperatureC": { "minimum": 190, "maximum": 230, "starting": 220 },
+      "bedTemperatureC": { "minimum": 55, "maximum": 65, "starting": 60 },
+      "enclosure": "not-required",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "Basic", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.2, 0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["Manufacturer product data has not passed the comparative performance promotion gate."] },
+      "strengths": ["easy-to-print", "stiffness", "dimensional-stability"],
+      "limitations": ["Limited heat margin", "Not a long-term outdoor baseline", "Bed temperature depends on the selected plate"],
+      "source": {
+        "evidenceId": "BAMBU-PRODUCT-PLA-BASIC",
+        "title": "Bambu Filament Guide — PLA Basic",
+        "url": "https://cdn1.bambulab.com/filament/filament-guide/bcv8wbl4hj/filament-guide-en.pdf",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "bambu-petg-hf",
+      "manufacturer": "Bambu Lab",
+      "product": "Bambu PETG HF",
+      "family": "PETG",
+      "nozzleTemperatureC": { "minimum": 230, "maximum": 260, "starting": 250 },
+      "bedTemperatureC": { "minimum": 65, "maximum": 75, "starting": 70 },
+      "enclosure": "not-required",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "High Flow", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["Manufacturer product data has not passed the comparative performance promotion gate."] },
+      "strengths": ["outdoor", "moisture", "toughness"],
+      "limitations": ["Drying is required for best results", "Keep dry during long prints", "The high-flow formulation is not equivalent to every PETG product"],
+      "source": {
+        "evidenceId": "BAMBU-PRODUCT-PETG-HF",
+        "title": "Bambu PETG HF",
+        "url": "https://eu.store.bambulab.com/en-cy/products/petg-hf",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "bambu-asa",
+      "manufacturer": "Bambu Lab",
+      "product": "Bambu ASA",
+      "family": "ASA",
+      "nozzleTemperatureC": { "minimum": 240, "maximum": 270, "starting": 260 },
+      "bedTemperatureC": { "minimum": 80, "maximum": 100, "starting": 90 },
+      "enclosure": "required",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "standard", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["Manufacturer product data has not passed the comparative performance promotion gate."] },
+      "strengths": ["outdoor", "moisture", "toughness", "heat", "high-heat", "stiffness", "dimensional-stability"],
+      "limitations": ["Enclosure required by Check Make's conservative profile", "Warping and fumes require controlled printing conditions", "Drying is recommended"],
+      "source": {
+        "evidenceId": "BAMBU-PRODUCT-ASA",
+        "title": "Bambu ASA",
+        "url": "https://us.store.bambulab.com/products/asa-filament",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "bambu-tpu-95a-hf",
+      "manufacturer": "Bambu Lab",
+      "product": "Bambu TPU 95A HF",
+      "family": "TPU",
+      "nozzleTemperatureC": { "minimum": 220, "maximum": 240, "starting": 230 },
+      "bedTemperatureC": { "minimum": 30, "maximum": 35, "starting": 35 },
+      "enclosure": "not-required",
+      "hardenedNozzle": false,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "95A High Flow", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["Manufacturer product data has not passed the comparative performance promotion gate."] },
+      "strengths": ["flexibility", "toughness", "moisture"],
+      "limitations": ["Dry before use and keep dry while printing", "Not compatible with AMS or AMS lite", "A 0.2 mm nozzle is not supported"],
+      "source": {
+        "evidenceId": "BAMBU-PRODUCT-TPU95A-HF",
+        "title": "Bambu TPU 95A HF",
+        "url": "https://us.store.bambulab.com/en/products/tpu-95a-hf",
+        "reviewedAt": "2026-07-27"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "bambu-pa6-cf",
+      "manufacturer": "Bambu Lab",
+      "product": "Bambu PA6-CF",
+      "family": "PA-CF",
+      "nozzleTemperatureC": { "minimum": 260, "maximum": 290, "starting": 280 },
+      "bedTemperatureC": { "minimum": 80, "maximum": 100, "starting": 90 },
+      "enclosure": "required",
+      "hardenedNozzle": true,
+      "lifecycle": { "status": "active", "reviewDueAt": "2027-07-27" },
+      "variant": { "name": "PA6 Carbon Fiber", "colorScope": "all-listed-colors", "nozzleDiametersMm": [0.4, 0.6, 0.8] },
+      "upgradeEvidence": { "status": "temperature-profile-only", "sourceEvidenceIds": [], "supportedBenefits": [], "blockers": ["Manufacturer product data has not passed the comparative performance promotion gate.", "Moisture-conditioned and orientation-specific behavior is not qualified for automatic upgrades."] },
+      "strengths": ["moisture", "toughness", "heat", "high-heat", "stiffness"],
+      "limitations": ["Enclosure and hardened steel nozzle required", "Drying and sealed printing are required", "Properties change materially with moisture conditioning and print orientation"],
+      "source": {
+        "evidenceId": "BAMBU-PRODUCT-PA6-CF",
+        "title": "Bambu PA6-CF",
+        "url": "https://ca.store.bambulab.com/products/pa6-cf/",
+        "reviewedAt": "2026-07-27"
+      }
+    }
+  ]
+}

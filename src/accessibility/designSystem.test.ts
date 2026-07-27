@@ -97,9 +97,11 @@ describe('accessible Check Make design system', () => {
   it('uses two analysis modes and keeps the Extended AI provider in settings', () => {
     expect(app).toContain('<b>Local Analysis</b>');
     expect(app).toContain('<b>Extended AI Analysis</b>');
+    expect(app).toContain("preferences.defaultAnalysisMode === 'extended' && <div className=\"extended-ai-settings\">");
     expect(app).toContain('Extended AI location');
     expect(app).toContain('<b>Local AI</b>');
     expect(app).toContain('<b>Cloud AI</b>');
+    expect(css).toContain('.extended-ai-settings');
     expect(app).not.toContain('Local preliminary analysis');
     expect(app).not.toContain('Functional regions');
   });
@@ -132,22 +134,59 @@ describe('accessible Check Make design system', () => {
     expect(applicationPreferences).toContain('normalizeApplicationPreferences');
     expect(app).toContain('Default plan preference');
     expect(app).toContain('<PlanPreferenceControl');
+    expect(app).toContain("applied={appliedPlanCandidate?.id ?? 'balanced'}");
     expect(app).toContain('inheritedPlanPreference');
     expect(app).toContain('projectPlanPreference');
-    expect(app).toContain('schemaVersion: 4');
+    expect(app).toContain('schemaVersion: 5');
+    expect(app).toContain('filamentProductId');
+    expect(app).toContain('filamentProduct: selectedFilamentProduct ?? null');
     expect(app).toContain('changesFromBalanced');
     expect(results).toContain('Compare plan preferences');
+    expect(results).toContain('plan-preference-option-detail');
+    expect(results).toContain('Use {option.label}');
+    expect(results).toContain('<OptionPicker');
     expect(results).toContain('Project override');
+    expect(results).toContain('fellBackToBalanced');
+    expect(results).toContain('unavailable');
     expect(results).not.toContain('Lower cost');
     expect(results).not.toContain('Lower weight');
+    expect(results).toContain('Filament product profile');
+    expect(results).toContain('Manufacturer source');
     expect(css).toContain('.plan-preference-card');
     expect(css).toContain('.plan-preference-blocked');
+    expect(results).toContain("? 'Baseline'");
+    expect(results).not.toContain('Balanced baseline');
+  });
+
+  it('uses the shared picker and readable themed surfaces for editable plan decisions', () => {
+    expect(app).toContain('label={question.question}');
+    expect(app).toContain("options={[{ value: '', label: 'Choose…' }, ...question.options]}");
+    expect(app).toContain('triggerRef={element => { decisionInputs.current[question.id] = element; }}');
+    expect(css).toMatch(/\.workflow-questions \{[^}]*background: var\(--surface-subtle\)/);
+    expect(css).toMatch(/\.workflow-questions label b \{[^}]*font-size: 13px/);
+    expect(css).toMatch(/\.workflow-questions \.option-picker-trigger \{[^}]*min-height: 40px/);
+  });
+
+  it('packages recognizable slicer icons locally with a neutral fallback', () => {
+    expect(app).toContain("bambu: '/slicer-icons/bambu-studio.png'");
+    expect(app).toContain("orca: '/slicer-icons/orca-slicer.png'");
+    expect(app).toContain("prusa: '/slicer-icons/prusa-slicer.png'");
+    expect(app).toContain("cura: '/slicer-icons/ultimaker-cura.png'");
+    expect(app).toContain("creality: '/slicer-icons/creality-print.png'");
+    expect(app).toContain('<img src={icon} alt=""/>');
+    expect(css).toContain('.adapter-icon img');
+  });
+
+  it('distinguishes successful compatibility checks from general information', () => {
+    expect(results).toContain("notice.severity === 'success' ? '✓' : 'i'");
+    expect(css).toContain('.notice-symbol');
+    expect(css).toContain('.notice.success');
   });
 
   it('keeps Context neutral and explains the interpretation in Prepare', () => {
     expect(app).toContain('CHECK MAKE’S UNDERSTANDING');
     expect(app).toContain('describeObjectUnderstanding');
-    expect(app).toContain('Check Make will show its interpretation in the next step.');
+    expect(app).toContain('Check Make uses them as planning inputs; it does not validate structural safety.');
     expect(app).toContain('What should this object do?');
     expect(app).not.toContain('Add what the object does');
     expect(app).not.toContain('Requirements understood from context');
@@ -157,12 +196,17 @@ describe('accessible Check Make design system', () => {
 
   it('integrates compatible material alternatives into the Material setting', () => {
     expect(results).toContain("item.setting === 'material' && materialOptions");
+    expect(results).toContain('Why Check Make selected {recommended}');
     expect(results).toContain('Why not recommended:');
+    expect(results).toContain("candidate.status === 'printer-incompatible' ? 'Printer limitation'");
+    expect(results).toContain('disabled={!candidate.selectable}');
     expect(results).toContain('className={`inline-material-option');
     expect(results).toContain('`Use ${candidate.material}`');
     expect(results).toContain('Profile & compatibility');
     expect(results).not.toContain('Trade-offs and printer requirements');
     expect(results).toContain('Restore {recommended}');
+    expect(app).toContain('materialPlanBlocked');
+    expect(app).toContain('Material and printer combination is not exportable');
     expect(app).not.toContain('<MaterialAlternatives');
   });
 
@@ -180,15 +224,31 @@ describe('accessible Check Make design system', () => {
     expect(app).toContain('Export details & checks');
     expect(app).toContain("status.startsWith('Project saved:') ? 'Check Make project saved.'");
     expect(css).toContain('.export-details > summary');
-    expect(css).toContain('.export-path-detail');
+    expect(app).toContain('Exported file');
+    expect(app).toContain('Export notes');
+    expect(app).toContain('Validation checks');
+    expect(app).toContain('of {validationReport.checks.length} passed');
+    expect(css).toContain('.export-location p');
+    expect(css).toContain('.export-notes > ul');
+    expect(css).toContain('.export-validation > ul');
     expect(css).toContain('.export-actions');
   });
 
   it('starts a fresh project when replacing the model', () => {
     expect(app).toContain('const resetProjectForReplacement = () =>');
+    expect(app).toContain('await browse(false)');
+    expect(app).toContain('resetAnalysis(preserveBrief)');
     expect(app).toContain('setPackageTarget(\'generic\')');
     expect(app).toContain('setPreviewOrientationId(\'as-imported\')');
     expect(app).toContain('onClick={() => void replaceModel()}');
+  });
+
+  it('treats designer-stated load-critical use as an input rather than a structural-safety gate', () => {
+    expect(app).toContain('Designer-stated load-critical use is included as a preparation requirement.');
+    expect(app).toContain('Added print margins are not structural verification or a safety factor.');
+    expect(app).toContain('Review unsupported requirement');
+    expect(app).not.toContain('Does this spacer help support or stabilize the seated person?');
+    expect(app).not.toContain('Review safety answer');
   });
 
   it('includes keyboard, appearance, contrast, reflow, and motion accommodations', () => {

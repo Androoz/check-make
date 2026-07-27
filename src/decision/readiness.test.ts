@@ -20,18 +20,20 @@ describe('decision readiness', () => {
     expect(result.requirements).toBe('ready'); expect(result.conservativePlan).toBe('ready');
     expect(result.processReductions).toBe('unsupported');
   });
-  it('asks targeted consequential questions and then abstains from unsupported safety claims', () => {
+  it('keeps food and chemical qualification blocked without treating structural responsibility as an export gate', () => {
     const initial = { ...localModelAnalysis(model, 'Safety-critical protective cover with food contact, cleaned with solvents.'), userEvidence: ['Safety-critical protective cover with food contact, cleaned with solvents.'] };
     expect(initial.questions.map(question => question.id)).toEqual(expect.arrayContaining([
-      'intent-chemical-details', 'intent-food-contact', 'intent-safety-critical',
+      'intent-chemical-details', 'intent-food-contact',
     ]));
+    expect(initial.questions.map(question => question.id)).not.toContain('intent-safety-critical');
     const refined = refineLocalIntelligence(initial, {
       priority: 'strength', load: 'static', impact: 'none', environment: 'indoor', heat: 'normal',
-      'intent-chemical-details': '70% isopropyl alcohol', 'intent-food-contact': 'confirmed', 'intent-safety-critical': 'confirmed',
+      'intent-chemical-details': '70% isopropyl alcohol', 'intent-food-contact': 'confirmed',
     });
     const result = assessDecisionReadiness(refined);
     expect(result.requirements).toBe('ready');
     expect(result.conservativePlan).toBe('unsupported');
-    expect(result.unsupportedReasons).toHaveLength(3);
+    expect(result.unsupportedReasons).toHaveLength(2);
+    expect(result.unsupportedReasons.join(' ')).not.toContain('structural use');
   });
 });

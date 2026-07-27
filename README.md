@@ -49,6 +49,8 @@ separate release states; see [the release process](docs/RELEASING.md).
 
 Maintainers can generate and check the optional physical P1 geometry pilot with `npm run p1:generate` and `npm run p1:verify`; ordinary users are not expected to run it. External observations are cataloged and scope-matched with `npm run evidence:report`; see the [external evidence architecture](docs/EXTERNAL_EVIDENCE_ARCHITECTURE.md) and [generated gap report](docs/EXTERNAL_EVIDENCE_GAP_REPORT.md). See [P1 geometry validation](docs/P1_GEOMETRY_VALIDATION.md) before locking a printer/material scope or recording observations.
 
+Reviewed filament-product data and its native-export boundary are documented in [Filament product profiles](docs/FILAMENT_PRODUCT_PROFILES.md).
+
 ## Implemented in 0.2
 
 - one continuous branded **Inspect → Prepare → Export** workspace with state-derived progress, persistent project context, contextual uncertainty, expandable evidence, and gated export
@@ -63,7 +65,7 @@ Maintainers can generate and check the optional physical P1 geometry pilot with 
 - strict confirmation gate: local-AI confidence cannot activate rules, while grounded explicit statements and user-confirmed facts can enter `ManufacturingIntent`
 - optional **Extended AI Analysis** with a local llama.cpp or cloud OpenAI provider selected in Application Settings; cloud credentials remain session-only
 - neutral free-text Context input followed by a plain-English **Check Make’s understanding** summary; assumption-led interpretation prefills a reviewable checklist from object purpose, ordinary world knowledge, filename clues, and measured geometry instead of requiring a specific sentence structure
-- parent-system context that can interpret descriptions such as “spacer for camping chair” as a spacing component within a portable folding-seat system, while keeping person-load and safety conclusions behind review
+- parent-system context that can interpret descriptions such as “spacer for camping chair” as a spacing component within a portable folding-seat system without inferring that the printed part carries a person; load-critical constraints must be stated explicitly in Context
 - adaptive structured follow-up questions for consequential gaps; direct Context interpretations and Check Make assumptions are labelled separately, and assumptions affect rules only after review
 - geometry-driven support planning in Prepare with two explained choices: follow Check Make or use the opposite support strategy
 - a focused Prepare review followed by a Key Settings result view; interpretation, important-area, and support inputs move behind Modify plan after confirmation
@@ -71,7 +73,9 @@ Maintainers can generate and check the optional physical P1 geometry pilot with 
 - P1 geometry measurements for normalized bed coverage, leverage proxies, centroid offset, and connected overhang regions
 - P2 mesh topology findings, disconnected-part detection, visual geometry-risk overlays, printer-sized build plate, XYZ axes, fixed camera views, and explainable six-orientation comparison
 - deterministic rules for material, orientation, compatibility, and process validation
-- printer-gated material-family alternatives integrated into Key Settings → Material with explicit benefits, disadvantages, reasons for not being the baseline recommendation, capability requirements, evidence scope, and persisted export selection
+- printer-gated material alternatives integrated into Key Settings → Material, including ten reviewed Prusament and Bambu Lab processing profiles across five material families, explicit trade-offs, capability requirements, and persisted project/export selection
+- schema-validated filament-product data with active/stale/retired lifecycle, review deadlines, variant/nozzle scope, native-project identity, reviewed-temperature round-trip checks, and a hard evidence gate that currently prevents every product from making an unqualified performance-upgrade claim
+- deferred loading of the interactive 3D preview and model-format loaders, enforced by a gzip-aware production entry-bundle budget
 - Core 3MF generation with millimetre units, baked orientation, removal of degenerate triangles, and Check Make analysis metadata
 - export targets for OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print, plus installed-slicer detection
 - direct Bambu Studio project export using the installed application's machine, process, and filament profiles without launching the slicer
@@ -81,18 +85,19 @@ Maintainers can generate and check the optional physical P1 geometry pilot with 
 - native Creality Print project export for compatible installed profiles, with embedded setting and active-override validation
 - deterministic mapping of layer height, walls, shells, infill, support, brim, wall generator/order, seam, and temperatures into Bambu Studio, OrcaSlicer, PrusaSlicer, and Creality Print settings
 - active Bambu project-override markers so mapped values survive profile loading instead of reverting to system defaults
-- structural and setting-level validation before the generated project is saved, plus an integration test of Bambu Studio's effective settings
+- project-structure and setting-level validation before the generated project is saved, plus an integration test of Bambu Studio's effective settings
 - post-export reopening with a visible validation report for package structure, geometry, units, placement, provenance, and native settings entries
 - direct “Open in Bambu Studio” using a temporary project, alongside permanent “Save project…” export
 
 ## Important boundaries
 
 - A mesh does not contain semantics, load direction, environment, or intended use. Check Make may build a conservative world-model hypothesis from Context and geometry, but it labels assumptions separately and requires review before they affect manufacturing rules.
+- The designer remains responsible for load cases, dimensions, material qualification, safety factors, and validation. Check Make treats explicit load-critical Context as a preparation requirement and may add rule-backed print margins, but those settings are not structural verification, certification, or proof of fitness for use.
 - Interpretation v3.7 uses relation-aware English Context analysis, a four-view montage for cloud analysis, and deterministic mesh measurements while recording status, source, evidence, and confidence per manufacturing requirement. Arbitrary-angle orientation search remains a future analysis milestone.
 - Lower cost and Lower weight are temporarily removed. Reliable estimates require complete slicer toolpaths for walls, infill, shells, support, and brim; mesh-volume or bounding-box estimates would imply false precision. OrcaSlicer export remains available, but Check Make no longer launches OrcaSlicer to calculate these alternatives.
-- Application Settings can set a default Balanced, Faster, Visual quality, Fit & accuracy, or Structural margin plan preference. Each project can override that default, and Check Make shows deterministic setting changes from the same Balanced baseline. A preference is withheld when confirmed requirements make its current rule set unsuitable.
+- Application Settings can set a default Balanced, Faster, Visual quality, Fit & accuracy, or Structural margin plan preference. Each project can override that default, and Check Make shows deterministic setting changes from the same baseline. A preference is withheld when confirmed requirements make its current rule set unsuitable.
 - Lower cost and Lower weight remain unavailable until Check Make has trustworthy toolpath-aware quantity and price inputs. The current plan-preference comparison reports setting changes and qualitative boundaries rather than invented time, mass, or cost deltas.
-- Material alternatives currently compare conservative material families, not individual filament products. Temperatures are labelled starting points; manufacturer- and product-specific profiles remain future work.
+- Material recommendations and alternatives use one deterministic family-level requirement evaluation for weather, moisture, toughness, heat, flexibility, stiffness, ordinary fatigue/creep direction, and printer capability. A selected active filament-product profile can replace family-level nozzle and build-plate starting temperatures and add product-specific printer checks; stale and retired profiles cannot be newly selected. No current product profile is qualified to claim a structural or service-performance upgrade. Safety-critical fatigue, consequential creep, wear, dishwasher service, and chemical exposure require scoped product/process evidence and block an unqualified export. Alternatives that do not preserve confirmed requirements remain visible but cannot be selected.
 - MCP is not a mechanism for a standalone app to reuse a consumer ChatGPT or Claude subscription. Check Make currently supports direct OpenAI API access. A future Check Make MCP server could let ChatGPT or Claude use Check Make as a tool, but that is a different interaction model.
 - Generic Core 3MF export makes geometry, units, transforms, and metadata portable, but its process settings remain advisory. The Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print adapters write native project structures and validate mapped settings before saving.
 - Native project export depends on the target slicer being installed. Bambu export supports X1 Carbon, P1S, A1, and A1 mini; OrcaSlicer supports all twelve 0.4 mm printer profiles shown in the UI; PrusaSlicer supports MK4S and CORE One; UltiMaker Cura supports ELEGOO Neptune 4 Pro and Creality Ender-3 V3 SE/KE; Creality Print supports the Bambu Lab and Creality profiles available in its installed library.

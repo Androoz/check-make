@@ -62,6 +62,41 @@ not be imported or redistributed until their terms have been reviewed.
 
 Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, Creality Print, their
 product names, and their logos are owned by their respective projects or
-companies. Check Make uses product names only to identify compatible target
-applications and uses neutral text marks in its target picker. This does not
-imply sponsorship, certification, or endorsement.
+companies. Check Make uses product names and identification marks only to help
+users recognize compatible target applications. This does not imply
+sponsorship, certification, or endorsement.
+
+## Dashboard Icons
+
+The locally packaged identification icons for Bambu Lab, OrcaSlicer,
+PrusaSlicer, and Cura were obtained from the
+[Dashboard Icons](https://github.com/homarr-labs/dashboard-icons) collection.
+
+- Copyright: Dashboard Icons contributors
+- License: Apache License 2.0
+- Source revision: `46b860c70e866212311aef2f98da3775c17f5068`
+- Local material: `public/slicer-icons/`
+- License copy: `licenses/Dashboard-Icons-APACHE-2.0.txt`
+- Changes: filenames were changed for Check Make's target names; the raster
+  artwork is otherwise unmodified.
+
+Dashboard Icons states that product names and trademarks remain the property of
+their respective owners and that icon use is for identification only.
+
+## Creality Print icon
+
+The locally packaged Creality Print identification icon was extracted from the
+official macOS application icon in the Creality Print source repository.
+
+- Project: [Creality Print](https://github.com/CrealityOfficial/CrealityPrint)
+- Source revision: `d32f2cc1bdfa2f8a9ae170cd0e8f43d6c2659508`
+- Source file: `resources/Icon.icns`
+- Project license: GNU Affero General Public License 3.0
+- Local material: `public/slicer-icons/creality-print.png`
+- License copy: `licenses/Creality-Print-AGPL-3.0.txt`
+- Changes: converted from the macOS ICNS container to PNG; the artwork is
+  otherwise unmodified.
+
+Creality Print and its icon remain the property of their respective owners.
+Check Make uses the icon only to identify a compatible export target; no
+sponsorship, certification, or endorsement is implied.

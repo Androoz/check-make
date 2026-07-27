@@ -48,12 +48,6 @@ const profiles: UsageProfile[] = [
       strong('priority', 'strength', 'A functional chair component normally prioritizes durability and structural margin.'),
       weak('failure.consequence', 'safety_critical', 'Failure of some chair components can cause a person to fall.'),
     ],
-    questions: [{
-      id: 'confirm-person-support',
-      question: 'Does this spacer help support or stabilize the seated person?',
-      why: 'A camping chair contains both load-bearing and non-load-bearing spacers. This determines whether failure could cause a fall.',
-      factKeys: ['failure.consequence'],
-    }],
   },
   {
     id: 'chair-seating',
@@ -65,12 +59,6 @@ const profiles: UsageProfile[] = [
       strong('priority', 'strength', 'Functional seating components normally prioritize structural durability.'),
       weak('failure.consequence', 'safety_critical', 'Failure of a load-bearing seating component could cause a fall.'),
     ],
-    questions: [{
-      id: 'confirm-seat-load',
-      question: 'Is this component part of the structure that supports the seated person?',
-      why: 'Decorative covers and feet need different margins from load-bearing joints, spacers, and frame components.',
-      factKeys: ['failure.consequence'],
-    }],
   },
   {
     id: 'outdoor-furniture',
@@ -104,12 +92,6 @@ const profiles: UsageProfile[] = [
       strong('priority', 'strength', 'Functional bicycle components normally prioritize fatigue resistance and strength.'),
       weak('failure.consequence', 'safety_critical', 'Failure of some bicycle components can cause injury.'),
     ],
-    questions: [{
-      id: 'confirm-bicycle-safety',
-      question: 'Could failure of this component affect steering, braking, wheel retention, or rider support?',
-      why: 'Only some bicycle components are safety-critical, and Check Make cannot infer the component’s exact role from the parent product alone.',
-      factKeys: ['failure.consequence'],
-    }],
   },
   {
     id: 'vehicle',

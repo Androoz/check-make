@@ -154,7 +154,8 @@ button,input,select,textarea{font:inherit}
 .reset-objective{margin-top:9px;padding:5px 0}
 .result-notices{padding:12px 18px 0}.result-notices:empty{display:none}.result-notices .notice{margin:0 0 7px}
 .notice{font-size:12px;padding:10px 12px;border-radius:6px;margin:7px 0}
-.notice.info{background:#e7f3ef;color:#176450}
+.notice.info{background:#eaf3f8;color:#0b5e91}
+.notice.success{background:#e7f3ef;color:#176450}
 .notice.warning{background:#fff0e8;color:#9a472c}
 .settings h2{font-size:15px;margin:24px 0 8px}
 .result-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:18px 18px 10px}

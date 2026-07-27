@@ -2,11 +2,12 @@
 
 ## Priority 3 — clearer and smarter results
 
-Check Make 0.2.5 established one coherent Recommended plan, adaptive requirement questions, deterministic readiness gating, compact key/all-settings presentation, and technical evidence on demand. The 0.2.6 preference slice adds versioned application defaults and project overrides for Balanced, Faster, Visual quality, Fit & accuracy, and Structural margin, all derived from the same Balanced baseline.
+Check Make 0.2.5 established one coherent Recommended plan, adaptive requirement questions, deterministic readiness gating, compact key/all-settings presentation, and technical evidence on demand. The 0.2.6 preference slice adds versioned application defaults and project overrides for Balanced, Faster, Visual quality, Fit & accuracy, and Structural margin, all derived from the same deterministic baseline.
 
 The following work is deliberately deferred beyond 0.2.5 rather than blocking the release:
 
-- [ ] Add printer-compatible material upgrade candidates to Strength / performance, supported by reviewed product-specific material profiles.
+- [x] Use one deterministic family-level material requirement evaluation for the Recommended plan, alternatives, explanations, and printer capability gate.
+- [ ] Add reviewed product-specific material profiles and use them for printer-compatible Strength / performance upgrades.
 - [ ] Reintroduce Lower cost and Lower weight only with a stable toolpath-aware estimator that accounts for walls, infill, shells, support, and brim without launching an external slicer in the background.
 - [x] Expose supported non-cost preferences with deterministic setting deltas, explicit blockers, application defaults, project overrides, and persistence in Check Make projects and export metadata.
 - [ ] Compare every alternative against Recommended with consistent deltas for print time, material use, finished mass, estimated cost, and the affected performance assumptions.
@@ -160,17 +161,29 @@ Priority 4 begins from the same Recommended plan and must never silently discard
 - [ ] Restore Lower weight using the same toolpath-aware quantity model rather than mesh bounding volume or solid volume alone.
 - [ ] Show which confirmed requirements and safety margins constrain each optimization.
 
-### 4.2 Material alternatives with explicit trade-offs — family-level UI implemented
+### 4.2 Material alternatives with explicit trade-offs — maintained product-profile foundation implemented
 
 - [x] Offer conservative material-family candidates for easier printing, outdoor use, impact resistance, heat margin, stiffness, dimensional stability, and flexible function.
 - [x] Filter every displayed candidate through confirmed requirements and the selected printer's nozzle temperature, bed temperature, enclosure, and nozzle wear resistance.
-- [ ] Use reviewed product-specific material profiles instead of treating all products in one polymer family as equivalent.
-- [ ] Let users select a filament manufacturer and product profile, then derive nozzle and build-plate starting temperatures from that reviewed profile and the selected printer; retain clearly labelled material-family values only as a fallback.
+- [x] Separate mandatory material properties, preference-based ranking properties, and product-specific specialist-review requirements.
+- [x] Include family-level stiffness, toughness, ordinary fatigue, creep-margin, and moisture properties while abstaining for safety-critical fatigue, consequential creep, sliding/abrasive wear, dishwasher cycles, and chemical compatibility.
+- [x] Add a versioned starter set of reviewed product profiles covering PLA, PETG, ASA, TPU, and PA-CF without treating one profile as representative of its entire family.
+- [x] Expand the catalog to two independently sourced manufacturers with one reviewed Prusament and one reviewed Bambu Lab processing profile for each supported family.
+- [x] Move the starter profiles into a schema-validated, versioned JSON registry so catalog data can evolve independently of UI and planning code.
+- [x] Add explicit active/stale/retired lifecycle state, review deadlines, optional replacements, product variants, color scope, and reviewed nozzle diameters.
+- [x] Prevent stale, retired, or unsupported-nozzle profiles from being newly selected.
+- [x] Let users select a filament manufacturer and product profile, then derive nozzle and build-plate starting temperatures from that reviewed profile and the selected printer; retain clearly labelled material-family values only as a fallback.
+- [x] Persist the selected product profile in Check Make projects and exported planning metadata, and block export when its reviewed temperature, enclosure, or wear-resistant-nozzle requirement exceeds the selected printer.
+- [x] Preserve selected product identity and reviewed temperature overrides in native Bambu-family, PrusaSlicer, and Cura project structures instead of relying only on Check Make metadata.
+- [x] Reopen generated native project structures and verify product identity plus nozzle/build-plate values; retain installed-slicer round-trip coverage for Bambu Studio, OrcaSlicer, and PrusaSlicer.
+- [x] Add a hard promotion-gate contract for future product-based performance upgrades, including scoped evidence IDs, named supported benefits, and unresolved blockers.
+- [ ] Qualify the first narrow product-level performance benefit only after comparable product/process evidence passes that gate; current profiles remain temperature-profile-only.
+- [ ] Expand beyond the two-manufacturer set with independently reviewed manufacturer/product profiles and maintain color-specific distinctions where manufacturer guidance materially differs.
 - [x] Explain improvements, disadvantages, printer requirements, and evidence scope for every displayed material change.
 - [x] Keep Recommended as the stable baseline, persist a selected compatible material override, and include its material-family starting settings in project export.
 - [x] Present alternatives inside Key Settings → Material, including why the simpler Recommended material was selected and what trade-offs each alternative introduces.
 
-The first 4.2 slice is intentionally family-level. It does not claim that all products within PLA, PETG, ASA, TPU, or PA-CF have equivalent properties. Product-specific selection and reviewed manufacturer profiles remain required before Priority 4.2 can be considered complete.
+The current 4.2 slice combines deterministic family-level suitability with ten reviewed processing profiles from two manufacturers. The selected product may replace family-level nozzle and build-plate starting temperatures and add printer capability checks, but it does not establish structural or service performance. Stiffness and ordinary fatigue/creep direction can rank otherwise compatible families, but every current product remains outside the automatic performance-upgrade path. The first such upgrade requires scoped, comparable product/process evidence; safety-critical fatigue, consequential long-term creep, sliding or abrasive wear, dishwasher service, and chemical exposure remain blocked until product-, process-, geometry-, and exposure-specific evidence is connected.
 
 ### 4.3 Comparable alternative print plans — setting-level comparison implemented
 
@@ -267,10 +280,11 @@ After the 0.2.6 material-alternatives test slice, development should pivot from 
 
 ### Post-launch unless validation exposes a dependency
 
-- Product-specific filament catalogs beyond a small reviewed starter set.
+- Product-specific filament catalogs beyond the maintained two-manufacturer processing-profile set.
 - Lower cost and Lower weight estimates.
 - Post-print feedback, shared learning, and community evidence ingestion.
 - Additional cloud or local AI providers and bundled local model runtimes.
+- Optional automatic opening of the exported project in its target slicer.
 - Broad tier-2 printer coverage, Linux, mobile companion experiences, STEP import, arbitrary-angle optimization, and full mesh repair.
 
 ## Product experience — implemented foundation
@@ -282,6 +296,19 @@ After the 0.2.6 material-alternatives test slice, development should pivot from 
 - [x] Move global analysis-provider settings behind the toolbar gear and project Open/Save into the native application menu with standard shortcuts.
 
 The current visual direction is captured in [GUI concept v4](../assets/mockups/check-make-gui-concept-v4.png). It presents **Inspect → Prepare → Export** as a state-driven process indicator rather than navigation: input and analysis complete Inspect, required decisions keep Prepare active, and accepted recommendations unlock Export. The application remains one continuous workspace with persistent project context, model visualization, and contextual evidence and uncertainty. [GUI concept v3](../assets/mockups/check-make-gui-concept-v3.png), [v2](../assets/mockups/check-make-gui-concept-v2.png), and the [original v1](../assets/mockups/check-make-gui-concept-v1.png) are retained for comparison. These are non-functional mockups for product direction only; controls, navigation, layout, and status presentation are not implemented yet.
+
+### Later — optional slicer handoff after export
+
+Current behavior remains **save only**. In particular, a Creality Print project is saved and validated by Check Make, after which the user opens the file manually.
+
+- [ ] Add an application preference for post-export behavior: **Save only** (default) or **Open in target slicer**.
+- [ ] Apply the preference consistently to Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print exports.
+- [ ] For Generic Core 3MF, offer the system's registered 3MF application only as an explicit opt-in rather than assuming a slicer.
+- [ ] Also provide a one-time **Export & open in…** action without changing the saved application preference.
+- [ ] Launch the slicer only after the project has been saved and Check Make's package validation has passed.
+- [ ] Use the operating system's normal document-opening path instead of slicer headless/CLI validation flags.
+- [ ] Keep GUI handoff separate from validation: successfully launching a slicer must not be presented as proof that it activated every effective setting.
+- [ ] Add launch-failure recovery and automated coverage for missing, moved, already-running, and version-updated slicer applications on macOS and Windows.
 
 ## Printer support
 

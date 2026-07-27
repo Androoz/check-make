@@ -74,11 +74,18 @@ describe('Interpretation v3.4 decision bridge', () => {
     expect(readiness.gaps.map(gap => gap.id)).toEqual(expect.arrayContaining(['purpose', 'heat']));
   });
 
-  it('abstains after a safety-critical use is confirmed', () => {
-    const intelligence = complete('Safety-critical mounting bracket that supports an overhead load.', { 'intent-safety-critical': 'confirmed' });
+  it('uses a designer-stated load-critical requirement without claiming structural validation', () => {
+    const intelligence = complete('Load-critical mounting bracket that supports an overhead load.', {});
     const readiness = assessDecisionReadiness(intelligence);
     expect(readiness.requirements).toBe('ready');
-    expect(readiness.conservativePlan).toBe('unsupported');
-    expect(readiness.unsupportedReasons.join(' ')).toContain('outside Check Make’s validation scope');
+    expect(readiness.conservativePlan).toBe('ready');
+    expect(readiness.unsupportedReasons).toHaveLength(0);
+    expect(intelligence.questions.map(question => question.id)).not.toContain('intent-safety-critical');
+    const questionnaire = questionnaireFromIntelligence(intelligence, getPrinter('bambu-x1c'));
+    const recommendations = evaluateRules(rules, model, questionnaire, ruleEvidenceById);
+    expect(recommendations.find(item => item.setting === 'wall_loops')).toMatchObject({ value: 5 });
+    expect(recommendations.find(item => item.setting === 'wall_loops')?.matchedRuleIds).toContain('U11');
+    expect(recommendations.find(item => item.setting === 'infill_percent')).toMatchObject({ value: 25 });
+    expect(recommendations.find(item => item.setting === 'infill_percent')?.matchedRuleIds).toContain('U12');
   });
 });

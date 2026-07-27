@@ -57,9 +57,6 @@ export function assessDecisionReadiness(intelligence: ModelIntelligence, spatial
   if (matingRequired && !regionResolved('mating-surface')) gaps.push({ id: 'spatial-mating-surface', label: 'Mating surface', reason: 'Select the mating surface, or state that no single mating surface applies.' });
   const visibleRequired = Boolean(intent && intentFactUsable(intent.interface.criticalSurfaces) && intent.interface.criticalSurfaces.value.includes('visible'));
   if (visibleRequired && !regionResolved('visible-surface')) gaps.push({ id: 'spatial-visible-surface', label: 'Visible surface', reason: 'Select the appearance-critical surface, or state that no single surface applies.' });
-  if (intent?.failureConsequence.value === 'safety-critical' && intent.failureConsequence.status === 'confirmed') unsupportedReasons.push(
-    'Safety-critical structural use is outside Check Make’s validation scope. A print plan cannot establish safe load capacity or an acceptable safety factor.',
-  );
   if (intent?.environment.foodContact.value === true && intent.environment.foodContact.status === 'confirmed') unsupportedReasons.push(
     'Check Make has no qualified food-contact material and process dataset, so it cannot make a food-safety material claim.',
   );

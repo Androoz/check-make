@@ -103,11 +103,6 @@ export function analyzePurposeContext(
       question: 'What kind of food contact and cleaning must it tolerate?',
       message: 'Add contact duration, temperature, cleaning method, and applicable regulatory context before treating a material as suitable.',
     }];
-    if (facet.id === 'failure-safety') return [{
-      id: facet.id,
-      question: 'What is the maximum load and acceptable failure condition?',
-      message: 'Check Make can identify print risks but cannot certify a safety-critical part. Add quantified loads and required safety margin for review.',
-    }];
     return [];
   }).concat(interpretation.languageCues.map(cue => ({
     id: `language-${cue.domain}-${cue.original.toLocaleLowerCase('en-US')}`,

@@ -302,3 +302,93 @@
   accessed: 2026-07-21
   supports: PLA bed temperature and build surface strongly affect measured first-layer shear-off force around the material glass-transition region.
   limitations: The article exposes aggregate means and deviations rather than the sixteen strand-level force observations per setting; its glass and polyimide surfaces, 0.5 mm nozzle, and industrial printer do not match textured PEI on X1 Carbon.
+
+- id: PRUSAMENT-PRODUCT-PLA
+  type: manufacturer-product-guidance
+  title: Prusament PLA
+  organization: Prusa Polymers
+  url: https://prusament.com/materials/pla/
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate temperature ranges, no-enclosure guidance, and general printing and service limitations for Prusament PLA.
+  limitations: Product-page guidance is a starting profile, not evidence of part-level strength, fatigue life, creep performance, or fitness for a particular use.
+
+- id: PRUSAMENT-PRODUCT-PETG
+  type: manufacturer-product-guidance
+  title: Prusament PETG
+  organization: Prusa Polymers
+  url: https://prusament.com/materials/prusament-petg/
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate temperature ranges, no-enclosure guidance, and general toughness, moisture, and outdoor-use direction for Prusament PETG.
+  limitations: The guidance does not establish fatigue life, load capacity, UV lifetime, or performance for Check Make's model, orientation, and process.
+
+- id: PRUSAMENT-PRODUCT-ASA
+  type: manufacturer-product-guidance
+  title: Prusament ASA
+  organization: Prusa Polymers
+  url: https://prusament.com/materials/prusament-asa/
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate temperature ranges, enclosure or draft-shield guidance, and general UV and temperature-resistance direction for Prusament ASA.
+  limitations: Product-page claims do not validate dimensional outcome, warping risk, service temperature under load, or outdoor lifetime for an arbitrary part.
+
+- id: PRUSAMENT-PRODUCT-TPU95A
+  type: manufacturer-product-guidance
+  title: Prusament TPU 95A
+  organization: Prusa Polymers
+  url: https://prusament.com/materials/prusament-tpu-95a/
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate temperature ranges, no-enclosure guidance, and general flexibility, wear, and moisture direction for Prusament TPU 95A.
+  limitations: The product page does not establish target deformation, recovery, wear life, feed reliability, or part-level performance on every supported printer.
+
+- id: PRUSAMENT-PRODUCT-PA11CF
+  type: manufacturer-product-guidance
+  title: Prusament PA11 (Nylon) Carbon Fiber
+  organization: Prusa Polymers
+  url: https://prusament.com/materials/prusament-pa11-nylon-carbon-fiber/
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate temperature ranges, enclosure guidance, wear-resistant-nozzle requirement, print-surface guidance, and drying considerations for Prusament PA11 Carbon Fiber.
+  limitations: Product-page guidance does not establish safety factors, fatigue life, moisture-conditioned properties, interlayer capacity, or fitness for a specific structural part.
+
+- id: BAMBU-PRODUCT-PLA-BASIC
+  type: manufacturer-product-guidance
+  title: Bambu Filament Guide — PLA Basic
+  organization: Bambu Lab
+  url: https://cdn1.bambulab.com/filament/filament-guide/bcv8wbl4hj/filament-guide-en.pdf
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle range and plate-specific build-temperature guidance for Bambu PLA Basic.
+  limitations: The selected 60 C build-plate starting point is for common PEI use; the correct plate-specific value still depends on the active Bambu plate profile. Product guidance does not establish part-level performance.
+
+- id: BAMBU-PRODUCT-PETG-HF
+  type: manufacturer-product-guidance
+  title: Bambu PETG HF
+  organization: Bambu Lab
+  url: https://eu.store.bambulab.com/en-cy/products/petg-hf
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate ranges, drying requirement, and high-flow product identity for Bambu PETG HF.
+  limitations: High-flow printing claims and manufacturer mechanical properties are not independently transferable to every printer, color, geometry, orientation, or service condition.
+
+- id: BAMBU-PRODUCT-ASA
+  type: manufacturer-product-guidance
+  title: Bambu ASA
+  organization: Bambu Lab
+  url: https://us.store.bambulab.com/products/asa-filament
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate ranges plus general weather, UV, and heat direction for Bambu ASA.
+  limitations: The product page does not validate warping risk, lifetime, load capacity, or outdoor performance for an arbitrary Check Make part.
+
+- id: BAMBU-PRODUCT-TPU95A-HF
+  type: manufacturer-product-guidance
+  title: Bambu TPU 95A HF
+  organization: Bambu Lab
+  url: https://us.store.bambulab.com/en/products/tpu-95a-hf
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate ranges, 95A high-flow variant identity, drying guidance, nozzle-size guidance, and AMS limitation.
+  limitations: Product guidance does not establish target deformation, recovery, feed reliability, or part-level impact and fatigue performance.
+
+- id: BAMBU-PRODUCT-PA6-CF
+  type: manufacturer-product-guidance
+  title: Bambu PA6-CF
+  organization: Bambu Lab
+  url: https://ca.store.bambulab.com/products/pa6-cf/
+  accessed: 2026-07-27
+  supports: Manufacturer nozzle and build-plate ranges, enclosure and hardened-nozzle requirements, drying guidance, and directional dry-state mechanical data for Bambu PA6-CF.
+  limitations: Manufacturer coupon values change with moisture and orientation and do not establish a Check Make safety factor, fatigue life, interlayer capacity, or fitness for a specific structural part.

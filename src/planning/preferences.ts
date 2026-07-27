@@ -75,6 +75,13 @@ export function comparePlanRecommendations(base: Recommendation[], candidate: Re
 
 function preferenceBlockers(preference: PlanPreference, questionnaire: Questionnaire): string[] {
   const priority = questionnaire.priority;
+  if (
+    preference === 'faster'
+    && questionnaire.manufacturingIntent?.failureConsequence.value === 'safety-critical'
+    && ['confirmed', 'user-stated'].includes(questionnaire.manufacturingIntent.failureConsequence.status)
+  ) {
+    return ['A designer-stated load-critical use keeps the Balanced process baseline. Faster remains unavailable unless that Context requirement is removed.'];
+  }
   if (preference === 'faster' && questionnaire.manufacturingIntent?.compatibility.fitCritical) {
     return ['A confirmed fit-critical interface retains the finer Balanced process settings.'];
   }

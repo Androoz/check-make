@@ -185,7 +185,7 @@ export interface RequirementAssessment<T = Questionnaire[ChecklistField]> {
   affectsRecommendations: string[];
 }
 export type RequirementAssessments = { [K in ChecklistField]: RequirementAssessment<Questionnaire[K]> };
-export interface CompatibilityNotice { severity: 'info'|'warning'; message: string }
+export interface CompatibilityNotice { severity: 'success'|'info'|'warning'; message: string }
 export type SettingKey = 'material'|'nozzle_temperature'|'bed_temperature'|'orientation'|'layer_height'|'wall_loops'|'top_layers'|'bottom_layers'|'infill_type'|'infill_percent'|'support'|'brim'|'wall_generator'|'wall_order'|'seam'|'speed_preset';
 export type EvidenceLevel = 'A'|'B'|'C'|'D';
 export interface RuleEvidenceRecord {

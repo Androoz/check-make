@@ -1,11 +1,11 @@
 # Rule evidence audit and validation plan
 
-Date: 2026-07-14
+Date: 2026-07-27
 Scope: `rules/mvp-rules.yaml`, local model analysis, geometry-derived inputs, and rule confidence reporting.
 
 ## Outcome
 
-The current 50-rule catalog is deterministic and reviewable, but it is not yet an evidence-calibrated manufacturing model. External sources support many directional claims, while none of the exact MVP thresholds or confidence numbers have been validated for Check Make's supported printers, materials, and geometries.
+The current 64-rule catalog is deterministic and reviewable, but it is not yet an evidence-calibrated manufacturing model. External sources support many directional claims, while none of the exact MVP thresholds or confidence numbers have been validated for Check Make's supported printers, materials, and geometries.
 
 All rules are therefore classified as provisional in `rules/rule-evidence.yaml`. Source records and their limitations are in `rules/evidence-sources.yaml`.
 
@@ -20,17 +20,17 @@ A source can support the direction of a claim without validating its exact thres
 
 ## Main audit findings
 
-### 1. Unknown use is converted into demanding requirements
+### 1. Unknown use must not become a demanding requirement — resolved in the current flow
 
-`localModelAnalysis` defaults an unknown STL to medium impact, static load, and either strength or finish priority. The medium-impact default activates PETG, four walls, and at least 20 percent infill. These are presented as recommendations even though the STL contains no impact evidence.
+Unknown environment, load, impact, heat, and priority now remain unknown. Hypotheses are reviewable, and only grounded user statements or reviewed facts can activate the manufacturing rules. The P0 regression suite retains a neutral PLA, three-wall, 15 percent infill baseline for a model without use evidence.
 
-Required change after validation design: represent unknown as unknown, preserve uncertainty through the rule context, and ask a consequential question rather than silently selecting a demanding category.
+Remaining requirement: keep false-positive, contradiction, and abstention scenarios in the release acceptance suite.
 
-### 2. Local follow-up answers do not update the decision variables
+### 2. Follow-up answers must update one traceable intent — resolved in the current flow
 
-The local refinement path replaces the likely-purpose text but does not recalculate environment, load, impact, heat, priority, or support allowance. `inferBrief` contains a broader keyword mapping but is not connected to the current application flow.
+Local refinement rebuilds the versioned `ManufacturingIntent`, preserving provenance, status, evidence IDs, conflicts, and unknown values. The rule engine reads usable values from that same intent rather than from unreviewed AI confidence.
 
-Required change: introduce one traceable inference step that emits value, evidence, provenance, and an explicit unknown option for every decision variable.
+Remaining requirement: complete an installed-app smoke test from Context refinement through native export.
 
 ### Naming clues are useful but unverified
 
@@ -40,7 +40,7 @@ These labels can improve object identification, but they are not proof of functi
 
 ### 3. Confidence is manually assigned, not calibrated
 
-Rule confidence values and local-analysis confidence values have no labeled evaluation set, calibration curve, uncertainty interval, or empirical interpretation. The engine takes the minimum confidence of every matched rule, including rules whose action was later overwritten.
+Rule confidence values and local-analysis confidence values have no labeled evaluation set, calibration curve, uncertainty interval, or empirical interpretation. Superseded rules no longer affect the displayed active evidence status, but the underlying confidence numbers remain manually assigned.
 
 Required change: do not display these numbers as statistical confidence. Until calibration exists, expose evidence level and validation status. Later probabilistic confidence must be tied to a declared target event and evaluated with calibration metrics such as reliability curves and Brier score.
 
@@ -67,25 +67,40 @@ Required change: generate more candidates, reject infeasible candidates first, a
 
 PLA, PETG, ASA, TPU, and PA-CF contain grades with different thermal, mechanical, moisture, UV, hardness, and processing behavior. One temperature pair per family is not a safe universal setting.
 
-The highest-risk material rule is M10. The current rule selects PA-CF for strength plus high impact. Manufacturer guidance says fiber-filled materials can improve stiffness, dimensional stability, and tensile yield strength while reducing Charpy impact resistance and layer adhesion. M10 is classified `provisional-contested` and must not be promoted without grade-specific impact and interlayer testing.
+The earlier contested M10 PA-CF/high-impact rule has been removed. The current material path first derives bounded family-level requirements for weather, moisture, toughness, heat, flexibility, stiffness, ordinary fatigue, and creep margin. The same evaluation is used for the Recommended explanation, alternatives, and printer compatibility. Requirements are explicitly classified as mandatory, preference-based, or specialist-review. A candidate with a mandatory, specialist, or printer gap cannot be selected, and an incompatible current selection blocks export.
 
-Required change: separate properties such as stiffness, tensile strength, toughness, fatigue, creep, heat resistance, UV resistance, moisture sensitivity, and flexibility. Material selection must reference a specific material profile or a bounded grade family.
+A versioned two-manufacturer set of ten product profiles now provides reviewed
+nozzle and build-plate ranges, a conservative starting point, enclosure
+guidance, wear-resistant-nozzle requirements, supported nozzle diameters,
+variant scope, lifecycle state, and source/review metadata. Selecting one
+replaces only the family-level temperature starting points and adds printer
+capability checks. Stale and retired profiles cannot be newly selected.
 
-### 7. Rule merging obscures the active rationale
+Product-page guidance does not qualify a part for a load case, fatigue life,
+creep duration, wear pair, chemical exposure, or safety-critical use; those
+specialist-review gates remain unchanged. A separate product-upgrade contract
+requires an active profile, qualified status, scoped evidence IDs, named
+supported benefits, and no unresolved blockers. Every current profile remains
+temperature-profile-only, so the infrastructure cannot yet promote a product as
+a performance upgrade.
 
-Later `set` actions overwrite earlier values, while reasons and rule IDs from all matches remain attached. The displayed rationale can therefore include a superseded PLA rule next to a final PETG or ASA value. The minimum confidence can also come from a rule that did not determine the final value.
+Safety-critical or heavy cyclic loading, consequential long-term creep, sliding/abrasive wear, dishwasher cycles, and chemical exposure deliberately require specialist/product evidence; no current family is marked qualified for them. Required change: connect reviewed grade-specific stiffness, toughness, fatigue, creep, heat, UV, moisture, wear, and chemical ranges before making product-level claims. Family-level starting temperatures remain provisional.
 
-Required change: retain a full decision trace, but distinguish active, constraining, superseded, and conflicting rules in both data and UI.
+### 7. Rule merging must preserve the active rationale — resolved in the engine
+
+The decision trace now distinguishes active, supporting, superseded, and conflicting actions. User-facing reasons and evidence status use only the active/supporting rules, while the complete matched trace remains available as technical evidence.
+
+Remaining requirement: include the active material requirement and evidence in the release smoke fixtures so the UI cannot regress to generic catalog copy.
 
 ## Evidence coverage snapshot
 
 The machine-readable mapping is authoritative. At this review:
 
-- every one of the 50 rule IDs has an evidence record;
+- every one of the 64 rule IDs has an evidence record;
 - every referenced source has a catalog entry and URL;
 - all exact decision boundaries remain provisional;
 - rules with no direct source remain level D;
-- M10, Q09, and Q10 require critical review before behavioral expansion.
+- Q09 and Q10 require critical review before behavioral expansion; the contested M10 material rule has been removed.
 
 Passing the evidence-coverage test means the catalog is complete and internally consistent. It does **not** mean the manufacturing recommendation is correct.
 

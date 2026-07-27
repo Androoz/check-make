@@ -83,7 +83,6 @@ struct NativeModelAnalysis {
     orientation_label: String,
     metadata: ModelMetadata,
 }
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SlicerAdapterStatus {
@@ -133,6 +132,88 @@ struct PlanMetrics {
 struct RecommendationInput {
     setting: String,
     value: Value,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductTemperatureRangeInput {
+    starting: f64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FilamentProductInput {
+    schema_version: u32,
+    id: String,
+    manufacturer: String,
+    product: String,
+    family: String,
+    nozzle_temperature_c: ProductTemperatureRangeInput,
+    bed_temperature_c: ProductTemperatureRangeInput,
+}
+
+impl FilamentProductInput {
+    fn native_name(&self) -> String {
+        format!("{} · {}", self.manufacturer, self.product)
+    }
+}
+
+fn recommendation_numeric(recommendations: &[RecommendationInput], setting: &str) -> Option<f64> {
+    recommendations
+        .iter()
+        .find(|item| item.setting == setting)
+        .and_then(|item| numeric_text(&item.value).parse::<f64>().ok())
+}
+
+fn filament_product_from_metadata(
+    metadata_json: &str,
+    recommendations: &[RecommendationInput],
+) -> Result<Option<FilamentProductInput>, String> {
+    let metadata: Value = serde_json::from_str(metadata_json)
+        .map_err(|e| format!("Invalid Check Make export metadata: {e}"))?;
+    let Some(value) = metadata.get("filamentProduct") else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let product: FilamentProductInput = serde_json::from_value(value.clone())
+        .map_err(|e| format!("Invalid filament product payload: {e}"))?;
+    if product.schema_version != 1 {
+        return Err(format!(
+            "Unsupported filament product schema version {}.",
+            product.schema_version
+        ));
+    }
+    let material = recommendations
+        .iter()
+        .find(|item| item.setting == "material")
+        .map(|item| value_text(&item.value))
+        .unwrap_or_default();
+    if product.family != material {
+        return Err(format!(
+            "Selected filament product {} belongs to {}, but the manufacturing plan uses {}.",
+            product.product, product.family, material
+        ));
+    }
+    for (setting, expected) in [
+        ("nozzle_temperature", product.nozzle_temperature_c.starting),
+        ("bed_temperature", product.bed_temperature_c.starting),
+    ] {
+        let actual = recommendation_numeric(recommendations, setting).ok_or_else(|| {
+            format!(
+                "The manufacturing plan omits {setting} for selected product {}.",
+                product.product
+            )
+        })?;
+        if (actual - expected).abs() > f64::EPSILON {
+            return Err(format!(
+                "The {setting} recommendation ({actual} °C) does not match the reviewed {} product profile ({expected} °C).",
+                product.product
+            ));
+        }
+    }
+    Ok(Some(product))
 }
 
 fn validate_model_path(path: &str) -> Result<PathBuf, String> {
@@ -523,17 +604,30 @@ fn cache_normalized_stl(original_path: String, bytes: Vec<u8>) -> Result<String,
         .and_then(|value| value.to_str())
         .unwrap_or("model")
         .chars()
-        .map(|character| if character.is_ascii_alphanumeric() { character } else { '_' })
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '_'
+            }
+        })
         .collect::<String>();
-    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_millis();
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
     let target = directory.join(format!("{stem}-{stamp}.stl"));
     fs::write(&target, bytes).map_err(|e| format!("Cannot cache normalized STL: {e}"))?;
     Ok(target.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-fn save_check_make_project(default_name: String, contents: String) -> Result<Option<String>, String> {
-    let _: Value = serde_json::from_str(&contents).map_err(|e| format!("Invalid project data: {e}"))?;
+fn save_check_make_project(
+    default_name: String,
+    contents: String,
+) -> Result<Option<String>, String> {
+    let _: Value =
+        serde_json::from_str(&contents).map_err(|e| format!("Invalid project data: {e}"))?;
     if contents.len() > 10 * 1024 * 1024 {
         return Err("The Check Make project exceeds the 10 MB limit.".into());
     }
@@ -541,7 +635,9 @@ fn save_check_make_project(default_name: String, contents: String) -> Result<Opt
         .set_file_name(&default_name)
         .add_filter("Check Make project", &["checkmake"])
         .save_file();
-    let Some(target) = target else { return Ok(None) };
+    let Some(target) = target else {
+        return Ok(None);
+    };
     fs::write(&target, contents).map_err(|e| format!("Could not save project: {e}"))?;
     Ok(Some(target.to_string_lossy().into_owned()))
 }
@@ -551,12 +647,16 @@ fn open_check_make_project() -> Result<Option<String>, String> {
     let source = rfd::FileDialog::new()
         .add_filter("Check Make project", &["checkmake"])
         .pick_file();
-    let Some(source) = source else { return Ok(None) };
+    let Some(source) = source else {
+        return Ok(None);
+    };
     if fs::metadata(&source).map_err(|e| e.to_string())?.len() > 10 * 1024 * 1024 {
         return Err("The Check Make project exceeds the 10 MB limit.".into());
     }
-    let contents = fs::read_to_string(&source).map_err(|e| format!("Could not read project: {e}"))?;
-    let value: Value = serde_json::from_str(&contents).map_err(|e| format!("Invalid project file: {e}"))?;
+    let contents =
+        fs::read_to_string(&source).map_err(|e| format!("Could not read project: {e}"))?;
+    let value: Value =
+        serde_json::from_str(&contents).map_err(|e| format!("Invalid project file: {e}"))?;
     if value.get("product").and_then(Value::as_str) != Some("Check Make") {
         return Err("This is not a Check Make project file.".into());
     }
@@ -678,6 +778,16 @@ fn write_3mf(
     orientation_id: &str,
     metadata_json: &str,
 ) -> Result<usize, String> {
+    write_3mf_with_build_center(source, target, orientation_id, metadata_json, None)
+}
+
+fn write_3mf_with_build_center(
+    source: &Path,
+    target: &Path,
+    orientation_id: &str,
+    metadata_json: &str,
+    build_center: Option<(f32, f32)>,
+) -> Result<usize, String> {
     let mesh = stl_io::read_stl(&mut BufReader::new(
         File::open(source).map_err(|e| e.to_string())?,
     ))
@@ -689,9 +799,11 @@ fn write_3mf(
         .map(|v| transform([v[0], v[1], v[2]], kind))
         .collect();
     let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
     for v in &vertices {
         for axis in 0..3 {
-            min[axis] = min[axis].min(v[axis])
+            min[axis] = min[axis].min(v[axis]);
+            max[axis] = max[axis].max(v[axis]);
         }
     }
     for v in &mut vertices {
@@ -743,9 +855,18 @@ fn write_3mf(
             face.vertices[0], face.vertices[1], face.vertices[2]
         ))
     }
-    model_xml.push_str(
-        "</triangles></mesh></object></resources><build><item objectid=\"1\"/></build></model>",
-    );
+    let build_item = build_center
+        .map(|(center_x, center_y)| {
+            let translate_x = center_x - (max[0] - min[0]) / 2.0;
+            let translate_y = center_y - (max[1] - min[1]) / 2.0;
+            format!(
+                "<item objectid=\"1\" transform=\"1 0 0 0 1 0 0 0 1 {translate_x} {translate_y} 0\"/>"
+            )
+        })
+        .unwrap_or_else(|| "<item objectid=\"1\"/>".into());
+    model_xml.push_str(&format!(
+        "</triangles></mesh></object></resources><build>{build_item}</build></model>"
+    ));
     let content_types = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#;
     let rels = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#;
     let file = File::create(target).map_err(|e| e.to_string())?;
@@ -1038,7 +1159,7 @@ fn detect_slicer_adapters() -> Vec<SlicerAdapterStatus> {
                 ),
                 "creality" => (
                     "project-3mf",
-                    "Installed profiles detected. Check Make writes a native project and validates its effective settings with Creality Print.",
+                    "Installed profiles detected. Check Make writes a native project and validates its embedded settings and active overrides without launching Creality Print.",
                 ),
                 _ => unreachable!(),
             }
@@ -1314,6 +1435,71 @@ fn apply_bambu_recommendations(
         }
     }
     applied
+}
+
+fn apply_bambu_product_identity(filament: &mut Value, product: &FilamentProductInput) {
+    let name = product.native_name();
+    set_profile_value(filament, "name", Value::String(name.clone()));
+    set_profile_value(filament, "setting_id", Value::String(name));
+    set_profile_value(
+        filament,
+        "filament_vendor",
+        Value::Array(vec![Value::String(product.manufacturer.clone())]),
+    );
+    set_profile_value(
+        filament,
+        "check_make_filament_product_id",
+        Value::String(product.id.clone()),
+    );
+}
+
+fn validate_bambu_product_identity(
+    project: &Path,
+    product: Option<&FilamentProductInput>,
+) -> Result<(), String> {
+    let Some(product) = product else {
+        return Ok(());
+    };
+    let settings = read_bambu_family_project_settings(project)?;
+    let actual = settings
+        .get("filament_settings_id")
+        .and_then(Value::as_array)
+        .and_then(|values| values.first())
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The slicer project omits its selected filament identity.".to_string())?;
+    if actual.trim_matches(|character| character == '"' || character == '\\')
+        != product.native_name()
+    {
+        return Err(format!(
+            "The slicer project did not preserve product identity: expected {}, found {actual}.",
+            product.native_name()
+        ));
+    }
+    let embedded_product_id = settings
+        .get("check_make_filament_product_id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            let file = File::open(project).ok()?;
+            let mut archive = ZipArchive::new(file).ok()?;
+            let mut content = String::new();
+            archive
+                .by_name("Metadata/check_make.json")
+                .ok()?
+                .read_to_string(&mut content)
+                .ok()?;
+            serde_json::from_str::<Value>(&content)
+                .ok()?
+                .pointer("/filamentProduct/id")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    if embedded_product_id.as_deref() != Some(product.id.as_str()) {
+        return Err(
+            "The slicer project did not preserve the Check Make filament product id.".into(),
+        );
+    }
+    Ok(())
 }
 
 fn expected_bambu_project_values(
@@ -1781,41 +1967,74 @@ fn unique_temp_dir() -> Result<PathBuf, String> {
 }
 
 fn gcode_number(line: &str, label: &str) -> Option<f64> {
-    if !line.contains(label) { return None; }
+    if !line.contains(label) {
+        return None;
+    }
     let value = line.split_once('=')?.1.trim().split_whitespace().next()?;
     value.parse().ok()
 }
 
 fn duration_seconds(line: &str) -> Option<f64> {
-    if !line.contains("total estimated time:") { return None; }
+    if !line.contains("total estimated time:") {
+        return None;
+    }
     let value = line.split_once("total estimated time:")?.1.trim();
     let mut seconds = 0.0;
     for token in value.split_whitespace() {
-        let (number, multiplier) = if let Some(number) = token.strip_suffix('h') { (number, 3600.0) }
-            else if let Some(number) = token.strip_suffix('m') { (number, 60.0) }
-            else if let Some(number) = token.strip_suffix('s') { (number, 1.0) }
-            else { continue };
+        let (number, multiplier) = if let Some(number) = token.strip_suffix('h') {
+            (number, 3600.0)
+        } else if let Some(number) = token.strip_suffix('m') {
+            (number, 60.0)
+        } else if let Some(number) = token.strip_suffix('s') {
+            (number, 1.0)
+        } else {
+            continue;
+        };
         seconds += number.trim_end_matches(';').parse::<f64>().ok()? * multiplier;
     }
     (seconds > 0.0).then_some(seconds)
 }
 
 fn read_gcode_plan_metrics(path: &Path) -> Result<PlanMetrics, String> {
-    let reader = BufReader::new(File::open(path).map_err(|e| format!("Cannot read OrcaSlicer G-code statistics: {e}"))?);
-    let mut material_grams = None; let mut filament_length_mm = None; let mut material_volume_cm3 = None; let mut estimated_time_seconds = None;
+    let reader = BufReader::new(
+        File::open(path).map_err(|e| format!("Cannot read OrcaSlicer G-code statistics: {e}"))?,
+    );
+    let mut material_grams = None;
+    let mut filament_length_mm = None;
+    let mut material_volume_cm3 = None;
+    let mut estimated_time_seconds = None;
     for line in reader.lines() {
         let line = line.map_err(|e| format!("Cannot read OrcaSlicer G-code statistics: {e}"))?;
         material_grams = material_grams.or_else(|| gcode_number(&line, "filament used [g]"));
-        filament_length_mm = filament_length_mm.or_else(|| gcode_number(&line, "filament used [mm]"));
-        material_volume_cm3 = material_volume_cm3.or_else(|| gcode_number(&line, "filament used [cm3]"));
+        filament_length_mm =
+            filament_length_mm.or_else(|| gcode_number(&line, "filament used [mm]"));
+        material_volume_cm3 =
+            material_volume_cm3.or_else(|| gcode_number(&line, "filament used [cm3]"));
         estimated_time_seconds = estimated_time_seconds.or_else(|| duration_seconds(&line));
-        if material_grams.is_some() && filament_length_mm.is_some() && material_volume_cm3.is_some() && estimated_time_seconds.is_some() { break; }
+        if material_grams.is_some()
+            && filament_length_mm.is_some()
+            && material_volume_cm3.is_some()
+            && estimated_time_seconds.is_some()
+        {
+            break;
+        }
     }
-    let material_grams = material_grams.ok_or_else(|| "OrcaSlicer G-code omits filament weight.".to_string())?;
-    let filament_length_mm = filament_length_mm.ok_or_else(|| "OrcaSlicer G-code omits filament length.".to_string())?;
-    let material_volume_cm3 = material_volume_cm3.ok_or_else(|| "OrcaSlicer G-code omits extruded volume.".to_string())?;
-    let estimated_time_seconds = estimated_time_seconds.ok_or_else(|| "OrcaSlicer G-code omits estimated print time.".to_string())?;
-    Ok(PlanMetrics { source: "orca-slicer".into(), material_grams, filament_length_mm, estimated_time_seconds, material_volume_cm3, warnings: Vec::new() })
+    let material_grams =
+        material_grams.ok_or_else(|| "OrcaSlicer G-code omits filament weight.".to_string())?;
+    let filament_length_mm =
+        filament_length_mm.ok_or_else(|| "OrcaSlicer G-code omits filament length.".to_string())?;
+    let material_volume_cm3 = material_volume_cm3
+        .ok_or_else(|| "OrcaSlicer G-code omits extruded volume.".to_string())?;
+    let estimated_time_seconds = estimated_time_seconds
+        .ok_or_else(|| "OrcaSlicer G-code omits estimated print time.".to_string())?;
+    Ok(PlanMetrics {
+        source: "orca-slicer".into(),
+        material_grams,
+        filament_length_mm,
+        estimated_time_seconds,
+        material_volume_cm3,
+        warnings: Vec::new(),
+    })
 }
 
 fn launch_bambu_project(executable: &Path, project: &Path) -> Result<(), String> {
@@ -1853,6 +2072,7 @@ fn export_bambu_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     let executable = find_executable("bambu").ok_or_else(|| {
         "Bambu Studio was not detected. Install it to create a Bambu project 3MF.".to_string()
     })?;
@@ -1882,15 +2102,22 @@ fn export_bambu_project(
             &mut HashSet::new(),
         )?;
         apply_bambu_recommendations(&mut process, &mut filament, recommendations);
+        if let Some(product) = filament_product.as_ref() {
+            apply_bambu_product_identity(&mut filament, product);
+        }
         let expected = expected_bambu_project_values(&process, &filament, recommendations);
         let (process_override_keys, filament_override_keys) = bambu_override_keys(recommendations);
+        let native_filament_name = filament_product
+            .as_ref()
+            .map(FilamentProductInput::native_name)
+            .unwrap_or_else(|| filament_name.to_string());
         let project_settings = build_bambu_project_settings(
             &machine,
             &process,
             &filament,
             machine_name,
             process_name,
-            filament_name,
+            &native_filament_name,
             &process_override_keys,
             &filament_override_keys,
         );
@@ -1903,6 +2130,7 @@ fn export_bambu_project(
             "BambuStudio-02.07.01.62",
         )?;
         let applied = validate_bambu_family_project_settings(&generated_project, &expected)?;
+        validate_bambu_product_identity(&generated_project, filament_product.as_ref())?;
         validate_bambu_family_override_markers(
             &generated_project,
             &process_override_keys,
@@ -1986,6 +2214,73 @@ fn validate_bambu_family_effective_settings(
     Ok(())
 }
 
+fn write_slicer_json(path: &Path, value: &Value) -> Result<(), String> {
+    let file = File::create(path).map_err(|e| {
+        format!(
+            "Cannot create temporary slicer profile {}: {e}",
+            path.display()
+        )
+    })?;
+    serde_json::to_writer_pretty(file, value).map_err(|e| {
+        format!(
+            "Cannot write temporary slicer profile {}: {e}",
+            path.display()
+        )
+    })
+}
+
+fn append_check_make_metadata(
+    project: &Path,
+    metadata_json: &str,
+    orientation_id: &str,
+) -> Result<(), String> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(project)
+        .map_err(|e| format!("Cannot update slicer project {}: {e}", project.display()))?;
+    let mut archive = ZipWriter::new_append(file)
+        .map_err(|e| format!("Cannot append Check Make metadata: {e}"))?;
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for (name, bytes) in [
+        ("Metadata/check_make.json", metadata_json.as_bytes()),
+        (
+            "Metadata/check_make_orientation.txt",
+            orientation_id.as_bytes(),
+        ),
+    ] {
+        archive
+            .start_file(name, options)
+            .map_err(|e| format!("Cannot create Check Make metadata entry: {e}"))?;
+        archive
+            .write_all(bytes)
+            .map_err(|e| format!("Cannot write Check Make metadata entry: {e}"))?;
+    }
+    archive
+        .finish()
+        .map_err(|e| format!("Cannot finish Check Make metadata: {e}"))?;
+    Ok(())
+}
+
+fn validate_orca_project_identity(project: &Path) -> Result<(), String> {
+    let file = File::open(project)
+        .map_err(|e| format!("Cannot open generated OrcaSlicer project: {e}"))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| format!("Generated OrcaSlicer project is not a valid 3MF archive: {e}"))?;
+    let mut model = String::new();
+    archive
+        .by_name("3D/3dmodel.model")
+        .map_err(|e| format!("OrcaSlicer project has no root model: {e}"))?
+        .read_to_string(&mut model)
+        .map_err(|e| format!("Cannot read OrcaSlicer root model: {e}"))?;
+    if !model.contains("<metadata name=\"OrcaSlicer\">") {
+        return Err(
+            "OrcaSlicer did not identify the generated 3MF as an OrcaSlicer project.".into(),
+        );
+    }
+    Ok(())
+}
+
 fn export_orca_project(
     source: &Path,
     target: &Path,
@@ -1994,6 +2289,7 @@ fn export_orca_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     let executable = find_executable("orca").ok_or_else(|| {
         "OrcaSlicer was not detected. Install it to create a native Orca project 3MF.".to_string()
     })?;
@@ -2005,6 +2301,10 @@ fn export_orca_project(
         .unwrap_or_else(|| "PLA".into());
     let spec = orca_profile_spec(printer_id, &material)?;
     let temp = unique_temp_dir()?;
+    let core_project = temp.join("check-make-core.3mf");
+    let machine_path = temp.join("machine.json");
+    let process_path = temp.join("process.json");
+    let filament_path = temp.join("filament.json");
     let generated_project = temp.join("orca-project.3mf");
     let result = (|| {
         let machine = resolve_profile(
@@ -2023,32 +2323,46 @@ fn export_orca_project(
             &mut HashSet::new(),
         )?;
         apply_bambu_recommendations(&mut process, &mut filament, recommendations);
+        if let Some(product) = filament_product.as_ref() {
+            apply_bambu_product_identity(&mut filament, product);
+        }
         let expected = expected_bambu_project_values(&process, &filament, recommendations);
-        let (process_override_keys, filament_override_keys) = bambu_override_keys(recommendations);
-        let project_settings = build_bambu_project_settings(
-            &machine,
-            &process,
-            &filament,
-            spec.machine_name,
-            spec.process_name,
-            &spec.filament_name,
-            &process_override_keys,
-            &filament_override_keys,
-        );
-        write_bambu_family_project_3mf(
-            source,
-            &generated_project,
-            orientation_id,
-            metadata_json,
-            &project_settings,
-            "OrcaSlicer-2.4.0",
-        )?;
+        write_3mf(source, &core_project, orientation_id, metadata_json)?;
+        write_slicer_json(&machine_path, &machine)?;
+        write_slicer_json(&process_path, &process)?;
+        write_slicer_json(&filament_path, &filament)?;
+        let settings = format!("{};{}", machine_path.display(), process_path.display());
+        let output_name = generated_project
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| "Cannot construct OrcaSlicer output filename.".to_string())?;
+        let output = Command::new(&executable)
+            .arg("--load-settings")
+            .arg(settings)
+            .arg("--load-filaments")
+            .arg(&filament_path)
+            .arg("--arrange")
+            .arg("1")
+            .arg("--ensure-on-bed")
+            .arg("--outputdir")
+            .arg(&temp)
+            .arg("--export-3mf")
+            .arg(output_name)
+            .arg(&core_project)
+            .output()
+            .map_err(|e| format!("Could not create the project with OrcaSlicer: {e}"))?;
+        if !output.status.success() || !generated_project.is_file() {
+            return Err(format!(
+                "OrcaSlicer could not create its native project ({}). {}{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        append_check_make_metadata(&generated_project, metadata_json, orientation_id)?;
+        validate_orca_project_identity(&generated_project)?;
         let applied = validate_bambu_family_project_settings(&generated_project, &expected)?;
-        validate_bambu_family_override_markers(
-            &generated_project,
-            &process_override_keys,
-            &filament_override_keys,
-        )?;
+        validate_bambu_product_identity(&generated_project, filament_product.as_ref())?;
         validate_bambu_family_effective_settings(
             &executable,
             "OrcaSlicer",
@@ -2314,6 +2628,40 @@ fn apply_prusa_recommendations(
     expected
 }
 
+fn apply_prusa_product_identity(
+    config: &mut BTreeMap<String, String>,
+    product: &FilamentProductInput,
+) {
+    config.insert("filament_settings_id".into(), product.native_name());
+    config.insert("filament_vendor".into(), product.manufacturer.clone());
+    config.insert("check_make_filament_product_id".into(), product.id.clone());
+}
+
+fn validate_prusa_product_identity(
+    config: &BTreeMap<String, String>,
+    product: Option<&FilamentProductInput>,
+    source: &str,
+) -> Result<(), String> {
+    let Some(product) = product else {
+        return Ok(());
+    };
+    let actual = config
+        .get("filament_settings_id")
+        .map(String::as_str)
+        .unwrap_or("<missing>");
+    let normalized = actual
+        .trim_matches(|character| character == '"' || character == '\\')
+        .replace("\\\"", "\"");
+    if normalized != product.native_name() {
+        return Err(format!(
+            "{source} did not preserve the selected filament product identity: expected {:?}, found {:?}.",
+            product.native_name(),
+            actual
+        ));
+    }
+    Ok(())
+}
+
 fn write_prusa_config(path: &Path, config: &BTreeMap<String, String>) -> Result<(), String> {
     let mut file = File::create(path).map_err(|e| {
         format!(
@@ -2471,6 +2819,7 @@ fn export_prusa_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     let executable = find_executable("prusa").ok_or_else(|| {
         "PrusaSlicer was not detected. Install it to create a native PrusaSlicer project 3MF."
             .to_string()
@@ -2485,6 +2834,9 @@ fn export_prusa_project(
     let sections = parse_prusa_sections(&profiles)?;
     let mut config = build_prusa_config(&sections, &spec)?;
     let expected = apply_prusa_recommendations(&mut config, recommendations);
+    if let Some(product) = filament_product.as_ref() {
+        apply_prusa_product_identity(&mut config, product);
+    }
     let temp = unique_temp_dir()?;
     let core_project = temp.join("check-make-core.3mf");
     let config_path = temp.join("check-make-prusa.ini");
@@ -2513,6 +2865,11 @@ fn export_prusa_project(
         append_prusa_project_config(&generated_project, &config, metadata_json, orientation_id)?;
         let embedded = read_prusa_project_config(&generated_project)?;
         let applied = validate_prusa_values(&embedded, &expected, "PrusaSlicer project")?;
+        validate_prusa_product_identity(
+            &embedded,
+            filament_product.as_ref(),
+            "PrusaSlicer project",
+        )?;
         let info = Command::new(&executable)
             .arg(&generated_project)
             .arg("--info")
@@ -2545,6 +2902,11 @@ fn export_prusa_project(
                 .map_err(|e| format!("Cannot read PrusaSlicer's effective settings: {e}"))?,
         );
         validate_prusa_values(&effective, &expected, "PrusaSlicer's effective settings")?;
+        validate_prusa_product_identity(
+            &effective,
+            filament_product.as_ref(),
+            "PrusaSlicer's effective settings",
+        )?;
         fs::copy(&generated_project, target).map_err(|e| {
             format!(
                 "The validated PrusaSlicer project could not be saved to {}: {e}",
@@ -2581,6 +2943,7 @@ fn export_creality_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     if ![
         "bambu-x1c",
         "bambu-p1s",
@@ -2628,15 +2991,22 @@ fn export_creality_project(
             &mut HashSet::new(),
         )?;
         apply_bambu_recommendations(&mut process, &mut filament, recommendations);
+        if let Some(product) = filament_product.as_ref() {
+            apply_bambu_product_identity(&mut filament, product);
+        }
         let expected = expected_bambu_project_values(&process, &filament, recommendations);
         let (process_override_keys, filament_override_keys) = bambu_override_keys(recommendations);
+        let native_filament_name = filament_product
+            .as_ref()
+            .map(FilamentProductInput::native_name)
+            .unwrap_or_else(|| spec.filament_name.clone());
         let project_settings = build_bambu_project_settings(
             &machine,
             &process,
             &filament,
             spec.machine_name,
             spec.process_name,
-            &spec.filament_name,
+            &native_filament_name,
             &process_override_keys,
             &filament_override_keys,
         );
@@ -2649,30 +3019,22 @@ fn export_creality_project(
             "CrealityPrint-7.2.0",
         )?;
         let applied = validate_bambu_family_project_settings(&generated_project, &expected)?;
+        validate_bambu_product_identity(&generated_project, filament_product.as_ref())?;
         validate_bambu_family_override_markers(
             &generated_project,
             &process_override_keys,
             &filament_override_keys,
         )?;
-        let effective_validation = validate_bambu_family_effective_settings(
-            &executable,
-            "Creality Print",
-            &generated_project,
-            &expected,
-            &temp,
-        );
         fs::copy(&generated_project, target).map_err(|e| {
             format!(
                 "The validated Creality Print project could not be saved to {}: {e}",
                 target.display()
             )
         })?;
-        let mut warnings = Vec::new();
-        if let Err(error) = effective_validation {
-            warnings.push(format!(
-                "Embedded Creality settings and overrides were validated, but this Creality Print build could not perform a headless round-trip: {error}"
-            ));
-        }
+        let mut warnings = vec![
+            "Creality Print’s own headless round-trip was not run because its macOS CLI can crash while reopening a valid project. Active profile overrides were verified directly instead."
+                .into(),
+        ];
         if recommendations
             .iter()
             .any(|item| item.setting == "speed_preset")
@@ -2703,6 +3065,7 @@ struct CuraProfileSpec {
     machine_name: &'static str,
     material_id: &'static str,
     variant: Option<(&'static str, &'static str)>,
+    build_plate_size: (f32, f32),
 }
 
 fn cura_profile_spec(printer_id: &str, material: &str) -> Result<CuraProfileSpec, String> {
@@ -2743,6 +3106,7 @@ fn cura_profile_spec(printer_id: &str, material: &str) -> Result<CuraProfileSpec
                 "creality/creality_ender3v3se_0.4.inst.cfg",
                 "creality_ender3v3se_0.4",
             )),
+            build_plate_size: (220.0, 220.0),
         },
         "creality-ender3-v3-ke" => CuraProfileSpec {
             machine_definition: "creality_ender3v3ke",
@@ -2756,6 +3120,7 @@ fn cura_profile_spec(printer_id: &str, material: &str) -> Result<CuraProfileSpec
                 "creality/creality_ender3v3ke_0.4.inst.cfg",
                 "creality_ender3v3ke_0.4",
             )),
+            build_plate_size: (220.0, 220.0),
         },
         "elegoo-neptune4pro" => CuraProfileSpec {
             machine_definition: "elegoo_neptune_4pro",
@@ -2766,6 +3131,7 @@ fn cura_profile_spec(printer_id: &str, material: &str) -> Result<CuraProfileSpec
             machine_name: "Check Make ELEGOO Neptune 4 Pro",
             material_id,
             variant: None,
+            build_plate_size: (225.0, 225.0),
         },
         _ => unreachable!(),
     })
@@ -2890,6 +3256,7 @@ fn append_cura_workspace(
     values: &BTreeMap<String, String>,
     metadata_json: &str,
     orientation_id: &str,
+    filament_product: Option<&FilamentProductInput>,
 ) -> Result<(), String> {
     let machine_definition = fs::read(
         resources
@@ -2920,12 +3287,26 @@ fn append_cura_workspace(
     let global_quality_id = "check_make_quality_changes";
     let extruder_quality_id = "check_make_quality_changes_extruder_0";
     let global_stack = format!(
-        "[general]\nversion = 6\nname = {}\nid = {machine_id}\n\n[metadata]\nsetting_version = 27\ntype = machine\ngroup_id = check-make\n\n[containers]\n0 = empty_user\n1 = {global_quality_id}\n2 = empty_intent\n3 = empty_quality\n4 = empty_material\n5 = empty_variant\n6 = empty_definition_changes\n7 = {}\n",
+        "[general]\nversion = 6\nname = {}\nid = {machine_id}\n\n[metadata]\nsetting_version = 27\ntype = machine\ngroup_id = check-make\n\n[containers]\n0 = empty_user_changes\n1 = {global_quality_id}\n2 = empty_intent\n3 = empty_quality\n4 = empty_material\n5 = empty_variant\n6 = empty_definition_changes\n7 = {}\n",
         spec.machine_name, spec.machine_definition
     );
+    let product_metadata = filament_product
+        .map(|product| {
+            format!(
+                "check_make_filament_product_id = {}\ncheck_make_filament_product_name = {}\ncheck_make_filament_manufacturer = {}\n",
+                product.id,
+                product.product,
+                product.manufacturer
+            )
+        })
+        .unwrap_or_default();
     let extruder_stack = format!(
-        "[general]\nversion = 6\nname = Extruder 1\nid = {extruder_id}\n\n[metadata]\nsetting_version = 27\ntype = extruder_train\nposition = 0\nmachine = {machine_id}\nenabled = True\n\n[containers]\n0 = empty_user\n1 = {extruder_quality_id}\n2 = empty_intent\n3 = empty_quality\n4 = {}\n5 = {variant_id}\n6 = empty_definition_changes\n7 = {}\n",
-        spec.material_id, spec.extruder_definition
+        "[general]\nversion = 6\nname = {}\nid = {extruder_id}\n\n[metadata]\nsetting_version = 27\ntype = extruder_train\nposition = 0\nmachine = {machine_id}\nenabled = True\n{product_metadata}\n[containers]\n0 = empty_user_changes\n1 = {extruder_quality_id}\n2 = empty_intent\n3 = empty_quality\n4 = {}\n5 = {variant_id}\n6 = empty_definition_changes\n7 = {}\n",
+        filament_product
+            .map(FilamentProductInput::native_name)
+            .unwrap_or_else(|| "Extruder 1".into()),
+        spec.material_id,
+        spec.extruder_definition
     );
     let global_quality = cura_quality_config(
         global_quality_id,
@@ -3034,6 +3415,7 @@ fn validate_cura_workspace(
     project: &Path,
     spec: &CuraProfileSpec,
     expected: &[(String, String, String)],
+    filament_product: Option<&FilamentProductInput>,
 ) -> Result<Vec<String>, String> {
     let file =
         File::open(project).map_err(|e| format!("Cannot open generated Cura project: {e}"))?;
@@ -3065,6 +3447,25 @@ fn validate_cura_workspace(
             ));
         }
     }
+    for stack_name in [
+        format!("Cura/{}.global.cfg", spec.machine_id),
+        format!("Cura/{}_extruder_0.extruder.cfg", spec.machine_id),
+    ] {
+        let mut stack = String::new();
+        archive
+            .by_name(&stack_name)
+            .map_err(|e| format!("Cannot open Cura container stack '{stack_name}': {e}"))?
+            .read_to_string(&mut stack)
+            .map_err(|e| format!("Cannot read Cura container stack '{stack_name}': {e}"))?;
+        if !stack
+            .lines()
+            .any(|line| line.trim() == "0 = empty_user_changes")
+        {
+            return Err(format!(
+                "Cura container stack '{stack_name}' has no valid empty user-changes container."
+            ));
+        }
+    }
     let mut quality = String::new();
     archive
         .by_name("Cura/check_make_quality_changes.inst.cfg")
@@ -3072,7 +3473,31 @@ fn validate_cura_workspace(
         .read_to_string(&mut quality)
         .map_err(|e| format!("Cannot read Cura process settings: {e}"))?;
     let values = read_ini_values(&quality);
-    validate_prusa_values(&values, expected, "Cura workspace")
+    let applied = validate_prusa_values(&values, expected, "Cura workspace")?;
+    if let Some(product) = filament_product {
+        let mut extruder = String::new();
+        archive
+            .by_name(&format!("Cura/{}_extruder_0.extruder.cfg", spec.machine_id))
+            .map_err(|e| format!("Cannot open Cura extruder stack: {e}"))?
+            .read_to_string(&mut extruder)
+            .map_err(|e| format!("Cannot read Cura extruder stack: {e}"))?;
+        for expected_identity in [
+            format!("name = {}", product.native_name()),
+            format!("check_make_filament_product_id = {}", product.id),
+            format!("check_make_filament_product_name = {}", product.product),
+        ] {
+            if !extruder
+                .lines()
+                .any(|line| line.trim() == expected_identity)
+            {
+                return Err(format!(
+                    "Cura workspace did not preserve filament product identity '{}'.",
+                    product.product
+                ));
+            }
+        }
+    }
+    Ok(applied)
 }
 
 fn export_cura_project(
@@ -3083,6 +3508,7 @@ fn export_cura_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     let executable = find_executable("cura").ok_or_else(|| {
         "UltiMaker Cura was not detected. Install it to create a native Cura project 3MF."
             .to_string()
@@ -3099,7 +3525,13 @@ fn export_cura_project(
     let temp = unique_temp_dir()?;
     let generated_project = temp.join("check-make-cura.3mf");
     let result = (|| {
-        write_3mf(source, &generated_project, orientation_id, metadata_json)?;
+        write_3mf_with_build_center(
+            source,
+            &generated_project,
+            orientation_id,
+            metadata_json,
+            Some((spec.build_plate_size.0 / 2.0, spec.build_plate_size.1 / 2.0)),
+        )?;
         append_cura_workspace(
             &generated_project,
             &resources,
@@ -3107,8 +3539,14 @@ fn export_cura_project(
             &values,
             metadata_json,
             orientation_id,
+            filament_product.as_ref(),
         )?;
-        let applied = validate_cura_workspace(&generated_project, &spec, &expected)?;
+        let applied = validate_cura_workspace(
+            &generated_project,
+            &spec,
+            &expected,
+            filament_product.as_ref(),
+        )?;
         fs::copy(&generated_project, target).map_err(|e| {
             format!(
                 "The validated Cura workspace could not be saved to {}: {e}",
@@ -3116,7 +3554,7 @@ fn export_cura_project(
             )
         })?;
         let mut warnings = vec![
-            "Cura workspace structure and embedded settings were validated; this Cura installation does not expose a stable headless project-settings round-trip."
+            "This Cura installation does not expose a stable headless project-settings round-trip."
                 .into(),
         ];
         if recommendations
@@ -3248,7 +3686,16 @@ fn create_manufacturing_package(
         .map(Some);
     }
     write_3mf(&source, &destination, &orientation_id, &metadata_json)?;
-    Ok(Some(ManufacturingPackageResult{path:destination.to_string_lossy().into_owned(),target:target.clone(),validated:true,applied_settings:Vec::new(),warnings:vec![format!("Process recommendations are embedded as Check Make metadata; {target} may not apply them automatically.")]}))
+    Ok(Some(ManufacturingPackageResult {
+        path: destination.to_string_lossy().into_owned(),
+        target,
+        validated: true,
+        applied_settings: Vec::new(),
+        warnings: vec![
+            "A portable Core 3MF does not guarantee that another application will apply Check Make’s process recommendations automatically."
+                .into(),
+        ],
+    }))
 }
 
 #[tauri::command]
@@ -3296,7 +3743,8 @@ fn estimate_plan_metrics(
     recommendations_json: String,
 ) -> Result<PlanMetrics, String> {
     let source = validate_model_path(&path)?;
-    let executable = find_executable("orca").ok_or_else(|| "OrcaSlicer is required for exact cost and weight estimates.".to_string())?;
+    let executable = find_executable("orca")
+        .ok_or_else(|| "OrcaSlicer is required for exact cost and weight estimates.".to_string())?;
     let recommendations: Vec<RecommendationInput> = serde_json::from_str(&recommendations_json)
         .map_err(|e| format!("Invalid recommendation payload: {e}"))?;
     let temp = unique_temp_dir()?;
@@ -3304,19 +3752,41 @@ fn estimate_plan_metrics(
     let output_dir = temp.join("sliced-output");
     fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
     let result = (|| {
-        export_orca_project(&source, &unsliced, &orientation_id, "{\"purpose\":\"plan-estimate\"}", &printer_id, &recommendations)?;
+        export_orca_project(
+            &source,
+            &unsliced,
+            &orientation_id,
+            "{\"purpose\":\"plan-estimate\"}",
+            &printer_id,
+            &recommendations,
+        )?;
         let output = Command::new(&executable)
-            .arg("--slice").arg("0")
-            .arg("--outputdir").arg(&output_dir)
+            .arg("--slice")
+            .arg("0")
+            .arg("--outputdir")
+            .arg(&output_dir)
             .arg(&unsliced)
             .output()
             .map_err(|e| format!("Could not start OrcaSlicer estimation: {e}"))?;
         if !output.status.success() {
-            return Err(format!("OrcaSlicer could not slice the candidate plan ({}). {}{}", output.status, String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)));
+            return Err(format!(
+                "OrcaSlicer could not slice the candidate plan ({}). {}{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
-        let gcode = fs::read_dir(&output_dir).map_err(|e| e.to_string())?
-            .filter_map(Result::ok).map(|entry| entry.path())
-            .find(|path| path.extension().and_then(|value| value.to_str()).map(str::to_ascii_lowercase).as_deref() == Some("gcode"))
+        let gcode = fs::read_dir(&output_dir)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.extension()
+                    .and_then(|value| value.to_str())
+                    .map(str::to_ascii_lowercase)
+                    .as_deref()
+                    == Some("gcode")
+            })
             .ok_or_else(|| "OrcaSlicer completed without creating a G-code file.".to_string())?;
         read_gcode_plan_metrics(&gcode)
     })();
@@ -3324,24 +3794,50 @@ fn estimate_plan_metrics(
     result
 }
 
-fn package_check(id: &str, label: &str, passed: bool, detail: impl Into<String>) -> PackageValidationCheck {
-    PackageValidationCheck { id: id.into(), label: label.into(), passed, detail: detail.into() }
+fn package_check(
+    id: &str,
+    label: &str,
+    passed: bool,
+    detail: impl Into<String>,
+) -> PackageValidationCheck {
+    PackageValidationCheck {
+        id: id.into(),
+        label: label.into(),
+        passed,
+        detail: detail.into(),
+    }
 }
 
 #[tauri::command]
-fn validate_manufacturing_package(path: String, target: String) -> Result<PackageValidationReport, String> {
-    let source = Path::new(&path).canonicalize().map_err(|e| format!("Cannot reopen exported 3MF: {e}"))?;
-    if source.extension().and_then(|value| value.to_str()).map(str::to_ascii_lowercase).as_deref() != Some("3mf") {
+fn validate_manufacturing_package(
+    path: String,
+    target: String,
+) -> Result<PackageValidationReport, String> {
+    let source = Path::new(&path)
+        .canonicalize()
+        .map_err(|e| format!("Cannot reopen exported 3MF: {e}"))?;
+    if source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+        != Some("3mf")
+    {
         return Err("Package validation requires a 3MF file.".into());
     }
     let file = File::open(&source).map_err(|e| format!("Cannot reopen exported 3MF: {e}"))?;
-    let mut archive = ZipArchive::new(file).map_err(|e| format!("The exported file is not a valid 3MF archive: {e}"))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| format!("The exported file is not a valid 3MF archive: {e}"))?;
     let mut names = Vec::new();
     let mut searchable = String::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
         let name = entry.name().to_string();
-        if name.ends_with(".model") || name.ends_with(".config") || name.ends_with(".json") || name.ends_with(".txt") {
+        if name.ends_with(".model")
+            || name.ends_with(".config")
+            || name.ends_with(".json")
+            || name.ends_with(".txt")
+        {
             if entry.size() <= 8 * 1024 * 1024 {
                 let mut text = String::new();
                 entry.read_to_string(&mut text).ok();
@@ -3357,28 +3853,76 @@ fn validate_manufacturing_package(path: String, target: String) -> Result<Packag
     let uses_mm = searchable.contains("unit=\"millimeter\"");
     let has_check_make = searchable.to_ascii_lowercase().contains("check make")
         || searchable.to_ascii_lowercase().contains("checkmake")
-        || names.iter().any(|name| name.to_ascii_lowercase().contains("check_make"));
+        || names
+            .iter()
+            .any(|name| name.to_ascii_lowercase().contains("check_make"));
     let settings_entry = match target.as_str() {
         "bambu" | "orca" | "creality" => Some("Metadata/project_settings.config"),
         "prusa" => Some("Metadata/Slic3r_PE.config"),
         "cura" => Some("Cura/check_make_quality_changes.inst.cfg"),
         _ => None,
     };
-    let has_settings = settings_entry.map(|expected| names.iter().any(|name| name == expected)).unwrap_or(true);
+    let has_settings = settings_entry
+        .map(|expected| names.iter().any(|name| name == expected))
+        .unwrap_or(true);
     let mut checks = vec![
-        package_check("archive", "Reopen 3MF archive", true, format!("{} entries read successfully", names.len())),
-        package_check("content-types", "3MF package declarations", has_content_types, "[Content_Types].xml is present"),
-        package_check("root-model", "Root model relationship", has_root_model, "3D/3dmodel.model is present"),
-        package_check("geometry", "Printable triangle geometry", has_mesh, "Vertices and triangles are present"),
-        package_check("build", "Build placement", has_build, "The project contains a build item"),
-        package_check("units", "Millimetre units", uses_mm, "Model units are explicitly millimetres"),
-        package_check("analysis", "Check Make analysis metadata", has_check_make, "Analysis provenance is embedded"),
+        package_check(
+            "archive",
+            "Reopen 3MF archive",
+            true,
+            format!("{} entries read successfully", names.len()),
+        ),
+        package_check(
+            "content-types",
+            "3MF package declarations",
+            has_content_types,
+            "[Content_Types].xml is present",
+        ),
+        package_check(
+            "root-model",
+            "Root model relationship",
+            has_root_model,
+            "3D/3dmodel.model is present",
+        ),
+        package_check(
+            "geometry",
+            "Printable triangle geometry",
+            has_mesh,
+            "Vertices and triangles are present",
+        ),
+        package_check(
+            "build",
+            "Build placement",
+            has_build,
+            "The project contains a build item",
+        ),
+        package_check(
+            "units",
+            "Millimetre units",
+            uses_mm,
+            "Model units are explicitly millimetres",
+        ),
+        package_check(
+            "analysis",
+            "Check Make analysis metadata",
+            has_check_make,
+            "Analysis provenance is embedded",
+        ),
     ];
     if let Some(expected) = settings_entry {
-        checks.push(package_check("settings", "Slicer process settings", has_settings, format!("Expected native entry: {expected}")));
+        checks.push(package_check(
+            "settings",
+            "Slicer process settings",
+            has_settings,
+            format!("Expected native entry: {expected}"),
+        ));
     }
     let valid = checks.iter().all(|check| check.passed);
-    Ok(PackageValidationReport { valid, target, checks })
+    Ok(PackageValidationReport {
+        valid,
+        target,
+        checks,
+    })
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -3471,12 +4015,26 @@ mod tests {
             json!({"description":"Outdoor camera bracket"}),
             schema.clone(),
             Some("data:image/png;base64,AAAA"),
-        ).unwrap();
-        assert_eq!(body.pointer("/text/format/type").and_then(Value::as_str), Some("json_schema"));
-        assert_eq!(body.pointer("/text/format/strict").and_then(Value::as_bool), Some(true));
+        )
+        .unwrap();
+        assert_eq!(
+            body.pointer("/text/format/type").and_then(Value::as_str),
+            Some("json_schema")
+        );
+        assert_eq!(
+            body.pointer("/text/format/strict").and_then(Value::as_bool),
+            Some(true)
+        );
         assert_eq!(body.pointer("/text/format/schema"), Some(&schema));
-        assert_eq!(body.pointer("/input/0/content/2/type").and_then(Value::as_str), Some("input_image"));
-        let instructions = body.pointer("/input/0/content/0/text").and_then(Value::as_str).unwrap();
+        assert_eq!(
+            body.pointer("/input/0/content/2/type")
+                .and_then(Value::as_str),
+            Some("input_image")
+        );
+        let instructions = body
+            .pointer("/input/0/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap();
         assert!(instructions.contains("deterministic Check Make rule engine"));
         assert!(instructions.contains("do not recommend material"));
     }
@@ -3493,13 +4051,25 @@ mod tests {
     #[test]
     fn always_reports_every_slicer_adapter() {
         let adapters = detect_slicer_adapters();
-        let targets: Vec<&str> = adapters.iter().map(|adapter| adapter.target.as_str()).collect();
-        assert_eq!(targets, vec!["generic", "bambu", "orca", "prusa", "cura", "creality"]);
+        let targets: Vec<&str> = adapters
+            .iter()
+            .map(|adapter| adapter.target.as_str())
+            .collect();
+        assert_eq!(
+            targets,
+            vec!["generic", "bambu", "orca", "prusa", "cura", "creality"]
+        );
         for target in ["prusa", "cura"] {
-            let adapter = adapters.iter().find(|adapter| adapter.target == target).unwrap();
+            let adapter = adapters
+                .iter()
+                .find(|adapter| adapter.target == target)
+                .unwrap();
             assert!(!adapter.supported_printer_ids.is_empty());
             if find_executable(target).is_some() {
-                assert!(adapter.available, "{target} is installed but was not exposed as available");
+                assert!(
+                    adapter.available,
+                    "{target} is installed but was not exposed as available"
+                );
                 assert_eq!(adapter.capability, "project-3mf");
             }
         }
@@ -3537,6 +4107,30 @@ mod tests {
         assert_eq!(ke.machine_definition, "creality_ender3v3ke");
         assert_eq!(ke.variant.unwrap().1, "creality_ender3v3ke_0.4");
         assert!(cura_profile_spec("creality-ender3-v3-ke", "PA-CF").is_err());
+    }
+    #[test]
+    fn centers_cura_geometry_on_the_selected_build_plate() {
+        let source = std::env::temp_dir().join(format!(
+            "check-make-cura-center-source-{}.stl",
+            std::process::id()
+        ));
+        let target = std::env::temp_dir().join(format!(
+            "check-make-cura-center-target-{}.3mf",
+            std::process::id()
+        ));
+        fs::write(&source, "solid reference\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 20 0 0\nvertex 0 10 0\nendloop\nendfacet\nendsolid reference\n").unwrap();
+        write_3mf_with_build_center(&source, &target, "as-imported", "{}", Some((110.0, 110.0)))
+            .unwrap();
+        let mut archive = ZipArchive::new(File::open(&target).unwrap()).unwrap();
+        let mut model = String::new();
+        archive
+            .by_name("3D/3dmodel.model")
+            .unwrap()
+            .read_to_string(&mut model)
+            .unwrap();
+        assert!(model.contains("transform=\"1 0 0 0 1 0 0 0 1 100 105 0\""));
+        fs::remove_file(source).ok();
+        fs::remove_file(target).ok();
     }
     #[test]
     fn analyzes_ascii_stl_and_builds_six_orientations() {
@@ -3599,12 +4193,21 @@ mod tests {
     }
     #[test]
     fn reopens_and_validates_reference_core_3mf() {
-        let source = std::env::temp_dir().join(format!("check-make-validation-{}.stl", std::process::id()));
+        let source =
+            std::env::temp_dir().join(format!("check-make-validation-{}.stl", std::process::id()));
         let target = source.with_extension("3mf");
         fs::write(&source, "solid reference\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 20 0 0\nvertex 0 10 0\nendloop\nendfacet\nendsolid reference\n").unwrap();
-        write_3mf(&source, &target, "as-imported", "{\"product\":\"Check Make\"}").unwrap();
+        write_3mf(
+            &source,
+            &target,
+            "as-imported",
+            "{\"product\":\"Check Make\"}",
+        )
+        .unwrap();
 
-        let report = validate_manufacturing_package(target.to_string_lossy().into_owned(), "generic".into()).unwrap();
+        let report =
+            validate_manufacturing_package(target.to_string_lossy().into_owned(), "generic".into())
+                .unwrap();
         assert!(report.valid);
         assert!(report.checks.iter().all(|check| check.passed));
         assert!(report.checks.iter().any(|check| check.id == "geometry"));
@@ -3701,6 +4304,143 @@ mod tests {
         assert_eq!(expected.len(), 5);
     }
     #[test]
+    fn rejects_product_metadata_that_does_not_match_the_manufacturing_plan() {
+        let recommendations = vec![
+            RecommendationInput {
+                setting: "material".into(),
+                value: json!("PETG"),
+            },
+            RecommendationInput {
+                setting: "nozzle_temperature".into(),
+                value: json!("245 °C"),
+            },
+            RecommendationInput {
+                setting: "bed_temperature".into(),
+                value: json!("80 °C"),
+            },
+        ];
+        let product_metadata = json!({
+            "filamentProduct": {
+                "schemaVersion": 1,
+                "id": "prusament-petg",
+                "manufacturer": "Prusa Polymers",
+                "product": "Prusament PETG",
+                "family": "PETG",
+                "nozzleTemperatureC": {"starting": 250},
+                "bedTemperatureC": {"starting": 80}
+            }
+        })
+        .to_string();
+        assert!(
+            filament_product_from_metadata(&product_metadata, &recommendations)
+                .unwrap_err()
+                .contains("nozzle_temperature recommendation")
+        );
+    }
+    #[test]
+    fn reopens_native_projects_with_product_identity_and_reviewed_temperatures() {
+        let source = std::env::temp_dir().join(format!(
+            "check-make-product-roundtrip-{}.stl",
+            std::process::id()
+        ));
+        let bambu_target = source.with_file_name(format!(
+            "check-make-product-bambu-roundtrip-{}.3mf",
+            std::process::id()
+        ));
+        let prusa_target = source.with_file_name(format!(
+            "check-make-product-prusa-roundtrip-{}.3mf",
+            std::process::id()
+        ));
+        fs::write(&source, "solid product\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 20 0 0\nvertex 0 10 0\nendloop\nendfacet\nendsolid product\n").unwrap();
+        let recommendations = vec![
+            RecommendationInput {
+                setting: "material".into(),
+                value: json!("PETG"),
+            },
+            RecommendationInput {
+                setting: "nozzle_temperature".into(),
+                value: json!("250 °C"),
+            },
+            RecommendationInput {
+                setting: "bed_temperature".into(),
+                value: json!("80 °C"),
+            },
+            RecommendationInput {
+                setting: "wall_loops".into(),
+                value: json!(4),
+            },
+        ];
+        let metadata = json!({
+            "filamentProduct": {
+                "schemaVersion": 1,
+                "id": "prusament-petg",
+                "manufacturer": "Prusa Polymers",
+                "product": "Prusament PETG",
+                "family": "PETG",
+                "nozzleTemperatureC": {"starting": 250},
+                "bedTemperatureC": {"starting": 80}
+            }
+        })
+        .to_string();
+        let product = filament_product_from_metadata(&metadata, &recommendations)
+            .unwrap()
+            .unwrap();
+
+        let machine = json!({});
+        let mut process = json!({});
+        let mut filament = json!({});
+        apply_bambu_recommendations(&mut process, &mut filament, &recommendations);
+        apply_bambu_product_identity(&mut filament, &product);
+        let expected = expected_bambu_project_values(&process, &filament, &recommendations);
+        let (process_keys, filament_keys) = bambu_override_keys(&recommendations);
+        let settings = build_bambu_project_settings(
+            &machine,
+            &process,
+            &filament,
+            "Test printer",
+            "Test process",
+            &product.native_name(),
+            &process_keys,
+            &filament_keys,
+        );
+        write_bambu_family_project_3mf(
+            &source,
+            &bambu_target,
+            "as-imported",
+            &metadata,
+            &settings,
+            "CheckMake-Test",
+        )
+        .unwrap();
+        let applied = validate_bambu_family_project_settings(&bambu_target, &expected).unwrap();
+        validate_bambu_product_identity(&bambu_target, Some(&product)).unwrap();
+        let reopened = read_bambu_family_project_settings(&bambu_target).unwrap();
+        assert_eq!(
+            reopened["filament_settings_id"],
+            json!([product.native_name()])
+        );
+        assert_eq!(reopened["nozzle_temperature"], json!(["250"]));
+        assert_eq!(reopened["hot_plate_temp"], json!(["80"]));
+        assert!(applied.contains(&"nozzle_temperature".into()));
+        assert!(applied.contains(&"bed_temperature".into()));
+
+        write_3mf(&source, &prusa_target, "as-imported", &metadata).unwrap();
+        let mut config = BTreeMap::new();
+        let expected_prusa = apply_prusa_recommendations(&mut config, &recommendations);
+        apply_prusa_product_identity(&mut config, &product);
+        append_prusa_project_config(&prusa_target, &config, &metadata, "as-imported").unwrap();
+        let reopened_prusa = read_prusa_project_config(&prusa_target).unwrap();
+        validate_prusa_values(&reopened_prusa, &expected_prusa, "Prusa test project").unwrap();
+        validate_prusa_product_identity(&reopened_prusa, Some(&product), "Prusa test project")
+            .unwrap();
+        assert_eq!(reopened_prusa["temperature"], "250");
+        assert_eq!(reopened_prusa["bed_temperature"], "80");
+
+        fs::remove_file(source).ok();
+        fs::remove_file(bambu_target).ok();
+        fs::remove_file(prusa_target).ok();
+    }
+    #[test]
     #[ignore = "requires an installed OrcaSlicer application"]
     fn exports_orca_project_with_effective_settings() {
         if find_executable("orca").is_none() {
@@ -3730,13 +4470,25 @@ mod tests {
             },
             RecommendationInput {
                 setting: "nozzle_temperature".into(),
-                value: json!("245 °C"),
+                value: json!("250 °C"),
             },
             RecommendationInput {
                 setting: "bed_temperature".into(),
-                value: json!("75 °C"),
+                value: json!("80 °C"),
             },
         ];
+        let product_metadata = json!({
+            "filamentProduct": {
+                "schemaVersion": 1,
+                "id": "prusament-petg",
+                "manufacturer": "Prusa Polymers",
+                "product": "Prusament PETG",
+                "family": "PETG",
+                "nozzleTemperatureC": {"starting": 250},
+                "bedTemperatureC": {"starting": 80}
+            }
+        })
+        .to_string();
         for printer_id in [
             "elegoo-neptune4pro",
             "creality-ender3-v3-se",
@@ -3750,7 +4502,7 @@ mod tests {
                 &source,
                 &target,
                 "as-imported",
-                "{}",
+                &product_metadata,
                 printer_id,
                 &recommendations,
             )
@@ -3762,13 +4514,21 @@ mod tests {
             assert_eq!(settings["wall_loops"], "5");
             assert_eq!(settings["sparse_infill_density"], "25%");
             assert_eq!(settings["sparse_infill_pattern"], "gyroid");
+            assert_eq!(
+                settings["filament_settings_id"],
+                json!(["Prusa Polymers · Prusament PETG"])
+            );
+            assert_eq!(settings["nozzle_temperature"], json!(["250"]));
+            assert_eq!(settings["hot_plate_temp"], json!(["80"]));
             fs::remove_file(target).ok();
         }
     }
     #[test]
     #[ignore = "requires an installed OrcaSlicer application"]
     fn slices_plan_and_reads_material_and_time_metrics() {
-        if find_executable("orca").is_none() { return; }
+        if find_executable("orca").is_none() {
+            return;
+        }
         let recommendations = serde_json::to_string(&vec![
             json!({"setting":"material","value":"PLA"}),
             json!({"setting":"layer_height","value":"0.20 mm"}),
@@ -3778,11 +4538,16 @@ mod tests {
             json!({"setting":"infill_type","value":"Gyroid"}),
             json!({"setting":"infill_percent","value":15}),
             json!({"setting":"support","value":"Off"}),
-            json!({"setting":"brim","value":"Off"})
-        ]).unwrap();
+            json!({"setting":"brim","value":"Off"}),
+        ])
+        .unwrap();
         let metrics = estimate_plan_metrics(
-            "../tests/fixtures/cube.stl".into(), "as-imported".into(), "bambu-x1c".into(), recommendations,
-        ).unwrap();
+            "../tests/fixtures/cube.stl".into(),
+            "as-imported".into(),
+            "bambu-x1c".into(),
+            recommendations,
+        )
+        .unwrap();
         assert!(metrics.material_grams > 0.0);
         assert!(metrics.estimated_time_seconds > 0.0);
         assert!(metrics.material_volume_cm3 > 0.0);
@@ -3883,18 +4648,30 @@ mod tests {
             },
             RecommendationInput {
                 setting: "nozzle_temperature".into(),
-                value: json!("245 °C"),
+                value: json!("250 °C"),
             },
             RecommendationInput {
                 setting: "bed_temperature".into(),
-                value: json!("75 °C"),
+                value: json!("80 °C"),
             },
         ];
+        let product_metadata = json!({
+            "filamentProduct": {
+                "schemaVersion": 1,
+                "id": "prusament-petg",
+                "manufacturer": "Prusa Polymers",
+                "product": "Prusament PETG",
+                "family": "PETG",
+                "nozzleTemperatureC": {"starting": 250},
+                "bedTemperatureC": {"starting": 80}
+            }
+        })
+        .to_string();
         let result = export_prusa_project(
             &source,
             &target,
             "as-imported",
-            "{}",
+            &product_metadata,
             "prusa-mk4s",
             &recommendations,
         )
@@ -3906,14 +4683,20 @@ mod tests {
         assert_eq!(config["perimeters"], "5");
         assert_eq!(config["fill_density"], "25%");
         assert_eq!(config["fill_pattern"], "gyroid");
+        assert_eq!(
+            config["filament_settings_id"],
+            "Prusa Polymers · Prusament PETG"
+        );
+        assert_eq!(config["temperature"], "250");
+        assert_eq!(config["bed_temperature"], "80");
         let mut archive = ZipArchive::new(File::open(&target).unwrap()).unwrap();
-        let mut metadata = String::new();
+        let mut archived_metadata = String::new();
         archive
             .by_name("Metadata/check_make.json")
             .unwrap()
-            .read_to_string(&mut metadata)
+            .read_to_string(&mut archived_metadata)
             .unwrap();
-        assert_eq!(metadata, "{}");
+        assert_eq!(archived_metadata, product_metadata);
         fs::remove_file(target).ok();
     }
     #[test]
@@ -3950,13 +4733,25 @@ mod tests {
             },
             RecommendationInput {
                 setting: "nozzle_temperature".into(),
-                value: json!("245 °C"),
+                value: json!("250 °C"),
             },
             RecommendationInput {
                 setting: "bed_temperature".into(),
-                value: json!("75 °C"),
+                value: json!("80 °C"),
             },
         ];
+        let product_metadata = json!({
+            "filamentProduct": {
+                "schemaVersion": 1,
+                "id": "prusament-petg",
+                "manufacturer": "Prusa Polymers",
+                "product": "Prusament PETG",
+                "family": "PETG",
+                "nozzleTemperatureC": {"starting": 250},
+                "bedTemperatureC": {"starting": 80}
+            }
+        })
+        .to_string();
         for printer_id in [
             "elegoo-neptune4pro",
             "creality-ender3-v3-se",
@@ -3970,7 +4765,7 @@ mod tests {
                 &source,
                 &target,
                 "as-imported",
-                "{}",
+                &product_metadata,
                 printer_id,
                 &recommendations,
             )
@@ -3989,7 +4784,23 @@ mod tests {
             assert_eq!(values["wall_line_count"], "5");
             assert_eq!(values["infill_sparse_density"], "25");
             assert_eq!(values["infill_pattern"], "gyroid");
-            assert_eq!(values["material_print_temperature"], "245");
+            assert_eq!(values["material_print_temperature"], "250");
+            assert_eq!(values["material_bed_temperature"], "80");
+            let mut extruder = String::new();
+            archive
+                .by_name(&format!(
+                    "Cura/check_make_{}_extruder_0.extruder.cfg",
+                    match printer_id {
+                        "elegoo-neptune4pro" => "elegoo_neptune_4_pro",
+                        "creality-ender3-v3-se" => "creality_ender3_v3_se",
+                        "creality-ender3-v3-ke" => "creality_ender3_v3_ke",
+                        _ => unreachable!(),
+                    }
+                ))
+                .unwrap()
+                .read_to_string(&mut extruder)
+                .unwrap();
+            assert!(extruder.contains("name = Prusa Polymers · Prusament PETG"));
             fs::remove_file(target).ok();
         }
     }
@@ -4085,6 +4896,14 @@ mod tests {
             assert!(result.validated);
             assert!(result.applied_settings.contains(&"wall_loops".into()));
             assert!(result.applied_settings.contains(&"infill_percent".into()));
+            assert!(result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("own headless round-trip was not run")));
+            assert!(!result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("could not perform a headless round-trip")));
             let settings = read_bambu_family_project_settings(&target).unwrap();
             assert_eq!(settings["wall_loops"], "5");
             assert_eq!(settings["sparse_infill_density"], "25%");
@@ -4132,12 +4951,32 @@ mod tests {
                 setting: "bottom_layers".into(),
                 value: json!(5),
             },
+            RecommendationInput {
+                setting: "nozzle_temperature".into(),
+                value: json!("250 °C"),
+            },
+            RecommendationInput {
+                setting: "bed_temperature".into(),
+                value: json!("80 °C"),
+            },
         ];
+        let metadata = json!({
+            "filamentProduct": {
+                "schemaVersion": 1,
+                "id": "prusament-petg",
+                "manufacturer": "Prusa Polymers",
+                "product": "Prusament PETG",
+                "family": "PETG",
+                "nozzleTemperatureC": {"starting": 250},
+                "bedTemperatureC": {"starting": 80}
+            }
+        })
+        .to_string();
         let result = export_bambu_project(
             &source,
             &target,
             "as-imported",
-            "{}",
+            &metadata,
             "bambu-x1c",
             &recommendations,
         )
@@ -4154,6 +4993,12 @@ mod tests {
         assert_eq!(settings["skin_infill_density"], "25%");
         assert_eq!(settings["top_shell_layers"], "6");
         assert_eq!(settings["bottom_shell_layers"], "5");
+        assert_eq!(
+            settings["filament_settings_id"],
+            json!(["Prusa Polymers · Prusament PETG"])
+        );
+        assert_eq!(settings["nozzle_temperature"], json!(["250"]));
+        assert_eq!(settings["hot_plate_temp"], json!(["80"]));
         let overrides = settings["different_settings_to_system"][0]
             .as_str()
             .unwrap();

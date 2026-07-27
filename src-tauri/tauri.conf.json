@@ -30,6 +30,8 @@
     "longDescription": "AI-assisted 3D model analysis and compatible 3MF generation.",
     "resources": {
       "../LICENSE": "LICENSE.txt",
+      "../licenses/Creality-Print-AGPL-3.0.txt": "licenses/Creality-Print-AGPL-3.0.txt",
+      "../licenses/Dashboard-Icons-APACHE-2.0.txt": "licenses/Dashboard-Icons-APACHE-2.0.txt",
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
       "../TRADEMARKS.md": "TRADEMARKS.md"
     },

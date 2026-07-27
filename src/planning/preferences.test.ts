@@ -4,6 +4,7 @@ import { ruleEvidenceById, rules } from '../rules/load';
 import { evaluateRules } from '../rules/engine';
 import type { ModelAnalysis, PlanPreference, Questionnaire, Recommendation } from '../types';
 import { buildPlanPreferenceCandidates, planPreferenceDefinitions } from './preferences';
+import { emptyManufacturingIntent } from '../intent/manufacturingIntent';
 
 const analysis = {
   heightMm: 80,
@@ -31,7 +32,7 @@ const evaluate = (preference: PlanPreference): Recommendation[] => {
 };
 
 describe('plan preference pipeline', () => {
-  it('builds the five supported profiles from one Balanced baseline', () => {
+  it('builds the five supported profiles from one deterministic baseline', () => {
     const balanced = evaluate('balanced');
     const plans = Object.fromEntries(planPreferenceDefinitions.map(definition => [definition.id, evaluate(definition.id)])) as Record<PlanPreference, Recommendation[]>;
     const candidates = buildPlanPreferenceCandidates(balanced, plans, questionnaire);
@@ -55,5 +56,24 @@ describe('plan preference pipeline', () => {
 
   it('does not expose cost or weight as selectable preferences', () => {
     expect(planPreferenceDefinitions.map(definition => definition.id)).not.toEqual(expect.arrayContaining(['lower-cost', 'lower-weight']));
+  });
+
+  it('does not let Faster weaken a designer-stated load-critical baseline', () => {
+    const loadCritical = structuredClone(questionnaire);
+    loadCritical.manufacturingIntent = emptyManufacturingIntent(loadCritical);
+    loadCritical.manufacturingIntent.failureConsequence = {
+      value: 'safety-critical',
+      status: 'user-stated',
+      confidence: 1,
+      evidenceIds: ['facet:failure-safety:1'],
+    };
+    const balanced = evaluateRules(rules, analysis, loadCritical, ruleEvidenceById);
+    const plans = Object.fromEntries(planPreferenceDefinitions.map(definition => [
+      definition.id,
+      evaluateRules(rules, analysis, loadCritical, ruleEvidenceById, definition.objective),
+    ])) as Record<PlanPreference, Recommendation[]>;
+    const faster = buildPlanPreferenceCandidates(balanced, plans, loadCritical).find(candidate => candidate.id === 'faster');
+    expect(faster?.available).toBe(false);
+    expect(faster?.blockers.join(' ')).toContain('designer-stated load-critical use');
   });
 });

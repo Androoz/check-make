@@ -1,1 +1,3 @@
-fn main() { check_make_lib::run(); }
+fn main() {
+    check_make_lib::run();
+}

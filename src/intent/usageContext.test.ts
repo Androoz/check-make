@@ -10,6 +10,7 @@ describe('Interpretation v3.8 usage context', () => {
       expect.objectContaining({ key: 'load.type', value: 'cyclic', certainty: 'strong_hypothesis' }),
       expect.objectContaining({ key: 'failure.consequence', value: 'safety_critical', certainty: 'weak_hypothesis' }),
     ]));
+    expect(result?.questions).toEqual([]);
   });
 
   it('covers multiple surrounding product systems rather than one camping-chair special case', () => {
@@ -19,4 +20,3 @@ describe('Interpretation v3.8 usage context', () => {
     expect(interpretUsageContext('Seal for a water pipe')?.id).toBe('plumbing');
   });
 });
-

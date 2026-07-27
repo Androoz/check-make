@@ -62,11 +62,12 @@ describe('decision automation', () => {
     ]));
   });
 
-  it('requests exact details for specialist material and safety domains', () => {
+  it('requests exact details only for specialist material domains', () => {
     const result = analyzePurposeContext('Food contact part exposed to solvents; failure could injure someone.');
     expect(result.specialistPrompts.map(prompt => prompt.id)).toEqual(expect.arrayContaining([
-      'environment-food', 'environment-chemical', 'failure-safety',
+      'environment-food', 'environment-chemical',
     ]));
+    expect(result.specialistPrompts.map(prompt => prompt.id)).not.toContain('failure-safety');
   });
 
   it('asks for confirmation instead of repairing safety-relevant typos', () => {

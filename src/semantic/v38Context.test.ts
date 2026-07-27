@@ -46,7 +46,7 @@ describe('Interpretation v3.8 parent-system integration', () => {
       impact: { value: 'medium', status: 'assumed' },
       priority: { value: 'strength', status: 'assumed' },
     });
-    expect(result.questions.map(question => question.id)).toContain('semantic:failure.consequence:safety_critical');
+    expect(result.questions.map(question => question.id)).not.toContain('semantic:failure.consequence:safety_critical');
     expect(intentFactUsable(result.manufacturingIntent!.environment.location)).toBe(false);
     expect(intentFactUsable(result.manufacturingIntent!.failureConsequence)).toBe(false);
   });
@@ -73,4 +73,3 @@ describe('Interpretation v3.8 parent-system integration', () => {
     expect(promotedSemanticFacts(interpretation, description)).toEqual([]);
   });
 });
-

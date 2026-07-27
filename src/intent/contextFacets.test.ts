@@ -42,4 +42,10 @@ describe('context facets', () => {
       id: 'function-space', category: 'object-function', value: 'creates or maintains spacing',
     }));
   });
+
+  it('recognizes a designer-stated load-critical requirement', () => {
+    expect(extractContextFacets('Load-critical camping-chair spacer under repeated outdoor use.')).toContainEqual(
+      expect.objectContaining({ id: 'failure-safety', value: 'safety-critical' }),
+    );
+  });
 });
