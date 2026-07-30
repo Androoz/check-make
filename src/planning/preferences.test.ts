@@ -50,12 +50,43 @@ describe('plan preference pipeline', () => {
       to: '0.24 mm',
     });
     expect(candidates.find(candidate => candidate.id === 'visual-quality')?.recommendations.find(item => item.setting === 'seam')?.value).toBe('Back');
+    expect(candidates.find(candidate => candidate.id === 'fit-accuracy')?.recommendations.find(item => item.setting === 'layer_height')?.value).toBe('0.20 mm');
     expect(candidates.find(candidate => candidate.id === 'fit-accuracy')?.recommendations.find(item => item.setting === 'wall_order')?.value).toBe('Outer/Inner');
     expect(candidates.find(candidate => candidate.id === 'structural-margin')?.recommendations.find(item => item.setting === 'wall_loops')?.value).toBe(5);
   });
 
   it('does not expose cost or weight as selectable preferences', () => {
     expect(planPreferenceDefinitions.map(definition => definition.id)).not.toEqual(expect.arrayContaining(['lower-cost', 'lower-weight']));
+  });
+
+  it('uses finer layers only for a confirmed Z or surface concern', () => {
+    const value = (criticalDimension: Questionnaire['criticalDimension']) =>
+      evaluateRules(rules, analysis, { ...questionnaire, criticalDimension }, ruleEvidenceById)
+        .find(item => item.setting === 'layer_height');
+    expect(value(undefined)?.value).toBe('0.20 mm');
+    expect(value('unknown')?.value).toBe('0.20 mm');
+    expect(value('xy')?.value).toBe('0.20 mm');
+    expect(value('z')).toMatchObject({
+      value: '0.16 mm',
+      ruleIds: ['Q11'],
+      inputEvidenceIds: ['decision:critical-dimension:z'],
+    });
+    expect(value('surface')).toMatchObject({
+      value: '0.16 mm',
+      ruleIds: ['Q12'],
+      inputEvidenceIds: ['decision:critical-dimension:surface'],
+    });
+  });
+
+  it('does not let Faster override a confirmed critical dimension', () => {
+    const fitQuestionnaire = { ...questionnaire, criticalDimension: 'z' as const };
+    const balanced = evaluateRules(rules, analysis, fitQuestionnaire, ruleEvidenceById);
+    const plans = Object.fromEntries(planPreferenceDefinitions.map(definition => [
+      definition.id,
+      evaluateRules(rules, analysis, fitQuestionnaire, ruleEvidenceById, definition.objective),
+    ])) as Record<PlanPreference, Recommendation[]>;
+    expect(buildPlanPreferenceCandidates(balanced, plans, fitQuestionnaire).find(candidate => candidate.id === 'faster'))
+      .toMatchObject({ available: false, blockers: [expect.stringContaining('critical dimension')] });
   });
 
   it('does not let Faster weaken a designer-stated load-critical baseline', () => {

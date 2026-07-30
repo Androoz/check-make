@@ -150,6 +150,7 @@ export interface Questionnaire {
   priority: 'unknown' | Priority;
   supportsAllowed: 'unknown' | boolean;
   supportPreference?: 'auto' | 'required' | 'forbidden';
+  criticalDimension?: 'unknown' | 'xy' | 'z' | 'surface';
   printer: PrinterProfile;
   printerId: string;
   manufacturingIntent?: ManufacturingIntent;

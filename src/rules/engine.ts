@@ -28,11 +28,14 @@ function ruleValue(ctx: unknown, path: string) {
   return get(ctx, path);
 }
 
-function conditionEvidenceIds(path: string, intent: ManufacturingIntent, spatial: Questionnaire['spatialIntent']): string[] {
+function conditionEvidenceIds(path: string, intent: ManufacturingIntent, spatial: Questionnaire['spatialIntent'], answers: Questionnaire): string[] {
   const answerFacts: Record<string, EvidencedValue<unknown>> = {
     environment: intent.environment.location, load: intent.mechanical.loadMode, impact: intent.mechanical.impact,
     heat: intent.thermal.band, priority: intent.preferences.priority, supportsAllowed: intent.preferences.supportsAllowed,
   };
+  if (path === 'answers.criticalDimension' && answers.criticalDimension && answers.criticalDimension !== 'unknown') {
+    return [`decision:critical-dimension:${answers.criticalDimension}`];
+  }
   if (path.startsWith('answers.')) return answerFacts[path.slice('answers.'.length)]?.evidenceIds ?? [];
   if (path.startsWith('intent.') && path.endsWith('.value')) {
     return factAt({ intent }, path.slice(0, -'.value'.length))?.evidenceIds ?? [];
@@ -103,7 +106,7 @@ export function evaluateRules(
 
   for (const rule of [...rules].sort((left, right) => left.priority - right.priority)) {
     if (!rule.conditions.every(condition => matches(ruleValue(ctx, condition.path), condition.op, condition.value))) continue;
-    const inputEvidenceIds = [...new Set(rule.conditions.flatMap(condition => conditionEvidenceIds(condition.path, intent, answers.spatialIntent)))];
+    const inputEvidenceIds = [...new Set(rule.conditions.flatMap(condition => conditionEvidenceIds(condition.path, intent, answers.spatialIntent, answers)))];
     for (const rawAction of rule.actions) {
       const action = typeof rawAction.value === 'string' && rawAction.value.startsWith('$')
         ? { ...rawAction, value: get(ctx, rawAction.value.slice(1)) as RuleAction['value'] }

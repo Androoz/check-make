@@ -157,6 +157,8 @@ describe('accessible Check Make design system', () => {
     expect(results).not.toContain('Lower cost');
     expect(results).not.toContain('Lower weight');
     expect(results).toContain('Filament product profile');
+    expect(results).toContain('compatible reviewed product profile');
+    expect(results).toContain('family fallback remains selected until you confirm');
     expect(results).toContain('Manufacturer source');
     expect(css).toContain('.plan-preference-card');
     expect(css).toContain('.plan-preference-blocked');
@@ -198,6 +200,10 @@ describe('accessible Check Make design system', () => {
     expect(app).not.toContain('Requirements understood from context');
     expect(app).not.toContain('Add function to Context');
     expect(app).not.toContain('Object hypothesis');
+    expect(app).toContain("purposeClarification.trim() && intelligence.purposeConfirmed ? 'Updated' : 'Review'");
+    expect(app).toContain("const clarification = followUps['object-purpose-description']?.trim()");
+    expect(css).toMatch(/\.interpretation-summary > div p \{[^}]*font-size: 13px/);
+    expect(css).toMatch(/\.interpretation-summary ul \{[^}]*font-size: 12px/);
   });
 
   it('integrates compatible material alternatives into the Material setting', () => {
@@ -231,6 +237,7 @@ describe('accessible Check Make design system', () => {
     expect(app).toContain("status.startsWith('Project saved:') ? 'Check Make project saved.'");
     expect(css).toContain('.export-details > summary');
     expect(app).toContain('Exported file');
+    expect(app).toContain('fileNameFromPath');
     expect(app).toContain('Export notes');
     expect(app).toContain('Validation checks');
     expect(app).toContain('of {validationReport.checks.length} passed');
@@ -244,6 +251,11 @@ describe('accessible Check Make design system', () => {
     expect(css).toContain('.export-notes > ul');
     expect(css).toContain('.export-validation > ul');
     expect(css).toContain('.export-actions');
+  });
+
+  it('does not add a detached disclosure arrow to the plan-preference header', () => {
+    expect(css).not.toContain('.plan-preference-summary::before');
+    expect(css).not.toContain('.plan-preference-card[open] > .plan-preference-summary::before');
   });
 
   it('starts a fresh project when replacing the model', () => {

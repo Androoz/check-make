@@ -87,11 +87,49 @@ describe('local model intelligence', () => {
     expect(result.questions.map(question => question.id)).not.toContain('object-purpose-description');
   });
 
+  it('updates an unclear model understanding from a user-supplied RC wheel purpose', () => {
+    const initial = localModelAnalysis({
+      ...model,
+      fileName: 'Comp_M05_3mm_offset.stl',
+      metadata: { format: 'stl', encoding: 'binary', clues: [] },
+    }, 'Part for a vehicle assembly.');
+    const refined = refineLocalIntelligence(initial, {
+      'object-purpose-description': 'Wheel rim for a toy radio-controlled car.',
+    });
+    expect(refined.purposeConfirmed).toBe(true);
+    expect(refined.objectHypothesis?.purpose).toMatchObject({
+      value: 'Wheel rim for a toy radio-controlled car.',
+      status: 'confirmed',
+    });
+  });
+
   it('keeps explicit identity and purpose separate without repeating the purpose question', () => {
     const result = localModelAnalysis(model, 'Protective cover that snaps onto a housing.');
     expect(result.objectHypothesis?.identity).toMatchObject({ value: 'protective cover or enclosure', status: 'user-stated' });
     expect(result.objectHypothesis?.purpose).toMatchObject({ value: 'protects or encloses', status: 'user-stated' });
     expect(result.questions.map(question => question.id)).not.toContain('object-purpose-description');
+  });
+
+  it('asks for the critical dimension when fit is consequential and closes it from a structured answer', () => {
+    const initial = localModelAnalysis(model, 'Protective cover with a snap-fit mating surface.');
+    expect(initial.questions.find(question => question.id === 'intent-critical-dimension')).toMatchObject({
+      kind: 'single',
+      options: expect.arrayContaining([
+        expect.objectContaining({ value: 'xy' }),
+        expect.objectContaining({ value: 'z' }),
+        expect.objectContaining({ value: 'surface' }),
+        expect.objectContaining({ value: 'unknown' }),
+      ]),
+    });
+    const refined = refineLocalIntelligence(initial, {
+      priority: 'accuracy',
+      load: 'none',
+      impact: 'none',
+      environment: 'indoor',
+      heat: 'normal',
+      'intent-critical-dimension': 'z',
+    });
+    expect(refined.questions.map(question => question.id)).not.toContain('intent-critical-dimension');
   });
 
   it('keeps naming hypotheses out of rule context until the user confirms them', () => {

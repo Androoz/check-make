@@ -15,9 +15,9 @@ import { evaluateRules } from './rules/engine';
 import { ruleEvidenceById, rules } from './rules/load';
 import { checkBuildVolume, checkMaterialCompatibility } from './material/compatibility';
 import { assessMaterialCandidate, evaluateMaterialPlan, planForMaterial } from './material/catalog';
-import { assessFilamentProduct, filamentProductProfile, filamentProductsForFamily, planForFilamentProduct } from './material/products';
+import { assessFilamentProduct, filamentProductProfile, filamentProductsForFamily, matchingCompatibleFilamentProduct, planForFilamentProduct } from './material/products';
 import { getPrinter, printerAgnosticProfile, printerProfiles } from './printers/profiles';
-import { analyzeWithLocalSemanticAI, analyzeWithOpenAI, localModelAnalysis, prepareIntelligenceForReview, questionnaireFromIntelligence, refineLocalIntelligence } from './ai/modelIntelligence';
+import { analyzeWithLocalSemanticAI, analyzeWithOpenAI, criticalDimensionQuestion, localModelAnalysis, prepareIntelligenceForReview, questionnaireFromIntelligence, refineLocalIntelligence } from './ai/modelIntelligence';
 import { describeObjectUnderstanding } from './ai/objectUnderstanding';
 import { packageFileName, serializeRecommendations } from './export/manufacturing';
 import { adapterPlaceholders, mergeDetectedAdapters, suggestSlicerTarget, supportsPrinter } from './export/adapters';
@@ -31,7 +31,7 @@ import { deriveWorkflowStage, isPreparationComplete, prepareStatus } from './wor
 import { analyzePurposeContext } from './workflow/decisionAutomation';
 import { intentFactUsable } from './intent/manufacturingIntent';
 import type { AIConnection, ModelIntelligence } from './ai/modelIntelligence';
-import type { ChecklistField, CompatibilityNotice, ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, PlanPreference, Recommendation, SlicerAdapterStatus, SlicerTarget, SpatialManufacturingIntent, SpatialRegion, SpatialRegionKind } from './types';
+import type { ChecklistField, CompatibilityNotice, ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, PlanPreference, Questionnaire, Recommendation, SlicerAdapterStatus, SlicerTarget, SpatialManufacturingIntent, SpatialRegion, SpatialRegionKind } from './types';
 import './styles.css';
 import './desktop-mvp.css';
 import './workflow-v4.css';
@@ -52,6 +52,7 @@ const slicerIcon: Partial<Record<SlicerTarget, string>> = {
 const slicerAccent: Record<SlicerTarget, string> = {
   generic: '#1c8f70', bambu: '#00a846', orca: '#13a9ad', prusa: '#f26a21', cura: '#1769d2', creality: '#77b900',
 };
+const fileNameFromPath = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
@@ -407,7 +408,7 @@ function InterpretationSummary({
     .slice(0, 3);
   return <section className="interpretation-summary">
     <div><span className="kicker">CHECK MAKE’S UNDERSTANDING</span><strong>{hypothesis.identity.value}</strong><p>{describeObjectUnderstanding(intelligence)}</p></div>
-    <span>Review</span>
+    <span>{purposeClarification.trim() && intelligence.purposeConfirmed ? 'Updated' : 'Review'}</span>
     {needsPurpose && <label className="understanding-clarification"><b>What should this object do?</b><small>The model and Context did not establish a clear function. Add only the missing purpose here; you do not need to rewrite the original Context.</small><textarea value={purposeClarification} onChange={event => onPurposeClarification(event.target.value)} placeholder="Example: Maintains the correct spacing in a parasol base."/></label>}
     <details><summary>Why Check Make reached this understanding</summary><ul>{evidence.map(item => <li key={item.id}>{item.statement}</li>)}</ul><p>This is an interpretation of your Context and the measured geometry. Review the assumptions below before they affect the manufacturing plan.</p></details>
   </section>;
@@ -486,6 +487,7 @@ export default function App() {
   const modelPreview = useRef<HTMLDivElement>(null);
   const decisionPanel = useRef<HTMLElement>(null);
   const decisionInputs = useRef<Record<string, HTMLButtonElement | HTMLTextAreaElement | null>>({});
+  const attemptedAutomaticFilamentSelection = useRef('');
   const manuallyAnsweredDecisions = useRef(new Set<string>());
   const automaticallyAnsweredDecisions = useRef(new Set<ChecklistField>());
   const printer = printerProfiles.find(profile => profile.id === printerId);
@@ -497,7 +499,13 @@ export default function App() {
   const suggestedPackageTarget = useMemo(() => suggestSlicerTarget(adapters, printerId), [adapters, printerId]);
   const suggestedPackageAdapter = adapters.find(adapter => adapter.target === suggestedPackageTarget) ?? adapterPlaceholders[0];
   const spatialCandidates = useMemo(() => geometry ? analyzeSpatialCandidates(geometry) : undefined, [geometry]);
-  const questionnaire = useMemo(() => intelligence ? { ...questionnaireFromIntelligence(intelligence, analysisPrinter), spatialIntent } : undefined, [intelligence, analysisPrinter, spatialIntent]);
+  const questionnaire = useMemo(() => {
+    if (!intelligence) return undefined;
+    const answer = followUps[criticalDimensionQuestion.id];
+    const criticalDimension: NonNullable<Questionnaire['criticalDimension']> =
+      answer === 'xy' || answer === 'z' || answer === 'surface' ? answer : 'unknown';
+    return { ...questionnaireFromIntelligence(intelligence, analysisPrinter), criticalDimension, spatialIntent };
+  }, [followUps, intelligence, analysisPrinter, spatialIntent]);
   const recommendedOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, questionnaire.priority, questionnaire.manufacturingIntent, spatialIntent) : undefined, [analysis, questionnaire, spatialIntent]);
   const orientation = recommendedOrientation;
   const orientationPriority = questionnaire?.priority;
@@ -654,6 +662,46 @@ export default function App() {
     const assessment = selected ? assessFilamentProduct(selected, printer) : undefined;
     if (!selected || selected.family !== material || !assessment?.compatible) setFilamentProductId(undefined);
   }, [filamentProductId, material, printer]);
+
+  useEffect(() => {
+    if (!intelligence || followUps[criticalDimensionQuestion.id]?.trim()) return;
+    const needsCriticalDimension = requestedPlanPreference === 'fit-accuracy'
+      || Boolean(intelligence.manufacturingIntent?.compatibility.fitCritical);
+    if (!needsCriticalDimension || intelligence.questions.some(question => question.id === criticalDimensionQuestion.id)) return;
+    setIntelligence(current => current ? { ...current, questions: [...current.questions, criticalDimensionQuestion] } : current);
+    setPlanQuestions(current => current.some(question => question.id === criticalDimensionQuestion.id)
+      ? current
+      : [...current, criticalDimensionQuestion]);
+    setModifyingPlan(true);
+  }, [followUps, intelligence, requestedPlanPreference]);
+
+  useEffect(() => {
+    if (!preferences.preferMatchingFilamentProfiles) {
+      attemptedAutomaticFilamentSelection.current = '';
+      return;
+    }
+    if (!material || !printer || printer.id !== preferences.defaultPrinterId) return;
+    const selectionKey = `${printer.id}:${material}`;
+    if (attemptedAutomaticFilamentSelection.current === selectionKey) return;
+    attemptedAutomaticFilamentSelection.current = selectionKey;
+    if (filamentProductId) return;
+    const matchingProduct = matchingCompatibleFilamentProduct(material, printer);
+    if (matchingProduct) setFilamentProductId(matchingProduct.id);
+  }, [filamentProductId, material, preferences.defaultPrinterId, preferences.preferMatchingFilamentProfiles, printer]);
+
+  useEffect(() => {
+    const clarification = followUps['object-purpose-description']?.trim();
+    if (!clarification || !intelligence || intelligence.purposeConfirmed) return;
+    const timer = window.setTimeout(() => {
+      const refined = refineLocalIntelligence(intelligence, {
+        ...followUps,
+        'object-purpose-description': clarification,
+      });
+      setPlanQuestions(refined.questions);
+      setIntelligence(refined);
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [followUps['object-purpose-description']]);
 
   const selectPrinter = (id: string) => {
     setPrinterId(id); setMaterialOverride(undefined); setFilamentProductId(undefined); setPackageTargetManuallySelected(false);
@@ -1126,6 +1174,7 @@ export default function App() {
     {settingsOpen && <aside className="settings-popover" role="dialog" aria-modal="false" aria-labelledby="settings-title">
       <div><span className="kicker">APPLICATION SETTINGS</span><h2 id="settings-title">Project defaults</h2><button className="popover-close" aria-label="Close settings" onClick={() => setSettingsOpen(false)}>×</button></div>
       <div className="settings-group"><span className="settings-label">Default printer</span><PrinterPicker value={preferences.defaultPrinterId} onChange={defaultPrinterId => updatePreferences({ defaultPrinterId })} label="Default printer" emptyLabel="No default printer" emptyDescription="New projects start without a printer"/><small>Used when a new project starts. Printer selection remains optional.</small></div>
+      <div className="settings-group"><b className="settings-label">Filament product profiles</b><label className="provider-option"><input type="checkbox" checked={preferences.preferMatchingFilamentProfiles} onChange={event => updatePreferences({ preferMatchingFilamentProfiles: event.target.checked })}/><span><b>Preselect matching filament profiles</b><small>When a project uses the default printer, preselect one reviewed and compatible filament profile from the same manufacturer. You can still choose the family fallback or another compatible product.</small></span></label></div>
       <div className="settings-group plan-default-setting"><span className="settings-label">Default plan preference</span><OptionPicker label="Default plan preference" value={preferences.defaultPlanPreference} options={planPreferenceDefinitions.map(definition => ({ value: definition.id, label: definition.label, description: definition.shortDescription }))} onChange={updateDefaultPlanPreference}/><small>{planPreferenceDefinition(preferences.defaultPlanPreference).shortDescription} Applied to new projects only and never allowed to override confirmed part requirements.</small></div>
       <div className="settings-group"><b className="settings-label">Default analysis</b>
         <label className="provider-option"><input type="radio" checked={preferences.defaultAnalysisMode === 'local'} onChange={() => { updatePreferences({ defaultAnalysisMode: 'local' }); selectAnalysisMode('local'); }}/><span><b>Local Analysis</b><small>Fast, private geometry and deterministic Context interpretation.</small></span></label>
@@ -1263,7 +1312,7 @@ export default function App() {
           <div className="export-actions"><button type="button" className="export-save-project" disabled={!sourceModelPath || busy} onClick={() => void saveProject()}>Save Check Make project…</button><button className="primary" disabled={busy || materialPlanBlocked || !sourcePath || !selectedAdapter?.available || !selectedPrinterSupported} onClick={() => void createPackage(packageTarget === 'bambu' ? 'open' : 'save')}>{busy ? 'Creating…' : packageTarget === 'generic' ? 'Create Core 3MF…' : packageTarget === 'bambu' ? 'Open in Bambu Studio' : `Export for ${selectedAdapter?.label ?? packageTarget}…`}</button></div>
           {status && <p className="save-status">{status.startsWith('Project saved:') ? 'Check Make project saved.' : status === 'Export cancelled' ? status : 'Export completed successfully.'}</p>}
           {(packageResult || status.startsWith('Project saved:') || validationReport) && <details className="export-details"><summary><span>{packageResult || validationReport ? 'Export details & checks' : 'Saved project details'}</span><em>{validationReport ? `${validationReport.checks.length} checks` : 'Details'}</em></summary><div className="export-detail-content">
-            {(packageResult?.path || status.startsWith('Project saved:')) && <section className="export-detail-section export-location"><h3>{packageResult ? 'Exported file' : 'Saved project'}</h3><div className="export-location-row"><p>{packageResult?.path ?? status.slice('Project saved:'.length).trim()}</p>{packageResult && <button type="button" className="export-reveal-file" onClick={() => void revealExportedFile(packageResult.path)}><UiIcon name="folder"/><span>{fileManagerActionLabel}</span></button>}</div></section>}
+            {(packageResult?.path || status.startsWith('Project saved:')) && <section className="export-detail-section export-location"><h3>{packageResult ? 'Exported file' : 'Saved project'}</h3><div className="export-location-row"><p title={packageResult?.path ?? status.slice('Project saved:'.length).trim()}>{fileNameFromPath(packageResult?.path ?? status.slice('Project saved:'.length).trim())}</p>{packageResult && <button type="button" className="export-reveal-file" onClick={() => void revealExportedFile(packageResult.path)}><UiIcon name="folder"/><span>{fileManagerActionLabel}</span></button>}</div></section>}
             {packageResult && packageResult.warnings.length > 0 && <section className="export-detail-section export-notes"><h3>Export notes</h3><ul>{packageResult.warnings.map(warning => <li key={warning}><span className="export-note-icon" aria-hidden="true"><UiIcon name="info"/></span><span>{warning}</span></li>)}</ul></section>}
             {validationReport && <section className="export-detail-section export-validation"><div className="export-validation-heading"><h3>Validation checks</h3><span>{validationReport.checks.filter(check => check.passed).length} of {validationReport.checks.length} passed</span></div><ul>{validationReport.checks.map(check => <li className={check.passed ? 'passed' : 'failed'} key={check.id}><span>{check.passed ? '✓' : '!'}</span><p><b>{check.label}</b>{check.detail}</p></li>)}</ul></section>}
           </div></details>}

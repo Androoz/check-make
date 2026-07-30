@@ -8,6 +8,7 @@ import {
   filamentProductProfile,
   filamentProductProfiles,
   filamentProductRegistry,
+  matchingCompatibleFilamentProduct,
   parseFilamentProductRegistry,
   planForFilamentProduct,
   qualifiedProductUpgrades,
@@ -121,6 +122,11 @@ describe('reviewed filament product profiles', () => {
       recommendation('bed_temperature', '75 °C'),
     ], profile);
     expect(result.map(item => item.value)).toEqual(['PETG', '250 °C', '70 °C']);
+  });
+
+  it('finds one compatible product from the printer manufacturer for optional preselection', () => {
+    expect(matchingCompatibleFilamentProduct('PETG', getPrinter('bambu-x1c'))?.id).toBe('bambu-petg-hf');
+    expect(matchingCompatibleFilamentProduct('PETG', getPrinter('prusa-mk4s'))?.id).toBe('prusament-petg');
   });
 
   it('maps a selected product into material and temperature recommendations without changing structure settings', () => {

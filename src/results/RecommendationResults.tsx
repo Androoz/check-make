@@ -39,6 +39,7 @@ function MaterialOptions({
   productOptions, selectedProduct, onSelectProduct,
 }: MaterialOptionsProps) {
   const alternatives = compatibleMaterialAlternatives(candidates);
+  const compatibleProducts = productOptions.filter(option => option.compatible);
   return <div className="inline-material-options">
     <div className="material-decision-reason"><b>Why Check Make selected {recommended}</b><p>{decisionReason}</p></div>
     <div className="filament-product-picker">
@@ -59,6 +60,7 @@ function MaterialOptions({
         ]}
         onChange={value => onSelectProduct(value || undefined)}
       />
+      {!selectedProduct && compatibleProducts.length > 0 && <small className="filament-product-availability">{compatibleProducts.length} compatible reviewed product profile{compatibleProducts.length === 1 ? '' : 's'} available{compatibleProducts.length === 1 ? `: ${compatibleProducts[0].profile.product}` : ''}. The family fallback remains selected until you confirm the filament product.</small>}
       {selectedProduct && <div className="selected-filament-product">
         <b>{selectedProduct.manufacturer} · {selectedProduct.product}</b>
         <p>{selectedProduct.nozzleTemperatureC.minimum}–{selectedProduct.nozzleTemperatureC.maximum} °C nozzle · {selectedProduct.bedTemperatureC.minimum}–{selectedProduct.bedTemperatureC.maximum} °C build plate · Reviewed {selectedProduct.source.reviewedAt} · Review due {selectedProduct.lifecycle.reviewDueAt}</p>

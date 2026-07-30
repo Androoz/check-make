@@ -85,6 +85,9 @@ function preferenceBlockers(preference: PlanPreference, questionnaire: Questionn
   if (preference === 'faster' && questionnaire.manufacturingIntent?.compatibility.fitCritical) {
     return ['A confirmed fit-critical interface retains the finer Balanced process settings.'];
   }
+  if (preference === 'faster' && questionnaire.criticalDimension && questionnaire.criticalDimension !== 'unknown') {
+    return ['A confirmed critical dimension retains the fit-controlled process baseline.'];
+  }
   if (preference === 'faster' && priority === 'flexibility') {
     return ['Flexible-material speed depends on a product-specific feed profile that Check Make has not verified.'];
   }

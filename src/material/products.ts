@@ -165,6 +165,22 @@ export const filamentProductProfile = (id: string | undefined) =>
 export const filamentProductsForFamily = (family: Material) =>
   filamentProductProfiles.filter(profile => profile.family === family && profile.lifecycle.status !== 'retired');
 
+const manufacturerMatchesPrinter = (profile: FilamentProductProfile, printer: PrinterProfile) => {
+  const printerBrand = printer.manufacturer.toLocaleLowerCase('en-US').split(/\s+/)[0];
+  const filamentBrand = profile.manufacturer.toLocaleLowerCase('en-US').split(/\s+/)[0];
+  return printerBrand === filamentBrand;
+};
+
+export function matchingCompatibleFilamentProduct(
+  family: Material,
+  printer: PrinterProfile,
+): FilamentProductProfile | undefined {
+  const matches = filamentProductsForFamily(family)
+    .filter(profile => manufacturerMatchesPrinter(profile, printer))
+    .filter(profile => assessFilamentProduct(profile, printer).compatible);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 export function effectiveProductLifecycleStatus(
   profile: FilamentProductProfile,
   today = new Date().toISOString().slice(0, 10),

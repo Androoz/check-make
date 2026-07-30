@@ -176,6 +176,20 @@ function requirementsFromLegacyIntelligence(ai: ModelIntelligence): RequirementA
 
 const choices = (...options: Array<[string, string]>) => options.map(([value, label]) => ({ value, label }));
 
+export const criticalDimensionQuestion: FollowUpQuestion = {
+  id: 'intent-critical-dimension',
+  field: 'intent',
+  kind: 'single',
+  question: 'Which dimension is most critical?',
+  why: 'The critical direction determines whether finer Z layers can help, or whether in-layer dimensional controls matter more.',
+  options: choices(
+    ['xy', 'XY — dimensions within each layer'],
+    ['z', 'Z — dimensions across layers'],
+    ['surface', 'Surface stepping or appearance'],
+    ['unknown', 'Not sure — keep the neutral baseline'],
+  ),
+};
+
 function questionsForRequirements(requirements: RequirementAssessments, purposeKnown: boolean, topologyQuestions: FollowUpQuestion[] = []): FollowUpQuestion[] {
   const questions = [...topologyQuestions];
   const needsConfirmation = (field: ChecklistField) => {
@@ -228,9 +242,15 @@ function questionsForObjectHypothesis(hypothesis?: ObjectHypothesis): FollowUpQu
   }];
 }
 
-function questionsForManufacturingIntent(intent?: ManufacturingIntent): FollowUpQuestion[] {
+function questionsForManufacturingIntent(
+  intent?: ManufacturingIntent,
+  answers: Record<string, string> = {},
+): FollowUpQuestion[] {
   if (!intent) return [];
   const questions: FollowUpQuestion[] = [];
+  if (intent.compatibility.fitCritical && !answers[criticalDimensionQuestion.id]?.trim()) {
+    questions.push(criticalDimensionQuestion);
+  }
   if (intent.interface.fitType.status === 'conflicted') questions.push({
     id: 'intent-fit-type', field: 'intent', kind: 'single',
     question: 'Which interface must this part actually provide?',
@@ -531,7 +551,7 @@ export function refineLocalIntelligence(ai: ModelIntelligence, answers: Record<s
     questions: questionsForRequirements(semanticRequirements, purposeEstablished || semanticPurposeEstablished || (!objectHypothesis && (Boolean(answers.purpose?.trim()) || ai.purposeConfirmed)), [
       ...unresolvedTopologyQuestions,
       ...questionsForObjectHypothesis(objectHypothesis),
-      ...questionsForManufacturingIntent(manufacturingIntent),
+      ...questionsForManufacturingIntent(manufacturingIntent, answers),
       ...questionsForSemanticInterpretation(ai.semanticInterpretation, answers.purpose ?? ai.userEvidence[0] ?? '', answers),
     ]),
     environment: inferred('environment'), load: inferred('load'), impact: inferred('impact'), heat: inferred('heat'),
@@ -609,7 +629,7 @@ function intelligenceFromSemantic(
     questions: questionsForRequirements(requirements, purposeConfirmed, [
       ...fallback.questions.filter(question => question.id === 'components' || question.id === 'mesh-repair' || question.id === 'support-tradeoff'),
       ...questionsForObjectHypothesis(objectHypothesis),
-      ...questionsForManufacturingIntent(manufacturingIntent),
+      ...questionsForManufacturingIntent(manufacturingIntent, followUpAnswers),
       ...questionsForSemanticInterpretation(semanticInterpretation, description, followUpAnswers),
     ]),
   };
@@ -661,6 +681,7 @@ export function questionnaireFromIntelligence(ai: ModelIntelligence, printer: Qu
     properties: '',
     environment: ai.environment, load: ai.load, impact: ai.impact, heat: ai.heat,
     priority: ai.priority, supportsAllowed: ai.supportsAllowed, supportPreference: ai.supportPreference ?? 'auto',
+    criticalDimension: 'unknown',
     printerId: printer.id, printer,
     manufacturingIntent,
   };

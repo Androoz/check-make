@@ -525,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "check-make"
-version = "0.2.6-beta.2"
+version = "0.2.6-beta.3"
 dependencies = [
  "reqwest 0.12.28",
  "rfd",

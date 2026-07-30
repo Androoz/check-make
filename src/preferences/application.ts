@@ -8,6 +8,7 @@ export interface ApplicationPreferences {
   defaultAnalysisMode: 'local' | 'extended';
   extendedAIProvider: 'llama' | 'openai';
   defaultPlanPreference: PlanPreference;
+  preferMatchingFilamentProfiles: boolean;
 }
 
 export const applicationPreferenceStorageKey = 'check-make.application-preferences';
@@ -18,6 +19,7 @@ export const initialApplicationPreferences: ApplicationPreferences = {
   defaultAnalysisMode: 'local',
   extendedAIProvider: 'llama',
   defaultPlanPreference: 'balanced',
+  preferMatchingFilamentProfiles: false,
 };
 
 export function normalizeApplicationPreferences(value: unknown): ApplicationPreferences {
@@ -32,6 +34,7 @@ export function normalizeApplicationPreferences(value: unknown): ApplicationPref
       : 'local',
     extendedAIProvider: stored.extendedAIProvider === 'openai' || stored.defaultAnalysisProvider === 'openai' ? 'openai' : 'llama',
     defaultPlanPreference: isPlanPreference(stored.defaultPlanPreference) ? stored.defaultPlanPreference : 'balanced',
+    preferMatchingFilamentProfiles: stored.preferMatchingFilamentProfiles === true,
   };
 }
 

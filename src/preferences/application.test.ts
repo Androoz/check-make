@@ -17,6 +17,7 @@ describe('versioned application preferences', () => {
       defaultAnalysisMode: 'extended',
       extendedAIProvider: 'openai',
       defaultPlanPreference: 'balanced',
+      preferMatchingFilamentProfiles: false,
     });
   });
 
@@ -42,11 +43,13 @@ describe('versioned application preferences', () => {
       defaultAnalysisMode: 'local',
       extendedAIProvider: 'llama',
       defaultPlanPreference: 'visual-quality',
+      preferMatchingFilamentProfiles: true,
     }, storage);
     expect(values.has(applicationPreferenceStorageKey)).toBe(true);
     expect(loadApplicationPreferences(storage)).toMatchObject({
       schemaVersion: 1,
       defaultPlanPreference: 'visual-quality',
+      preferMatchingFilamentProfiles: true,
     });
   });
 });
