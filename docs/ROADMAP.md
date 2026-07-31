@@ -145,6 +145,18 @@ Interpretation v3.7 improves semantic coverage without relaxing Check Make's tru
 
 Interpretation v3.8 does not assert that every component inherits every property of the complete product. Parent-system facts remain assumptions until reviewed, and the deterministic rules engine continues to consume only grounded or confirmed manufacturing intent.
 
+### Interpretation v3.9 — compositional context graph
+
+- [x] Add a lightweight concept graph that composes object roles with activities and places instead of storing complete user phrases.
+- [x] Support inherited context categories so one outdoor-route rule can cover disc-golf courses, golf courses, and trails.
+- [x] Require relation-bound compositions such as signage plus an outdoor course before proposing outdoor exposure, avoiding leakage into unrelated disc holders or tee organizers.
+- [x] Interpret “Next tee sign for disc golf” as reviewable disc-golf course wayfinding with outdoor, UV, moisture, visible-surface, and finish hypotheses.
+- [x] Preserve explicit indoor and negated-outdoor statements over inherited outdoor knowledge.
+- [x] Keep the v3.8 product profiles as a compatible fallback while the graph expands to additional reusable manufacturing contexts.
+- [x] Add positive reuse cases and false-positive counterexamples to the deterministic semantic corpus.
+
+Interpretation v3.9 remains deliberately bounded. Unknown niche concepts trigger clarification rather than an invented conclusion, every graph-derived fact remains a hypothesis, and no inherited fact can activate manufacturing rules before review.
+
 ## Priority 4 — fine-tuning and alternatives
 
 Priority 4 begins from the same Recommended plan and must never silently discard the confirmed use, load, environment, printer, or evidence constraints. Some foundations shipped in 0.2.5, but the priority as a whole remains open.

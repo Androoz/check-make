@@ -6,9 +6,9 @@ import { applySpatialRegionColors, regionColor } from '../geometry/spatialIntent
 import { geometryForOrientation, riskVisualizationGeometry } from '../geometry/stl';
 import { cameraPose } from '../geometry/previewScene';
 import type { CameraView } from '../geometry/previewScene';
-import type { SpatialRegion, SpatialRegionKind } from '../types';
+import type { MeshTopology, SpatialRegion, SpatialRegionKind } from '../types';
 
-export type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare' | 'spatial';
+export type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare' | 'spatial' | 'mesh';
 
 export interface ModelPreviewProps {
   geometry?: THREE.BufferGeometry;
@@ -19,9 +19,33 @@ export interface ModelPreviewProps {
   overhangRegionCount?: number;
   spatialRegions?: SpatialRegion[];
   markingKind?: SpatialRegionKind;
+  meshTopology?: MeshTopology;
   onFaceSelect?: (faceIndex: number) => void;
   captureKey?: string;
   onCapture?: (image: string) => void;
+}
+
+function TriangleOverlay({ geometry, triangleIndices, color }: { geometry: THREE.BufferGeometry; triangleIndices: number[]; color: string }) {
+  const overlay = useMemo(() => {
+    const source = geometry.getAttribute('position');
+    const values: number[] = [];
+    triangleIndices.forEach(triangleIndex => {
+      for (let vertex = 0; vertex < 3; vertex += 1) {
+        const index = triangleIndex * 3 + vertex;
+        if (index < source.count) values.push(source.getX(index), source.getY(index), source.getZ(index));
+      }
+    });
+    const result = new THREE.BufferGeometry();
+    result.setAttribute('position', new THREE.Float32BufferAttribute(values, 3));
+    result.computeVertexNormals();
+    return result;
+  }, [geometry, triangleIndices]);
+  useEffect(() => () => overlay.dispose(), [overlay]);
+  if (!overlay.getAttribute('position').count) return null;
+  return <mesh geometry={overlay} renderOrder={6}>
+    <meshBasicMaterial color={color} side={THREE.DoubleSide} transparent opacity={0.88} polygonOffset polygonOffsetFactor={-5} polygonOffsetUnits={-5}/>
+    <Edges threshold={1} color="#fff4e8"/>
+  </mesh>;
 }
 
 function useMediaQuery(query: string) {
@@ -66,8 +90,9 @@ function SpatialRegionOverlay({ geometry, region }: { geometry: THREE.BufferGeom
   </group>;
 }
 
-function PreparedModel({ geometry, orientationId, risk = false, spatialRegions = [], color = '#b8bcba', position = [0, 0, 0], opacity = 1, onFaceSelect }: {
+function PreparedModel({ geometry, orientationId, risk = false, spatialRegions = [], meshTopology, color = '#b8bcba', position = [0, 0, 0], opacity = 1, onFaceSelect }: {
   geometry: THREE.BufferGeometry; orientationId: string; risk?: boolean; spatialRegions?: SpatialRegion[];
+  meshTopology?: MeshTopology;
   color?: string; position?: [number, number, number]; opacity?: number; onFaceSelect?: (faceIndex: number) => void;
 }) {
   const prepared = useMemo(() => {
@@ -90,6 +115,10 @@ function PreparedModel({ geometry, orientationId, risk = false, spatialRegions =
       <Edges threshold={32} color={risk ? '#34413c' : '#63716b'}/>
     </mesh>
     {!risk && spatialRegions.map(region => <SpatialRegionOverlay geometry={prepared} region={region} key={region.id}/>)}
+    {meshTopology && <>
+      <TriangleOverlay geometry={prepared} triangleIndices={meshTopology.boundaryTriangleIndices ?? []} color="#f3a24f"/>
+      <TriangleOverlay geometry={prepared} triangleIndices={meshTopology.nonManifoldTriangleIndices ?? []} color="#ef704d"/>
+    </>}
   </group>;
 }
 
@@ -176,7 +205,7 @@ function CapturePreview({ captureKey, onCapture, distance, targetY }: { captureK
 export default function ModelPreview({
   geometry, orientationId = 'as-imported', mode = 'original',
   plateSize = { x: 256, y: 256, z: 256 }, plateLabel = 'Build plate',
-  overhangRegionCount = 0, spatialRegions = [], markingKind, onFaceSelect, captureKey, onCapture,
+  overhangRegionCount = 0, spatialRegions = [], markingKind, meshTopology, onFaceSelect, captureKey, onCapture,
 }: ModelPreviewProps) {
   const [showPlate, setShowPlate] = useState(true);
   const [showAxes, setShowAxes] = useState(false);
@@ -215,7 +244,7 @@ export default function ModelPreview({
       {geometry && <group rotation={[-Math.PI / 2, 0, 0]}>
         {mode === 'compare'
           ? <><PreparedModel geometry={geometry} orientationId="as-imported" color="#8a969c" opacity={0.72} position={[-comparisonOffset, 0, 0]}/><PreparedModel geometry={geometry} orientationId={orientationId} position={[comparisonOffset, 0, 0]}/></>
-          : <PreparedModel geometry={geometry} orientationId={mode === 'original' ? 'as-imported' : orientationId} risk={mode === 'risk'} spatialRegions={mode === 'spatial' ? spatialRegions : []} onFaceSelect={mode === 'spatial' && markingKind ? onFaceSelect : undefined}/>}
+          : <PreparedModel geometry={geometry} orientationId={mode === 'original' ? 'as-imported' : orientationId} risk={mode === 'risk'} spatialRegions={mode === 'spatial' ? spatialRegions : []} meshTopology={mode === 'mesh' ? meshTopology : undefined} onFaceSelect={mode === 'spatial' && markingKind ? onFaceSelect : undefined}/>}
       </group>}
       {showPlate && <ContactShadows position={[0, 0.05, 0]} scale={Math.max(plateSize.x, plateSize.y) * .8} opacity={darkAppearance ? .42 : .25} blur={2.6} far={Math.max(modelSize.z, 40) * 1.4}/>}
       <OrbitControls makeDefault target={[0, targetY, 0]}/>
@@ -225,6 +254,7 @@ export default function ModelPreview({
     <div className="scene-controls"><div><button onClick={() => setCameraReset(current => current + 1)}>Fit model</button><button className={showPlate ? 'active' : ''} aria-pressed={showPlate} onClick={() => setShowPlate(current => !current)}>Build plate</button><button className={showAxes ? 'active' : ''} aria-pressed={showAxes} onClick={() => setShowAxes(current => !current)}>Axes</button></div><label>View<select value={cameraView} onChange={event => { setCameraView(event.target.value as CameraView); setCameraReset(current => current + 1); }}><option value="isometric">Isometric</option><option value="top">Top</option><option value="front">Front</option><option value="back">Back</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option></select></label></div>
     {mode === 'risk' && <div className="risk-legend"><b>{overhangRegionCount ? `${overhangRegionCount} area${overhangRegionCount === 1 ? '' : 's'} may require support` : 'No angle-based overhangs found'}</b><span><i className="risk-normal"/>Model</span><span><i className="risk-bed"/>Bed contact</span><span><i className="risk-overhang"/>Support likely</span><span><i className="risk-severe"/>Downward face</span><small>Angle-based geometry check, not a print simulation.</small></div>}
     {mode === 'spatial' && <div className="spatial-legend"><b>Important areas</b><span><i className="spatial-load"/>Force applied</span><span><i className="spatial-mating"/>Must fit</span><span><i className="spatial-visible"/>Must look good</span><span><i className="spatial-thin"/>Functionally thin</span><small>{markingKind ? 'The selected connected surface will be used when the plan is recalculated.' : 'Bright overlays are the areas currently proposed or used by the plan.'}</small></div>}
+    {mode === 'mesh' && <div className="mesh-legend"><b>Mesh integrity review</b><span><i className="mesh-boundary"/>Open edge area</span><span><i className="mesh-non-manifold"/>Shared or overlapping edge area</span><small>The highlight is diagnostic only. It does not change the model or plan.</small></div>}
     {mode === 'compare' && <div className="comparison-legend"><span>Imported</span><span>Preview orientation</span></div>}
     {showPlate && <div className="plate-size-label">{plateLabel} {plateSize.x} × {plateSize.y} mm</div>}
   </div>;

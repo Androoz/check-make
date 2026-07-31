@@ -57,6 +57,8 @@ export function deterministicSemanticInterpretation(input: SemanticInterpretatio
   const parsed = interpretBriefV3(description);
   const relation = interpretSemanticRelations(description);
   const usageContext = interpretUsageContext(description, relation.target);
+  const contextualIdentity = usageContext?.objectIdentity;
+  const contextualFunction = usageContext?.primaryFunction;
   const facts: CandidateFact[] = [];
 
   if (relation.function) facts.push(fact(
@@ -139,7 +141,16 @@ export function deterministicSemanticInterpretation(input: SemanticInterpretatio
   );
   if (explicitLoadBearing) facts.push(fact('load.role', 'load_bearing', explicitLoadBearing));
   if (relation.function?.value === 'display') facts.push(fact('load.role', 'non_load_bearing', relation.function.evidence, relation.function.explicit));
+  const explicitlyIndoor = facts.some(existing => existing.key === 'environment.location'
+    && existing.value === 'indoor'
+    && existing.certainty === 'explicit');
   usageContext?.facts.forEach(contextFact => {
+    if (explicitlyIndoor
+      && contextFact.key === 'environment.exposure'
+      && (contextFact.value === 'uv' || contextFact.value === 'moisture')) return;
+    if (explicitlyIndoor
+      && contextFact.key === 'environment.service'
+      && (contextFact.value === 'continuous_outdoor' || contextFact.value === 'intermittent_outdoor')) return;
     if (!facts.some(existing => existing.key === contextFact.key && existing.certainty === 'explicit')) {
       facts.push(contextFact);
     }
@@ -155,15 +166,23 @@ export function deterministicSemanticInterpretation(input: SemanticInterpretatio
   }));
   const primaryFact = candidateFacts.find(item => item.key === 'primary_function');
   const unknowns = [
-    !relation.identity && 'Object identity is not established.',
-    !primaryFact && 'Primary function is not established.',
+    !relation.identity && !contextualIdentity && 'Object identity is not established.',
+    !primaryFact && !contextualFunction && 'Primary function is not established.',
     !candidateFacts.some(item => item.key === 'environment.location') && 'Operating location is not stated.',
     !candidateFacts.some(item => item.key === 'load.type') && 'Load pattern is not stated.',
   ].filter(Boolean) as string[];
   const result = {
     schemaVersion: 2 as const,
     vocabularyVersion: semanticVocabularyVersion,
-    objectIdentity: relation.identity
+    objectIdentity: contextualIdentity
+      ? {
+        value: contextualIdentity,
+        certainty: 'strong_hypothesis' as const,
+        basis: 'world_knowledge' as const,
+        evidence: `The combined context “${usageContext?.evidence}” indicates ${contextualIdentity}.`,
+        needsConfirmation: true,
+      }
+      : relation.identity
       ? { value: relation.identity.value, certainty: 'explicit' as const, basis: 'user_description' as const, evidence: relation.identity.evidence, needsConfirmation: false }
       : { value: 'unclassified object', certainty: 'unknown' as const, basis: 'combined' as const, evidence: 'Context and measured geometry do not establish a specific object family.', needsConfirmation: true },
     parentSystem: usageContext
@@ -181,7 +200,15 @@ export function deterministicSemanticInterpretation(input: SemanticInterpretatio
         evidence: 'No surrounding product or assembly was recognized.',
         needsConfirmation: false,
       },
-    primaryFunction: relation.function
+    primaryFunction: contextualFunction
+      ? {
+        value: contextualFunction.label,
+        certainty: 'strong_hypothesis' as const,
+        basis: 'world_knowledge' as const,
+        evidence: contextualFunction.evidence,
+        needsConfirmation: true,
+      }
+      : relation.function
       ? {
         value: relation.function.label,
         certainty: relation.function.explicit ? 'explicit' as const : 'strong_hypothesis' as const,
@@ -196,7 +223,7 @@ export function deterministicSemanticInterpretation(input: SemanticInterpretatio
     confirmationQuestions: [
       ...(primaryFact?.needsConfirmation ? [{
       id: 'confirm-primary-function',
-      question: `Should Check Make treat this object as something that ${relation.function?.label}?`,
+      question: `Should Check Make treat this object as something that ${contextualFunction?.label ?? relation.function?.label}?`,
       why: 'This function follows from the named object family rather than an explicit action in Context.',
       factKeys: ['primary_function' as const],
       }] : []),

@@ -48,9 +48,13 @@ describe('plan alternatives', () => {
     expect(alternatives.map(item => item.id)).toEqual(['balanced', 'faster', 'visual-quality', 'fit-accuracy', 'structural-margin']);
   });
 
-  it('does not offer a faster plan when the rules produce no change', () => {
+  it('keeps a no-change preference selectable and reports zero changes', () => {
     const base = [recommendation('layer_height', '0.24 mm')];
-    expect(buildPlanAlternatives(candidates(base)).find(item => item.id === 'faster')?.available).toBe(false);
+    expect(buildPlanAlternatives(candidates(base)).find(item => item.id === 'faster')).toMatchObject({
+      available: true,
+      changes: [],
+      limitation: undefined,
+    });
   });
 
   it('offers structural margin only when the rule-backed plan changes', () => {
@@ -59,7 +63,7 @@ describe('plan alternatives', () => {
     expect(buildPlanAlternatives(candidates(base, { 'structural-margin': performance })).find(item => item.id === 'structural-margin')).toMatchObject({ available: true, changes: [{ setting: 'wall_loops', from: 4, to: 5 }] });
   });
 
-  it('blocks a faster preference from overriding a confirmed fit-critical interface', () => {
+  it('reports a constrained faster preference as selectable with no changes', () => {
     const base = [recommendation('layer_height', '0.16 mm')];
     const faster = [recommendation('layer_height', '0.20 mm')];
     const fitCritical = questionnaire('accuracy');
@@ -69,7 +73,8 @@ describe('plan alternatives', () => {
     };
     const plans = { balanced: base, faster, 'visual-quality': base, 'fit-accuracy': base, 'structural-margin': base };
     expect(buildPlanPreferenceCandidates(base, plans, fitCritical).find(item => item.id === 'faster')).toMatchObject({
-      available: false,
+      available: true,
+      changes: [],
       blockers: [expect.stringContaining('fit-critical')],
     });
   });

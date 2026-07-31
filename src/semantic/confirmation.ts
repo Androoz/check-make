@@ -9,6 +9,8 @@ export interface PromotedSemanticFact extends CandidateFact {
 export const semanticFactAnswerId = (fact: Pick<CandidateFact, 'key' | 'value'>) =>
   `semantic:${fact.key}:${fact.value}`;
 
+export const semanticQuestionAnswerId = (questionId: string) => `semantic-question:${questionId}`;
+
 const normalized = (value: string) => value
   .normalize('NFKC')
   .toLocaleLowerCase('en-US')
@@ -54,6 +56,15 @@ export function promotedSemanticFacts(
   }, new Map<SemanticFactKey, Set<string>>());
   const promoted: PromotedSemanticFact[] = [];
   interpretation.candidateFacts.forEach(fact => {
+    const groupedAnswers = interpretation.confirmationQuestions
+      .filter(question => question.factKeys.includes(fact.key))
+      .map(question => answers[semanticQuestionAnswerId(question.id)])
+      .filter(Boolean);
+    if (fact.certainty !== 'explicit' && groupedAnswers.includes('rejected')) return;
+    if (fact.certainty !== 'explicit' && groupedAnswers.includes('confirmed')) {
+      promoted.push({ ...fact, promotion: 'user-confirmed' });
+      return;
+    }
     if (answers[semanticFactAnswerId(fact)] === 'rejected') return;
     if (answers[semanticFactAnswerId(fact)] === 'confirmed') {
       promoted.push({ ...fact, promotion: 'user-confirmed' });

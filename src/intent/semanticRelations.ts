@@ -44,7 +44,7 @@ const families: FamilyDefinition[] = [
   { value: 'duct, nozzle, or hose fitting', expression: /\b(?:air duct|duct|nozzle|hose fitting|manifold)\b/i, defaultFunction: 'connect', functionLabel: 'routes or connects a flow path' },
   { value: 'container, pot, tray, or vessel', expression: /\b(?:container|vase|plant pot|pot|bin|tray|cup|scoop|vessel)\b/i, defaultFunction: 'contain', functionLabel: 'contains material or objects' },
   { value: 'foot, pad, or bumper', expression: /\b(?:foot|feet|pad|bumper)\b/i, defaultFunction: 'support', functionLabel: 'supports or protects a contact point' },
-  { value: 'toy or figurine component', expression: /\b(?:toy|figurine|miniature|model figure)\b/i, defaultFunction: 'display', functionLabel: 'serves as a toy or display object' },
+  { value: 'toy or figurine component', expression: /\b(?:toy|figurine|miniature|model figure|model car|rc car|radio[- ]controlled car|remote[- ]controlled car|radiostyrd bil|leksaksbil)\b/i, defaultFunction: 'display', functionLabel: 'serves as a toy or display object' },
   { value: 'tool component', expression: /\b(?:tool part|power tool|hand tool)\b/i, defaultFunction: 'other', functionLabel: 'forms part of a tool' },
   { value: 'panel or plate', expression: /\b(?:panel|plate)\b/i },
 ];
@@ -56,7 +56,7 @@ const functionPatterns: Array<{ value: ObjectFunction; label: string; expression
   { value: 'hold', label: 'holds or retains another object', expression: /\b(?:hold(?:s|ing)?|retain(?:s|ing)?|secur(?:e|es|ing)|keeps? .{0,35} in (?:place|position))\b/i },
   { value: 'support', label: 'supports or carries another object', expression: /\b(?:(?<!removable )(?<!print )support(?:s|ing)?|carr(?:y|ies|ying)|bear(?:s|ing)? (?:the )?(?:load|weight))\b/i },
   { value: 'mount', label: 'mounts or positions another component', expression: /\b(?:mounts?|mounting (?!bracket\b)|attach(?:es|ing)? .{0,35} to|position(?:s|ing)? .{0,35} on)\b/i },
-  { value: 'guide', label: 'guides movement or alignment', expression: /\b(?:guid(?:e|es|ing)|align(?:s|ing)?|track(?:s|ing)?|slid(?:e|es|ing) (?:along|inside|within))\b/i },
+  { value: 'guide', label: 'guides movement, alignment, or wayfinding', expression: /\b(?:guid(?:e|es|ing)|show(?:s|ing)? .{0,35} where|align(?:s|ing)?|track(?:s|ing)?|slid(?:e|es|ing) (?:along|inside|within))\b/i },
   { value: 'move', label: 'moves or permits movement', expression: /\b(?:mov(?:e|es|ing)|rotat(?:e|es|ing)|roll(?:s|ing)?|pivot(?:s|ing)?|open(?:s|ing)? and clos(?:e|es|ing))\b/i },
   { value: 'seal', label: 'seals an interface', expression: /\b(?:seal(?:s|ing)?|prevent(?:s|ing)? (?:leaks?|water|air) (?:from )?(?:passing|entering|escaping))\b/i },
   { value: 'display', label: 'displays information or decoration', expression: /\b(?:display(?:s|ing)?|show(?:s|ing)?|decorat(?:e|es|ing))\b/i },

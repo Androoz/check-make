@@ -66,6 +66,7 @@ Reviewed filament-product data and its native-export boundary are documented in 
 - optional **Extended AI Analysis** with a local llama.cpp or cloud OpenAI provider selected in Application Settings; cloud credentials remain session-only
 - neutral free-text Context input followed by a plain-English **Check Make’s understanding** summary; assumption-led interpretation prefills a reviewable checklist from object purpose, ordinary world knowledge, filename clues, and measured geometry instead of requiring a specific sentence structure
 - parent-system context that can interpret descriptions such as “spacer for camping chair” as a spacing component within a portable folding-seat system without inferring that the printed part carries a person; load-critical constraints must be stated explicitly in Context
+- a lightweight compositional context graph that combines object roles, activities, and places—for example signage plus disc golf becomes reviewable outdoor course wayfinding—without maintaining a database of complete user phrases
 - adaptive structured follow-up questions for consequential gaps; direct Context interpretations and Check Make assumptions are labelled separately, and assumptions affect rules only after review
 - geometry-driven support planning in Prepare with two explained choices: follow Check Make or use the opposite support strategy
 - a focused Prepare review followed by a Key Settings result view; interpretation, important-area, and support inputs move behind Modify plan after confirmation

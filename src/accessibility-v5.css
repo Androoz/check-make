@@ -242,16 +242,22 @@ textarea { min-height: 76px; }
 .geometry-warnings > div { padding: 10px 11px; border: 1px solid var(--warning-border); border-left-width: 4px; border-radius: 8px; background: var(--warning-bg); }
 .geometry-warnings b { color: var(--warning); font-size: 12px; }
 .geometry-warnings p { margin: 3px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.mesh-integrity-body { display: grid; gap: 10px; margin: 0 4px 10px 37px; padding: 11px; border: 1px solid var(--warning-border); border-radius: 9px; background: var(--surface-subtle); }
+.mesh-integrity-body > p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.mesh-integrity-body .geometry-warnings { margin: 0; }
+.mesh-integrity-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mesh-integrity-actions button, .show-question-geometry { min-height: 36px; padding: 8px 11px; border: 1px solid var(--action); border-radius: 8px; background: var(--selection); color: var(--action); font-size: 12px; font-weight: 650; cursor: pointer; }
+.show-question-geometry { justify-self: start; }
 .technical-geometry, .orientation-comparison, .analysis-limits { margin: 0 12px 10px; border: 1px solid var(--separator); border-radius: 8px; background: var(--surface-subtle); color: var(--text-primary); }
-.technical-geometry > summary, .orientation-comparison > summary, .analysis-limits > summary { min-height: 38px; padding: 10px 11px; color: var(--text-secondary); font-size: 12px; font-weight: 650; cursor: pointer; }
+.technical-geometry > summary, .orientation-comparison > summary, .analysis-limits > summary { min-height: 40px; padding: 10px 11px; color: var(--text-secondary); font-size: 13px; font-weight: 650; cursor: pointer; }
 .technical-geometry[open] > summary, .orientation-comparison[open] > summary, .analysis-limits[open] > summary { border-bottom: 1px solid var(--separator); }
 .technical-geometry dl { display: grid; margin: 0; padding: 4px 11px; }
 .technical-geometry dl > div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--separator); }
 .technical-geometry dl > div:last-child { border-bottom: 0; }
-.technical-geometry dt, .technical-geometry dd { margin: 0; font-size: 12px; }
+.technical-geometry dt, .technical-geometry dd { margin: 0; font-size: 13px; line-height: 1.45; }
 .technical-geometry dt { color: var(--text-secondary); }
 .technical-geometry dd { color: var(--text-primary); font-weight: 600; text-align: right; }
-.technical-geometry > p, .orientation-comparison > p, .analysis-limit-note { margin: 0; padding: 8px 11px 11px; color: var(--text-tertiary); font-size: 11px; line-height: 1.45; }
+.technical-geometry > p, .orientation-comparison > p, .analysis-limit-note { margin: 0; padding: 9px 11px 12px; color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
 .compare-orientation { width: calc(100% - 22px); min-height: 34px !important; margin: 0 11px 10px; border: 1px solid var(--action) !important; background: var(--selection) !important; color: var(--action) !important; text-align: center !important; font-size: 12px !important; font-weight: 650; }
 .orientation-comparison > div { gap: 6px; padding: 0 8px 8px; }
 .orientation-comparison button:not(.compare-orientation) { display: grid; grid-template-columns: 1fr; min-height: 64px; padding: 9px 10px; border-color: var(--separator); background: var(--surface-raised); color: var(--text-primary); }
@@ -264,9 +270,9 @@ textarea { min-height: 76px; }
 .orientation-constraint.unresolved { background: var(--surface-warning); color: var(--text-warning); }
 .analysis-limits > div { display: grid; padding: 4px 11px; }
 .analysis-limits > div > div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--separator); }
-.analysis-limits > div > div > span { color: var(--warning); font-size: 11px; font-weight: 650; }
-.analysis-limits p { margin: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
-.analysis-limits p b { display: block; color: var(--text-primary); font-size: 12px; }
+.analysis-limits > div > div > span { color: var(--warning); font-size: 12px; font-weight: 650; }
+.analysis-limits p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.analysis-limits p b { display: block; color: var(--text-primary); font-size: 13px; }
 .scene-controls button, .scene-controls select, .preview-toolbar button { min-height: 34px; font-size: 12px; }
 .scene-controls label, .risk-legend, .comparison-legend { color: var(--text-secondary); font-size: 12px; }
 .plate-size-label, .plate-origin, .axis-label { font-size: 11px; }
@@ -406,6 +412,8 @@ textarea { min-height: 76px; }
 .settings-popover { width: 400px; border-color: var(--separator); border-radius: var(--radius-large); background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-raised); }
 .popover-close { right: -4px; top: -6px; width: 34px; height: 34px; color: var(--text-secondary); }
 .settings-group { border-color: var(--separator); }
+.filament-profile-default { display: grid; gap: 7px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--separator); }
+.filament-profile-default .provider-option { margin: 0; }
 .settings-select, .settings-label { color: var(--text-primary); font-size: 12px; }
 .settings-select select { font-size: 12px; }
 .settings-group > small, .settings-note { color: var(--text-tertiary); font-size: 12px; }
@@ -656,6 +664,14 @@ textarea { min-height: 76px; }
 .spatial-legend b { font-size: 13px; }
 .spatial-legend i { width: 14px; height: 14px; }
 .spatial-legend small { max-width: 220px; font-size: 11px; line-height: 1.45; }
+.mesh-legend { position: absolute; z-index: 2; top: 12px; bottom: auto; left: 12px; display: grid; grid-template-columns: repeat(2, auto); gap: 7px 12px; max-width: 310px; padding: 12px; border: 1px solid var(--separator); border-radius: 8px; background: color-mix(in srgb, var(--surface-raised) 94%, transparent); color: var(--text-secondary); box-shadow: var(--shadow-raised); pointer-events: none; }
+.mesh-legend b, .mesh-legend small { grid-column: 1 / -1; }
+.mesh-legend b { color: var(--text-primary); font-size: 13px; }
+.mesh-legend span { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.mesh-legend i { width: 14px; height: 14px; border-radius: 3px; }
+.mesh-boundary { background: #f3a24f; }
+.mesh-non-manifold { background: #ef704d; }
+.mesh-legend small { max-width: 270px; color: var(--text-tertiary); font-size: 11px; line-height: 1.45; }
 .spatial-selection-banner { position: absolute; z-index: 4; top: 13px; left: 50%; display: grid; gap: 2px; min-width: 300px; padding: 10px 14px; border: 1px solid var(--action); border-radius: 9px; background: color-mix(in srgb, var(--surface-raised) 94%, transparent); box-shadow: var(--shadow-raised); color: var(--text-secondary); font-size: 12px; line-height: 1.4; transform: translateX(-50%); pointer-events: none; }
 .spatial-selection-banner b { color: var(--action); font-size: 13px; }
 .spatial-callout { display: block; min-width: max-content; padding: 5px 8px; border: 2px solid var(--region-color); border-radius: 7px; background: color-mix(in srgb, var(--surface-raised) 92%, transparent); box-shadow: 0 3px 12px #0006; color: var(--text-primary); font-size: 12px; font-weight: 750; line-height: 1; pointer-events: none; }
@@ -683,6 +699,8 @@ textarea { min-height: 76px; }
 .understanding-clarification small { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 .understanding-clarification textarea { box-sizing: border-box; width: 100%; min-height: 66px; padding: 9px 10px; border: 1px solid var(--separator-strong); border-radius: 7px; background: var(--surface); color: var(--text-primary); font: inherit; font-size: 13px; line-height: 1.45; resize: vertical; }
 .understanding-clarification textarea:focus { outline: 2px solid color-mix(in srgb, var(--action) 24%, transparent); border-color: var(--action); }
+.understanding-clarification .apply-understanding { justify-self: end; min-width: 96px; border-radius: 8px; padding: 8px 14px; font-size: 13px; }
+.understanding-clarification .apply-understanding:disabled { border-color: var(--separator); background: var(--surface-subtle); color: var(--text-tertiary); }
 .interpretation-summary details { grid-column: 1 / -1; border-top: 1px solid var(--separator); }
 .interpretation-summary summary { padding-top: 9px; color: var(--text-secondary); font-size: 12px; font-weight: 700; cursor: pointer; }
 .interpretation-summary ul { display: grid; gap: 5px; margin: 8px 0 0; padding-left: 18px; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
@@ -720,6 +738,7 @@ textarea { min-height: 76px; }
 .filament-product-availability { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 .selected-filament-product { display: grid; gap: 4px; padding-top: 9px; border-top: 1px solid var(--separator); }
 .selected-filament-product a { width: fit-content; color: var(--action); font-size: 12px; font-weight: 700; }
+.manufacturer-source-error { color: var(--danger); font-size: 12px; line-height: 1.45; }
 .inline-material-options.empty { padding: 11px 12px; border: 1px solid var(--separator); border-radius: 8px; background: var(--surface-subtle); }
 .inline-material-options.empty b { color: var(--text-primary); font-size: 12px; }
 .inline-material-options.empty p { margin: 4px 0 0; }
@@ -804,7 +823,7 @@ textarea { min-height: 76px; }
 .plan-preference-option-detail dd i { font-style: normal; text-align: center; }
 .plan-preference-option-detail dd strong { color: var(--action); }
 .plan-preference-option-detail p { margin: 9px 0 0; color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
-.plan-preference-option-detail .plan-preference-option-blocker { color: var(--warning); }
+.plan-preference-option-detail .plan-preference-option-constraint { color: var(--text-secondary); }
 .plan-preference-option-detail > button { justify-self: start; min-height: 34px; padding: 6px 10px; border: 1px solid var(--action); border-radius: 7px; background: transparent; color: var(--action); font-size: 11px; font-weight: 700; cursor: pointer; }
 .unsupported-guidance p + p { margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--warning-border) 45%, transparent); }
 

@@ -246,8 +246,10 @@ function analyzeMeshTopology(positions: THREE.BufferAttribute | THREE.Interleave
   }).sort((left, right) => right.surfaceAreaMm2 - left.surfaceAreaMm2).map((component, index) => ({ ...component, id: index + 1 }));
   const boundaryEdgeCount = [...edgeOwners.values()].filter(owners => owners.length === 1).length;
   const nonManifoldEdgeCount = [...edgeOwners.values()].filter(owners => owners.length > 2).length;
+  const boundaryTriangleIndices = [...new Set([...edgeOwners.values()].filter(owners => owners.length === 1).flat())].slice(0, 4000);
+  const nonManifoldTriangleIndices = [...new Set([...edgeOwners.values()].filter(owners => owners.length > 2).flat())].slice(0, 4000);
   return {
-    topology: { componentCount: components.length, boundaryEdgeCount, nonManifoldEdgeCount, degenerateTriangleCount, watertight: boundaryEdgeCount === 0 && nonManifoldEdgeCount === 0 && components.length > 0 },
+    topology: { componentCount: components.length, boundaryEdgeCount, nonManifoldEdgeCount, degenerateTriangleCount, watertight: boundaryEdgeCount === 0 && nonManifoldEdgeCount === 0 && components.length > 0, boundaryTriangleIndices, nonManifoldTriangleIndices },
     components,
   };
 }
@@ -255,8 +257,8 @@ function analyzeMeshTopology(positions: THREE.BufferAttribute | THREE.Interleave
 function geometryFindings(measured: GeometryMeasurement, topology: MeshTopology): GeometryFinding[] {
   const findings: GeometryFinding[] = [];
   if (topology.componentCount > 1) findings.push({ id: 'multiple-components', severity: 'warning', label: `${topology.componentCount} disconnected parts detected`, detail: 'The parts may need separate orientations or process settings. Check Make currently exports them as one combined mesh.', confidence: 0.98 });
-  if (topology.boundaryEdgeCount > 0) findings.push({ id: 'open-mesh', severity: 'warning', label: 'Open mesh boundaries detected', detail: `${topology.boundaryEdgeCount} boundary edges indicate holes or non-closed surfaces. Slicer repair may change the result.`, confidence: 0.95 });
-  if (topology.nonManifoldEdgeCount > 0) findings.push({ id: 'non-manifold', severity: 'warning', label: 'Non-manifold edges detected', detail: `${topology.nonManifoldEdgeCount} edges belong to more than two triangles. The intended solid is ambiguous.`, confidence: 0.97 });
+  if (topology.boundaryEdgeCount > 0) findings.push({ id: 'open-mesh', severity: 'warning', label: 'Open edges need review', detail: `${topology.boundaryEdgeCount} model edges do not form a closed surface. This can be intentional, but a slicer may repair them.`, confidence: 0.95 });
+  if (topology.nonManifoldEdgeCount > 0) findings.push({ id: 'non-manifold', severity: 'warning', label: 'Overlapping or shared edges need review', detail: `${topology.nonManifoldEdgeCount} edges are shared by more than two faces. Filled text, multicolor regions, or overlapping bodies can cause this intentionally.`, confidence: 0.97 });
   if (topology.degenerateTriangleCount > 0) findings.push({ id: 'degenerate', severity: 'info', label: 'Degenerate triangles detected', detail: `${topology.degenerateTriangleCount} zero-area triangles will be removed during export.`, confidence: 1 });
   if (measured.risk.overhangRegionCount > 0) findings.push({ id: 'overhang-regions', severity: 'info', label: `${measured.risk.overhangRegionCount} connected overhang region(s)`, detail: `Largest region is ${measured.risk.largestOverhangRegionAreaMm2.toFixed(0)} mm² with a ${measured.risk.largestOverhangRegionSpanMm.toFixed(1)} mm projected span.`, confidence: 0.78 });
   findings.push({ id: 'bed-contact', severity: 'info', label: `${(measured.risk.bedCoverageRatio * 100).toFixed(1)}% base coverage`, detail: measured.risk.heightToContactWidthRatio === null ? 'No reliable planar bed contact was measured.' : `Height-to-contact-width proxy: ${measured.risk.heightToContactWidthRatio.toFixed(2)}. This is a geometric observation, not a failure probability.`, confidence: 0.68 });

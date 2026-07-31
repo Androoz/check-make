@@ -12,6 +12,7 @@ import {
   parseFilamentProductRegistry,
   planForFilamentProduct,
   qualifiedProductUpgrades,
+  selectedFilamentProductMatchesPlan,
 } from './products';
 
 describe('reviewed filament product profiles', () => {
@@ -122,11 +123,23 @@ describe('reviewed filament product profiles', () => {
       recommendation('bed_temperature', '75 °C'),
     ], profile);
     expect(result.map(item => item.value)).toEqual(['PETG', '250 °C', '70 °C']);
+    expect(result.find(item => item.setting === 'material')?.reason).toBe(
+      'Bambu PETG HF is the selected reviewed filament profile. Its manufacturer starting temperatures are applied below.',
+    );
+    expect(result.find(item => item.setting === 'nozzle_temperature')?.reason).toContain('selected spool label');
+    expect(result.find(item => item.setting === 'bed_temperature')?.reason).toContain('selected build plate and spool label');
+    expect(profile.source.url).toBe('https://store.bblcdn.com/3a230e260a3a47c2b0db0156e07eef91.pdf');
   });
 
   it('finds one compatible product from the printer manufacturer for optional preselection', () => {
     expect(matchingCompatibleFilamentProduct('PETG', getPrinter('bambu-x1c'))?.id).toBe('bambu-petg-hf');
     expect(matchingCompatibleFilamentProduct('PETG', getPrinter('prusa-mk4s'))?.id).toBe('prusament-petg');
+  });
+
+  it('retries product preselection when a previous material-family product is still selected', () => {
+    const printer = getPrinter('bambu-x1c');
+    expect(selectedFilamentProductMatchesPlan('bambu-pla-basic', 'PETG', printer)).toBe(false);
+    expect(selectedFilamentProductMatchesPlan('bambu-petg-hf', 'PETG', printer)).toBe(true);
   });
 
   it('maps a selected product into material and temperature recommendations without changing structure settings', () => {

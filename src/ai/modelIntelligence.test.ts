@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { localModelAnalysis, prepareIntelligenceForReview, questionnaireFromIntelligence, refineLocalIntelligence } from './modelIntelligence';
 import { getPrinter } from '../printers/profiles';
-import type { ModelAnalysis } from '../types';
+import { evaluateRules } from '../rules/engine';
+import { intentFactUsable } from '../intent/manufacturingIntent';
+import type { ModelAnalysis, Rule } from '../types';
 
 const model: ModelAnalysis = {
   fileName: 'panel.stl', triangleCount: 12,
@@ -160,6 +162,11 @@ describe('local model intelligence', () => {
 
     expect(result.evidence).toContain('2 disconnected mesh component(s) were detected.');
     expect(result.questions.map(question => question.id)).toEqual(expect.arrayContaining(['components', 'mesh-repair']));
+    expect(result.questions.find(question => question.id === 'mesh-repair')).toMatchObject({
+      kind: 'single',
+      question: 'How should Check Make treat the highlighted geometry?',
+      options: expect.arrayContaining([expect.objectContaining({ value: 'intentional' }), expect.objectContaining({ value: 'not-sure' })]),
+    });
     expect(result.questions.length).toBeLessThanOrEqual(7);
   });
 
@@ -202,5 +209,61 @@ describe('local model intelligence', () => {
       questions: [...initial.questions, { id: 'object-purpose-description', question: 'Legacy duplicate', why: 'Legacy field' }],
     });
     expect(restored.questions.map(question => question.id)).not.toContain('object-purpose-description');
+  });
+
+  it('keeps a grouped outdoor hypothesis visible through review and applies it only after confirmation', () => {
+    const description = 'Protective housing for an outdoor security camera';
+    const initial = localModelAnalysis(model, description);
+    const questionId = 'semantic-question:confirm-outdoor-service';
+    expect(initial.questions.find(question => question.id === questionId)).toMatchObject({
+      kind: 'single',
+      options: expect.arrayContaining([
+        expect.objectContaining({ value: 'confirmed' }),
+        expect.objectContaining({ value: 'rejected' }),
+      ]),
+    });
+    expect(prepareIntelligenceForReview(initial).questions.map(question => question.id)).toContain(questionId);
+    expect(intentFactUsable(initial.manufacturingIntent!.environment.uvExposure)).toBe(false);
+    expect(intentFactUsable(initial.manufacturingIntent!.environment.moistureExposure)).toBe(false);
+
+    const rule: Rule = {
+      id: 'confirmed-uv-test', group: 'test', priority: 1,
+      conditions: [{ path: 'intent.environment.uvExposure.value', op: 'eq', value: true }],
+      actions: [{ setting: 'material', value: 'ASA' }],
+      reason: 'Confirmed UV exposure.', confidence: 1,
+    };
+    expect(evaluateRules([rule], model, questionnaireFromIntelligence(initial, getPrinter('bambu-x1c')))).toEqual([]);
+
+    const confirmed = refineLocalIntelligence(initial, {
+      purpose: description,
+      [questionId]: 'confirmed',
+    });
+    expect(confirmed.questions.map(question => question.id)).not.toContain(questionId);
+    expect(confirmed.manufacturingIntent!.environment.uvExposure).toMatchObject({ value: true, status: 'confirmed' });
+    expect(confirmed.manufacturingIntent!.environment.moistureExposure).toMatchObject({ value: true, status: 'confirmed' });
+    expect(evaluateRules([rule], model, questionnaireFromIntelligence(confirmed, getPrinter('bambu-x1c')))[0]?.value).toBe('ASA');
+  });
+
+  it('lets one grouped rejection discard related exposure hypotheses without inventing indoor use', () => {
+    const description = 'Protective housing for an outdoor security camera';
+    const questionId = 'semantic-question:confirm-outdoor-service';
+    const rejected = refineLocalIntelligence(localModelAnalysis(model, description), {
+      purpose: description,
+      [questionId]: 'rejected',
+    });
+    expect(rejected.questions.map(question => question.id)).not.toContain(questionId);
+    expect(intentFactUsable(rejected.manufacturingIntent!.environment.uvExposure)).toBe(false);
+    expect(intentFactUsable(rejected.manufacturingIntent!.environment.moistureExposure)).toBe(false);
+    expect(rejected.manufacturingIntent!.environment.location).toMatchObject({ value: 'outdoor', status: 'confirmed' });
+  });
+
+  it.each([
+    ['Spacer for a camping chair', 'semantic-question:confirm-person-load'],
+    ['Next tee sign for disc golf', 'semantic-question:confirm-outdoor-service'],
+    ['Adapter for a garden hose', 'semantic:pressure.exposure:internal'],
+  ])('keeps the consequential semantic question visible for %s', (description, questionId) => {
+    const initial = localModelAnalysis(model, description);
+    expect(initial.questions.map(question => question.id)).toContain(questionId);
+    expect(prepareIntelligenceForReview(initial).questions.map(question => question.id)).toContain(questionId);
   });
 });

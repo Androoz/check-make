@@ -94,6 +94,9 @@ export interface MeshTopology {
   nonManifoldEdgeCount: number;
   degenerateTriangleCount: number;
   watertight: boolean;
+  /** Diagnostic preview only; these triangles never change the manufacturing plan. */
+  boundaryTriangleIndices?: number[];
+  nonManifoldTriangleIndices?: number[];
 }
 export interface GeometryFinding {
   id: string;

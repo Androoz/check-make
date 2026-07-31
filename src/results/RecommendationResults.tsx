@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type MouseEvent } from 'react';
+import { isTauri } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import type { CompatibilityNotice, PlanPreference, Recommendation } from '../types';
 import type { Material } from '../types';
 import type { MaterialAlternativeCandidate } from '../material/catalog';
@@ -38,8 +40,19 @@ function MaterialOptions({
   candidates, selected, printerSelected, recommended, decisionReason, onSelect,
   productOptions, selectedProduct, onSelectProduct,
 }: MaterialOptionsProps) {
+  const [sourceError, setSourceError] = useState('');
   const alternatives = compatibleMaterialAlternatives(candidates);
   const compatibleProducts = productOptions.filter(option => option.compatible);
+  const openManufacturerSource = async (event: MouseEvent<HTMLAnchorElement>, url: string) => {
+    if (!isTauri()) return;
+    event.preventDefault();
+    setSourceError('');
+    try {
+      await openUrl(url);
+    } catch (reason) {
+      setSourceError(`The manufacturer source could not be opened. ${String(reason)}`);
+    }
+  };
   return <div className="inline-material-options">
     <div className="material-decision-reason"><b>Why Check Make selected {recommended}</b><p>{decisionReason}</p></div>
     <div className="filament-product-picker">
@@ -65,7 +78,8 @@ function MaterialOptions({
         <b>{selectedProduct.manufacturer} · {selectedProduct.product}</b>
         <p>{selectedProduct.nozzleTemperatureC.minimum}–{selectedProduct.nozzleTemperatureC.maximum} °C nozzle · {selectedProduct.bedTemperatureC.minimum}–{selectedProduct.bedTemperatureC.maximum} °C build plate · Reviewed {selectedProduct.source.reviewedAt} · Review due {selectedProduct.lifecycle.reviewDueAt}</p>
         <p>Variant: {selectedProduct.variant.name} · Product performance upgrades: {selectedProduct.upgradeEvidence.status === 'qualified' ? 'qualified' : 'not yet qualified'}</p>
-        <a href={selectedProduct.source.url} target="_blank" rel="noreferrer">Manufacturer source</a>
+        <a href={selectedProduct.source.url} target="_blank" rel="noreferrer" onClick={event => void openManufacturerSource(event, selectedProduct.source.url)}>Manufacturer source</a>
+        {sourceError && <small className="manufacturer-source-error" role="alert">{sourceError}</small>}
       </div>}
     </div>
     {!printerSelected
@@ -125,7 +139,7 @@ export function PlanPreferenceControl({
   const candidate = candidates.find(item => item.id === applied) ?? candidates[0];
   const fellBackToBalanced = selected !== applied;
   const changeLabel = candidate.available
-    ? candidate.id === 'balanced' ? 'Baseline' : `${candidate.changes.length} change${candidate.changes.length === 1 ? '' : 's'}`
+    ? candidate.id === 'balanced' ? 'Baseline' : candidate.changes.length === 0 ? 'No changes' : `${candidate.changes.length} change${candidate.changes.length === 1 ? '' : 's'}`
     : 'Unavailable';
   return <details className="plan-preference-card">
     <summary className="plan-preference-summary">
@@ -151,14 +165,15 @@ export function PlanPreferenceControl({
     {candidate.available
       ? candidate.changes.length > 0
         ? <div className="plan-preference-applied" role="status"><b>{candidate.changes.length} setting{candidate.changes.length === 1 ? '' : 's'} changed from Balanced</b><p>{candidate.changes.map(change => `${labels[change.setting]} ${String(change.from)} → ${String(change.to)}`).join(' · ')}</p></div>
-        : <div className="plan-preference-applied neutral" role="status"><b>Baseline</b><p>No preference-specific settings are added.</p></div>
+        : <div className="plan-preference-applied neutral" role="status"><b>{candidate.id === 'balanced' ? 'Baseline' : 'No changes'}</b><p>{candidate.id === 'balanced' ? 'No preference-specific settings are added.' : candidate.blockers.length ? candidate.blockers.join(' ') : 'This preference produces the same supported settings as Balanced for the current requirements.'}</p></div>
       : <div className="plan-preference-blocked" role="status"><b>Preference not applied</b><p>{candidate.blockers.join(' ')}</p></div>}
     <details className="plan-preference-comparison"><summary>Compare plan preferences</summary><div>{candidates.map(option => <details className={`plan-preference-option ${option.id === applied ? 'selected' : ''}`} key={option.id}>
-      <summary><span><b>{option.label}</b><small>{option.description}</small></span><em>{option.available ? option.id === 'balanced' ? 'Baseline' : `${option.changes.length} change${option.changes.length === 1 ? '' : 's'}` : 'Unavailable'}</em></summary>
+      <summary><span><b>{option.label}</b><small>{option.description}</small></span><em>{option.available ? option.id === 'balanced' ? 'Baseline' : option.changes.length === 0 ? 'No changes' : `${option.changes.length} change${option.changes.length === 1 ? '' : 's'}` : 'Unavailable'}</em></summary>
       <div className="plan-preference-option-detail">
         {option.changes.length > 0 && <dl>{option.changes.map(change => <div key={change.setting}><dt>{labels[change.setting]}</dt><dd><span>{String(change.from)}</span><i>→</i><strong>{String(change.to)}</strong></dd></div>)}</dl>}
         {option.id === 'balanced' && <p>Uses the rule-backed baseline without preference-specific changes.</p>}
-        {option.blockers.length > 0 && <p className="plan-preference-option-blocker">{option.blockers.join(' ')}</p>}
+        {option.id !== 'balanced' && option.available && option.changes.length === 0 && <p>This preference currently resolves to the same supported settings as Balanced.</p>}
+        {option.blockers.length > 0 && <p className="plan-preference-option-constraint">{option.blockers.join(' ')}</p>}
         {option.available && option.id !== applied && <button type="button" onClick={() => onChange(option.id)}>Use {option.label}</button>}
       </div>
     </details>)}</div></details>

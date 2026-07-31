@@ -103,19 +103,16 @@ export function buildPlanPreferenceCandidates(
   questionnaire: Questionnaire,
 ): PlanPreferenceCandidate[] {
   return planPreferenceDefinitions.map(definition => {
-    const recommendations = plans[definition.id];
-    const changes = definition.id === 'balanced' ? [] : comparePlanRecommendations(base, recommendations);
     const blockers = definition.id === 'balanced' ? [] : preferenceBlockers(definition.id, questionnaire);
-    if (definition.id !== 'balanced' && changes.length === 0 && blockers.length === 0) {
-      blockers.push('The confirmed requirements already produce the same supported settings as this preference.');
-    }
+    const recommendations = blockers.length ? base : plans[definition.id];
+    const changes = definition.id === 'balanced' ? [] : comparePlanRecommendations(base, recommendations);
     return {
       id: definition.id,
       label: definition.label,
       description: definition.shortDescription,
       recommendations,
       changes,
-      available: definition.id === 'balanced' || blockers.length === 0,
+      available: true,
       blockers,
     };
   });

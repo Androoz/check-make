@@ -3940,10 +3940,14 @@ fn reveal_file_in_folder(path: String) -> Result<(), String> {
         .status();
     #[cfg(all(unix, not(target_os = "macos")))]
     let status = Command::new("xdg-open")
-        .arg(file.parent().ok_or("The exported file has no parent folder.")?)
+        .arg(
+            file.parent()
+                .ok_or("The exported file has no parent folder.")?,
+        )
         .status();
 
-    let status = status.map_err(|error| format!("Could not open the system file manager: {error}"))?;
+    let status =
+        status.map_err(|error| format!("Could not open the system file manager: {error}"))?;
     if !status.success() {
         return Err("The system file manager could not reveal the exported file.".into());
     }
@@ -3952,6 +3956,7 @@ fn reveal_file_in_folder(path: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_menu = SubmenuBuilder::new(app, "Check Make")
                 .about(None)

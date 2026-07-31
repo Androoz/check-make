@@ -15,6 +15,7 @@ import {
   applySemanticHypothesesToRequirements,
   promotedSemanticFacts,
   semanticFactAnswerId,
+  semanticQuestionAnswerId,
   semanticFunctionEstablished,
 } from '../semantic/confirmation';
 import type { SemanticInterpretation, SemanticProviderInfo } from '../semantic/types';
@@ -138,11 +139,14 @@ function localRequirements(model: ModelAnalysis, contextText = '', hypothesis?: 
       ? 'handled or exposed parts can reasonably receive occasional knocks.'
       : 'no handling or exposure clue currently suggests recurring impact.',
   );
+  const toyVehicleContext = /\b(?:toy(?:\s+rc)? car|model car|rc car|radio[- ]controlled car|remote[- ]controlled car|radio controlled vehicle|radiostyrd bil|leksaksbil)\b/.test(worldText);
+  const warmOutdoorContext = environment.value === 'outdoor'
+    && (/\b(?:sun|direct sun|parasol)\b/.test(worldText) || !toyVehicleContext && /\b(?:vehicle|car)\b/.test(worldText));
   const heat = explicit('heat') ?? assumed(
     'heat',
-    environment.value === 'outdoor' && /\b(?:sun|direct sun|vehicle|car|parasol)\b/.test(worldText) ? 'warm' : 'normal',
-    environment.value === 'outdoor' && /\b(?:sun|direct sun|vehicle|car|parasol)\b/.test(worldText) ? 0.66 : 0.58,
-    environment.value === 'outdoor' && /\b(?:sun|direct sun|vehicle|car|parasol)\b/.test(worldText)
+    warmOutdoorContext ? 'warm' : 'normal',
+    warmOutdoorContext ? 0.66 : 0.58,
+    warmOutdoorContext
       ? 'sun-exposed outdoor parts can become substantially warmer than ambient conditions.'
       : 'no explicit heat source currently suggests service above ordinary ambient conditions.',
   );
@@ -298,17 +302,18 @@ function questionsForSemanticInterpretation(
       field: 'intent' as const,
       kind: 'single' as const,
       question: `Should Check Make treat “${fact.value.replaceAll('_', ' ')}” as true for ${fact.key.replaceAll('.', ' ')}?`,
-      why: `${fact.evidence} This ${fact.certainty.replaceAll('_', ' ')} remains an AI hypothesis until you confirm it.`,
+      why: `${fact.evidence} This ${fact.certainty.replaceAll('_', ' ')} remains a deterministic semantic hypothesis until you confirm it.`,
       options: choices(['confirmed', 'Yes, use this fact'], ['rejected', 'No, do not use it']),
     }];
   });
   const modelQuestions = interpretation.confirmationQuestions.flatMap(question => {
-    const related = interpretation.candidateFacts.find(fact => question.factKeys.includes(fact.key));
-    if (!related) return [];
-    if (checklistFacts.has(related.key)) return [];
-    const id = semanticFactAnswerId(related);
-    if (alreadyPromoted.has(`${related.key}:${related.value}`) || answers[id]) return [];
-    return [{ id, field: 'intent' as const, kind: 'single' as const, question: question.question, why: question.why, options: choices(['confirmed', 'Yes'], ['rejected', 'No']) }];
+    const related = interpretation.candidateFacts.filter(fact => question.factKeys.includes(fact.key));
+    if (!related.length) return [];
+    const grouped = new Set(related.map(fact => fact.key)).size > 1;
+    if (!grouped && checklistFacts.has(related[0].key)) return [];
+    const id = grouped ? semanticQuestionAnswerId(question.id) : semanticFactAnswerId(related[0]);
+    if (related.every(fact => alreadyPromoted.has(`${fact.key}:${fact.value}`)) || answers[id]) return [];
+    return [{ id, field: 'intent' as const, kind: 'single' as const, question: question.question, why: question.why, options: choices(['confirmed', 'Yes — use these related facts'], ['rejected', 'No — reject these hypotheses']) }];
   });
   return [...modelQuestions, ...generated]
     .filter((question, index, all) => all.findIndex(candidate => candidate.id === question.id) === index)
@@ -324,7 +329,7 @@ export function prepareIntelligenceForReview(ai: ModelIntelligence): ModelIntell
       ? assessment(false, 'confirmed', 'user', 1, ['Restored explicit support-free project constraint.'], requirementEffects.supportsAllowed)
       : assessment(true, 'inferred', 'default', 0.9, ['Removable supports may be recommended unless the user sets a support-free constraint.'], requirementEffects.supportsAllowed);
   }
-  const topologyQuestions = (ai.questions ?? []).filter(question => question.id !== 'object-purpose-description' && (question.id === 'components' || question.id === 'mesh-repair' || question.id === 'support-tradeoff' || question.id.startsWith('object-') || question.id.startsWith('intent-') || question.id.startsWith('semantic:')));
+  const topologyQuestions = (ai.questions ?? []).filter(question => question.id !== 'object-purpose-description' && (question.id === 'components' || question.id === 'mesh-repair' || question.id === 'support-tradeoff' || question.id.startsWith('object-') || question.id.startsWith('intent-') || question.id.startsWith('semantic:') || question.id.startsWith('semantic-question:')));
   const purposeConfirmed = Boolean(ai.purposeConfirmed);
   const intentFallback = buildManufacturingIntent(ai.userEvidence?.[0] ?? '', requirements, ai.objectHypothesis);
   const manufacturingIntent = normalizeManufacturingIntent(ai.manufacturingIntent, intentFallback);
@@ -375,8 +380,13 @@ export function localModelAnalysis(model: ModelAnalysis, contextText = ''): Mode
     why: 'Separate parts can require different orientations or process settings.',
   });
   if (model.topology && !model.topology.watertight) topologyQuestions.push({
-    id: 'mesh-repair', question: 'Are the open or non-manifold surfaces intentional, or should this be a closed solid?',
-    why: 'A slicer may repair ambiguous geometry differently from the intended design.',
+    id: 'mesh-repair', field: 'mesh-repair', kind: 'single', question: 'How should Check Make treat the highlighted geometry?',
+    why: 'Filled text, multicolor regions, or overlapping bodies can create these edges. Check Make highlights them but does not edit mesh geometry.',
+    options: choices(
+      ['intentional', 'Keep it — the separate or overlapping surfaces are intentional'],
+      ['closed-solid', 'It should be one closed solid — flag it as needing repair'],
+      ['not-sure', 'Not sure — keep the model unchanged and warn me'],
+    ),
   });
 
   const objectHypothesis = buildObjectHypothesis(model, contextText);

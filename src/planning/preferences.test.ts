@@ -3,7 +3,7 @@ import { getPrinter } from '../printers/profiles';
 import { ruleEvidenceById, rules } from '../rules/load';
 import { evaluateRules } from '../rules/engine';
 import type { ModelAnalysis, PlanPreference, Questionnaire, Recommendation } from '../types';
-import { buildPlanPreferenceCandidates, planPreferenceDefinitions } from './preferences';
+import { buildPlanPreferenceCandidates, comparePlanRecommendations, planPreferenceDefinitions } from './preferences';
 import { emptyManufacturingIntent } from '../intent/manufacturingIntent';
 
 const analysis = {
@@ -78,7 +78,7 @@ describe('plan preference pipeline', () => {
     });
   });
 
-  it('does not let Faster override a confirmed critical dimension', () => {
+  it('keeps Faster selectable but unchanged when a critical dimension prevents its changes', () => {
     const fitQuestionnaire = { ...questionnaire, criticalDimension: 'z' as const };
     const balanced = evaluateRules(rules, analysis, fitQuestionnaire, ruleEvidenceById);
     const plans = Object.fromEntries(planPreferenceDefinitions.map(definition => [
@@ -86,10 +86,31 @@ describe('plan preference pipeline', () => {
       evaluateRules(rules, analysis, fitQuestionnaire, ruleEvidenceById, definition.objective),
     ])) as Record<PlanPreference, Recommendation[]>;
     expect(buildPlanPreferenceCandidates(balanced, plans, fitQuestionnaire).find(candidate => candidate.id === 'faster'))
-      .toMatchObject({ available: false, blockers: [expect.stringContaining('critical dimension')] });
+      .toMatchObject({
+        available: true,
+        recommendations: balanced,
+        changes: [],
+        blockers: [expect.stringContaining('critical dimension')],
+      });
   });
 
-  it('does not let Faster weaken a designer-stated load-critical baseline', () => {
+  it('keeps confirmed Z and surface resolution when Fit & accuracy is selected', () => {
+    for (const criticalDimension of ['z', 'surface'] as const) {
+      const fitQuestionnaire = { ...questionnaire, criticalDimension };
+      const balanced = evaluateRules(rules, analysis, fitQuestionnaire, ruleEvidenceById);
+      const fit = evaluateRules(rules, analysis, fitQuestionnaire, ruleEvidenceById, 'fit-accuracy');
+      expect(balanced.find(item => item.setting === 'layer_height')?.value).toBe('0.16 mm');
+      expect(fit.find(item => item.setting === 'layer_height')).toMatchObject({
+        value: '0.16 mm',
+        ruleIds: [criticalDimension === 'z' ? 'Q11' : 'Q12'],
+      });
+      expect(comparePlanRecommendations(balanced, fit)).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ setting: 'layer_height' }),
+      ]));
+    }
+  });
+
+  it('keeps Faster selectable without weakening a designer-stated load-critical baseline', () => {
     const loadCritical = structuredClone(questionnaire);
     loadCritical.manufacturingIntent = emptyManufacturingIntent(loadCritical);
     loadCritical.manufacturingIntent.failureConsequence = {
@@ -104,7 +125,7 @@ describe('plan preference pipeline', () => {
       evaluateRules(rules, analysis, loadCritical, ruleEvidenceById, definition.objective),
     ])) as Record<PlanPreference, Recommendation[]>;
     const faster = buildPlanPreferenceCandidates(balanced, plans, loadCritical).find(candidate => candidate.id === 'faster');
-    expect(faster?.available).toBe(false);
+    expect(faster).toMatchObject({ available: true, recommendations: balanced, changes: [] });
     expect(faster?.blockers.join(' ')).toContain('designer-stated load-critical use');
   });
 });

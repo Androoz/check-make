@@ -181,6 +181,15 @@ export function matchingCompatibleFilamentProduct(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+export function selectedFilamentProductMatchesPlan(
+  productId: string | undefined,
+  family: Material,
+  printer: PrinterProfile,
+) {
+  const selected = filamentProductProfile(productId);
+  return Boolean(selected && selected.family === family && assessFilamentProduct(selected, printer).compatible);
+}
+
 export function effectiveProductLifecycleStatus(
   profile: FilamentProductProfile,
   today = new Date().toISOString().slice(0, 10),
@@ -252,7 +261,11 @@ export function planForFilamentProduct(base: Recommendation[], profile: Filament
   return base.map(item => values.has(item.setting) ? {
     ...item,
     value: values.get(item.setting)!,
-    reason: `${profile.product} uses a reviewed manufacturer starting profile. Final temperatures still require printer, color, geometry, and environment validation.`,
+    reason: item.setting === 'material'
+      ? `${profile.product} is the selected reviewed filament profile. Its manufacturer starting temperatures are applied below.`
+      : item.setting === 'nozzle_temperature'
+        ? `${profile.product} provides this reviewed nozzle-temperature starting point. Confirm it against the selected spool label before printing.`
+        : `${profile.product} provides this reviewed build-plate starting point. Confirm it against the selected build plate and spool label before printing.`,
     ruleIds: ['PRODUCT-PROFILE'],
     matchedRuleIds: [...item.matchedRuleIds, 'PRODUCT-PROFILE'],
     inputEvidenceIds: [...(item.inputEvidenceIds ?? []), profile.source.evidenceId],

@@ -21,4 +21,17 @@ describe('semantic interpretation schema', () => {
     })).toThrow(SemanticSchemaError);
     expect(() => validateSemanticInterpretation({ ...validSemanticInterpretation, recommendation: 'Use PETG' })).toThrow(/unknown field/);
   });
+
+  it('preserves an optional structured evidence path for graph conclusions', () => {
+    const value = structuredClone(validSemanticInterpretation);
+    value.candidateFacts[0] = {
+      ...value.candidateFacts[0],
+      evidencePath: [
+        { kind: 'text_match', value: 'spacer' },
+        { kind: 'relation', value: 'used_for:camping-chair' },
+        { kind: 'property', value: 'priority=strength' },
+      ],
+    };
+    expect(validateSemanticInterpretation(value).candidateFacts[0].evidencePath).toEqual(value.candidateFacts[0].evidencePath);
+  });
 });

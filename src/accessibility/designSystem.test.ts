@@ -93,6 +93,17 @@ describe('accessible Check Make design system', () => {
     expect(app).not.toContain('<footer className="workflow-status"');
     expect(app).not.toContain("['compare', 'Compare']");
     expect(app).toContain('>Build plate</button>');
+    expect(app).toContain("['mesh', 'Mesh issues']");
+    expect(app).toContain('className="model-check-detail mesh-integrity-check"');
+    expect(app).toContain('Show affected areas');
+    expect(app).toContain("question.id === 'mesh-repair'");
+    expect(modelPreview).toContain("mode === 'mesh'");
+    expect(modelPreview).toContain('Mesh integrity review');
+    expect(app).toContain('event.preventDefault(); event.stopPropagation(); showMeshIssues();');
+    expect(app).toContain('Source model marked as needing repair');
+    expect(css).toMatch(/\.mesh-legend \{[^}]*top: 12px; bottom: auto/);
+    expect(css).toMatch(/\.technical-geometry dt, \.technical-geometry dd \{[^}]*font-size: 13px/);
+    expect(css).toMatch(/\.analysis-limits p \{[^}]*font-size: 12px/);
   });
 
   it('uses two analysis modes and keeps the Extended AI provider in settings', () => {
@@ -153,17 +164,23 @@ describe('accessible Check Make design system', () => {
     expect(results).toContain('<OptionPicker');
     expect(results).toContain('Project override');
     expect(results).toContain('fellBackToBalanced');
-    expect(results).toContain('unavailable');
+    expect(results).toContain("option.changes.length === 0 ? 'No changes'");
     expect(results).not.toContain('Lower cost');
     expect(results).not.toContain('Lower weight');
     expect(results).toContain('Filament product profile');
     expect(results).toContain('compatible reviewed product profile');
     expect(results).toContain('family fallback remains selected until you confirm');
     expect(results).toContain('Manufacturer source');
+    expect(results).toContain("openUrl(url)");
+    expect(results).toContain('manufacturer-source-error');
     expect(css).toContain('.plan-preference-card');
     expect(css).toContain('.plan-preference-blocked');
     expect(results).toContain("? 'Baseline'");
     expect(results).not.toContain('Balanced baseline');
+    expect(app).toContain('default-printer-settings');
+    expect(app).toContain('<b className="settings-label">Default printer</b>');
+    expect(app).toContain('<b className="settings-label">Default plan preference</b>');
+    expect(app.indexOf('Default printer')).toBeLessThan(app.indexOf('Filament product profiles'));
   });
 
   it('uses the shared picker and readable themed surfaces for editable plan decisions', () => {
@@ -173,6 +190,27 @@ describe('accessible Check Make design system', () => {
     expect(css).toMatch(/\.workflow-questions \{[^}]*background: var\(--surface-subtle\)/);
     expect(css).toMatch(/\.workflow-questions label b \{[^}]*font-size: 13px/);
     expect(css).toMatch(/\.workflow-questions \.option-picker-trigger \{[^}]*min-height: 40px/);
+  });
+
+  it('waits for an explicit understanding update and preserves editable plan questions', () => {
+    expect(app).toContain('>Apply</button>');
+    expect(app).toContain('className="primary apply-understanding"');
+    expect(app).toContain('onPurposeClarification={updatePurposeClarificationDraft}');
+    expect(app).toContain('new Map([...current, ...refined.questions]');
+    expect(app).not.toContain('}, 450)');
+  });
+
+  it('removes a plan-only critical-dimension answer when Fit & accuracy is no longer requested', () => {
+    expect(app).toContain("const needsCriticalDimension = requestedPlanPreference === 'fit-accuracy' || contextRequiresCriticalDimension");
+    expect(app).toContain('delete next[criticalDimensionQuestion.id]');
+    expect(app).toContain('current.questions.filter(question => question.id !== criticalDimensionQuestion.id)');
+    expect(app).toContain('current.filter(question => question.id !== criticalDimensionQuestion.id)');
+  });
+
+  it('retries default-printer filament preselection after plan and Context resets', () => {
+    expect(app).toContain("attemptedAutomaticFilamentSelection.current = '';\n    setProjectPlanPreference");
+    expect(app).toContain("attemptedAutomaticFilamentSelection.current = '';\n      setIntelligence(undefined)");
+    expect(app).toContain("attemptedAutomaticFilamentSelection.current = '';\n    setIntelligence(undefined)");
   });
 
   it('packages recognizable slicer icons locally with a neutral fallback', () => {
@@ -200,8 +238,9 @@ describe('accessible Check Make design system', () => {
     expect(app).not.toContain('Requirements understood from context');
     expect(app).not.toContain('Add function to Context');
     expect(app).not.toContain('Object hypothesis');
-    expect(app).toContain("purposeClarification.trim() && intelligence.purposeConfirmed ? 'Updated' : 'Review'");
+    expect(app).toContain("clarificationApplied ? 'Updated' : 'Review'");
     expect(app).toContain("const clarification = followUps['object-purpose-description']?.trim()");
+    expect(app).toContain('Check Make waits until you apply the complete description.');
     expect(css).toMatch(/\.interpretation-summary > div p \{[^}]*font-size: 13px/);
     expect(css).toMatch(/\.interpretation-summary ul \{[^}]*font-size: 12px/);
   });

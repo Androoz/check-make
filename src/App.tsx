@@ -15,7 +15,7 @@ import { evaluateRules } from './rules/engine';
 import { ruleEvidenceById, rules } from './rules/load';
 import { checkBuildVolume, checkMaterialCompatibility } from './material/compatibility';
 import { assessMaterialCandidate, evaluateMaterialPlan, planForMaterial } from './material/catalog';
-import { assessFilamentProduct, filamentProductProfile, filamentProductsForFamily, matchingCompatibleFilamentProduct, planForFilamentProduct } from './material/products';
+import { assessFilamentProduct, filamentProductProfile, filamentProductsForFamily, matchingCompatibleFilamentProduct, planForFilamentProduct, selectedFilamentProductMatchesPlan } from './material/products';
 import { getPrinter, printerAgnosticProfile, printerProfiles } from './printers/profiles';
 import { analyzeWithLocalSemanticAI, analyzeWithOpenAI, criticalDimensionQuestion, localModelAnalysis, prepareIntelligenceForReview, questionnaireFromIntelligence, refineLocalIntelligence } from './ai/modelIntelligence';
 import { describeObjectUnderstanding } from './ai/objectUnderstanding';
@@ -38,7 +38,7 @@ import './workflow-v4.css';
 import './accessibility-v5.css';
 
 type View = 'import' | 'analysis' | 'export';
-type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare' | 'spatial';
+type PreviewMode = 'original' | 'recommended' | 'risk' | 'compare' | 'spatial' | 'mesh';
 type UiIconName = 'model' | 'printer' | 'material' | 'orientation' | 'support' | 'layer' | 'walls' | 'infill' | 'package' | 'check' | 'lock' | 'settings' | 'folder' | 'info';
 const LazyModelPreview = lazy(() => import('./components/ModelPreview'));
 
@@ -392,11 +392,12 @@ function SpatialIntentPanel({ spatial, loadRequired, matingRequired, visibleRequ
 }
 
 function InterpretationSummary({
-  intelligence, purposeClarification, onPurposeClarification,
+  intelligence, purposeClarification, onPurposeClarification, onApplyPurposeClarification,
 }: {
   intelligence: ModelIntelligence;
   purposeClarification: string;
   onPurposeClarification: (value: string) => void;
+  onApplyPurposeClarification: () => void;
 }) {
   const hypothesis = intelligence.objectHypothesis;
   if (!hypothesis) return null;
@@ -406,10 +407,15 @@ function InterpretationSummary({
     .sort((left, right) => right.confidence - left.confidence);
   const evidence = (relevantEvidence.length ? relevantEvidence : hypothesis.evidence)
     .slice(0, 3);
+  const clarificationApplied = Boolean(
+    purposeClarification.trim()
+    && intelligence.purposeConfirmed
+    && intelligence.userEvidence.includes(purposeClarification.trim()),
+  );
   return <section className="interpretation-summary">
     <div><span className="kicker">CHECK MAKE’S UNDERSTANDING</span><strong>{hypothesis.identity.value}</strong><p>{describeObjectUnderstanding(intelligence)}</p></div>
-    <span>{purposeClarification.trim() && intelligence.purposeConfirmed ? 'Updated' : 'Review'}</span>
-    {needsPurpose && <label className="understanding-clarification"><b>What should this object do?</b><small>The model and Context did not establish a clear function. Add only the missing purpose here; you do not need to rewrite the original Context.</small><textarea value={purposeClarification} onChange={event => onPurposeClarification(event.target.value)} placeholder="Example: Maintains the correct spacing in a parasol base."/></label>}
+    <span>{clarificationApplied ? 'Updated' : 'Review'}</span>
+    {needsPurpose && <div className="understanding-clarification"><b>What should this object do?</b><small>The model and Context did not establish a clear function. Add only the missing purpose here; Check Make waits until you apply the complete description.</small><textarea aria-label="Describe what the object should do" value={purposeClarification} onChange={event => onPurposeClarification(event.target.value)} placeholder="Example: Maintains the correct spacing in a parasol base."/><button type="button" className="primary apply-understanding" disabled={!purposeClarification.trim()} onClick={onApplyPurposeClarification}>Apply</button></div>}
     <details><summary>Why Check Make reached this understanding</summary><ul>{evidence.map(item => <li key={item.id}>{item.statement}</li>)}</ul><p>This is an interpretation of your Context and the measured geometry. Review the assumptions below before they affect the manufacturing plan.</p></details>
   </section>;
 }
@@ -496,6 +502,14 @@ export default function App() {
   const previewOrientation = analysis?.orientations.find(candidate => candidate.id === previewOrientationId) ?? analysis?.orientations[0];
   const previewGeometryRisk = previewOrientation?.geometryRisk ?? analysis?.geometryRisk;
   const geometryWarnings = analysis?.findings?.filter(finding => finding.severity === 'warning') ?? [];
+  const meshDecisionNeeded = Boolean(intelligence?.questions.some(question => question.id === 'mesh-repair') && !(followUps['mesh-repair'] ?? '').trim());
+  const meshDecisionStatus = followUps['mesh-repair'] === 'closed-solid'
+    ? 'Source model marked as needing repair'
+    : followUps['mesh-repair'] === 'intentional'
+      ? 'Separate or overlapping geometry confirmed as intentional'
+      : followUps['mesh-repair'] === 'not-sure'
+        ? 'Geometry remains unresolved; slicer repair may change it'
+        : undefined;
   const suggestedPackageTarget = useMemo(() => suggestSlicerTarget(adapters, printerId), [adapters, printerId]);
   const suggestedPackageAdapter = adapters.find(adapter => adapter.target === suggestedPackageTarget) ?? adapterPlaceholders[0];
   const spatialCandidates = useMemo(() => geometry ? analyzeSpatialCandidates(geometry) : undefined, [geometry]);
@@ -664,10 +678,26 @@ export default function App() {
   }, [filamentProductId, material, printer]);
 
   useEffect(() => {
-    if (!intelligence || followUps[criticalDimensionQuestion.id]?.trim()) return;
-    const needsCriticalDimension = requestedPlanPreference === 'fit-accuracy'
-      || Boolean(intelligence.manufacturingIntent?.compatibility.fitCritical);
-    if (!needsCriticalDimension || intelligence.questions.some(question => question.id === criticalDimensionQuestion.id)) return;
+    if (!intelligence) return;
+    const contextRequiresCriticalDimension = Boolean(intelligence.manufacturingIntent?.compatibility.fitCritical);
+    const needsCriticalDimension = requestedPlanPreference === 'fit-accuracy' || contextRequiresCriticalDimension;
+    if (!needsCriticalDimension) {
+      manuallyAnsweredDecisions.current.delete(criticalDimensionQuestion.id);
+      setFollowUps(current => {
+        if (!(criticalDimensionQuestion.id in current)) return current;
+        const next = { ...current };
+        delete next[criticalDimensionQuestion.id];
+        return next;
+      });
+      setIntelligence(current => current?.questions.some(question => question.id === criticalDimensionQuestion.id)
+        ? { ...current, questions: current.questions.filter(question => question.id !== criticalDimensionQuestion.id) }
+        : current);
+      setPlanQuestions(current => current.some(question => question.id === criticalDimensionQuestion.id)
+        ? current.filter(question => question.id !== criticalDimensionQuestion.id)
+        : current);
+      return;
+    }
+    if (followUps[criticalDimensionQuestion.id]?.trim() || intelligence.questions.some(question => question.id === criticalDimensionQuestion.id)) return;
     setIntelligence(current => current ? { ...current, questions: [...current.questions, criticalDimensionQuestion] } : current);
     setPlanQuestions(current => current.some(question => question.id === criticalDimensionQuestion.id)
       ? current
@@ -683,27 +713,18 @@ export default function App() {
     if (!material || !printer || printer.id !== preferences.defaultPrinterId) return;
     const selectionKey = `${printer.id}:${material}`;
     if (attemptedAutomaticFilamentSelection.current === selectionKey) return;
-    attemptedAutomaticFilamentSelection.current = selectionKey;
+    if (selectedFilamentProductMatchesPlan(filamentProductId, material, printer)) {
+      attemptedAutomaticFilamentSelection.current = selectionKey;
+      return;
+    }
     if (filamentProductId) return;
     const matchingProduct = matchingCompatibleFilamentProduct(material, printer);
+    attemptedAutomaticFilamentSelection.current = selectionKey;
     if (matchingProduct) setFilamentProductId(matchingProduct.id);
   }, [filamentProductId, material, preferences.defaultPrinterId, preferences.preferMatchingFilamentProfiles, printer]);
 
-  useEffect(() => {
-    const clarification = followUps['object-purpose-description']?.trim();
-    if (!clarification || !intelligence || intelligence.purposeConfirmed) return;
-    const timer = window.setTimeout(() => {
-      const refined = refineLocalIntelligence(intelligence, {
-        ...followUps,
-        'object-purpose-description': clarification,
-      });
-      setPlanQuestions(refined.questions);
-      setIntelligence(refined);
-    }, 450);
-    return () => window.clearTimeout(timer);
-  }, [followUps['object-purpose-description']]);
-
   const selectPrinter = (id: string) => {
+    attemptedAutomaticFilamentSelection.current = '';
     setPrinterId(id); setMaterialOverride(undefined); setFilamentProductId(undefined); setPackageTargetManuallySelected(false);
     setPackageTarget(suggestSlicerTarget(adapters, id));
     if (intelligence) setView('analysis');
@@ -721,6 +742,7 @@ export default function App() {
     if (!analysis) setInheritedPlanPreference(defaultPlanPreference);
   };
   const selectProjectPlanPreference = (preference: PlanPreference) => {
+    attemptedAutomaticFilamentSelection.current = '';
     setProjectPlanPreference(preference === inheritedPlanPreference ? undefined : preference);
     setMaterialOverride(undefined);
     setFilamentProductId(undefined);
@@ -767,6 +789,7 @@ export default function App() {
   };
   const updateProjectBrief = (value: string) => {
     if (intelligence) {
+      attemptedAutomaticFilamentSelection.current = '';
       setIntelligence(undefined); setPlanQuestions([]); setView('import'); setStatus(''); setPackageResult(undefined); setValidationReport(undefined); setMaterialOverride(undefined); setFilamentProductId(undefined);
       manuallyAnsweredDecisions.current.clear(); automaticallyAnsweredDecisions.current.clear();
     }
@@ -781,6 +804,9 @@ export default function App() {
       if (value) focusNextDecision(id, next);
       return next;
     });
+  };
+  const updatePurposeClarificationDraft = (value: string) => {
+    setFollowUps(current => ({ ...current, 'object-purpose-description': value }));
   };
   const updateSupportPreference = (value: NonNullable<import('./types').Questionnaire['supportPreference']>) => {
     const next = { ...followUps, 'support-preference': value };
@@ -825,6 +851,12 @@ export default function App() {
     setImportantAreasOpen(true); setSpatialFocusKind(undefined); setSpatialMarkingKind(undefined); setPreviewMode('spatial');
     requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
   };
+  const showMeshIssues = () => {
+    setSpatialFocusKind(undefined);
+    setSpatialMarkingKind(undefined);
+    setPreviewMode('mesh');
+    requestAnimationFrame(() => requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })));
+  };
   const markSpatialNotApplicable = (kind: SpatialRegionKind) => {
     setSpatialIntent(current => setSpatialRegionNotApplicable(current, kind)); setSpatialFocusKind(undefined); setSpatialMarkingKind(undefined);
   };
@@ -843,6 +875,7 @@ export default function App() {
 
   const resetAnalysis = (preserveBrief = false) => {
     const brief = preserveBrief ? followUps.purpose ?? '' : '';
+    attemptedAutomaticFilamentSelection.current = '';
     setIntelligence(undefined); setPlanQuestions([]); setStatus(''); setPackageResult(undefined); setValidationReport(undefined); setMaterialOverride(undefined); setFilamentProductId(undefined); setModifyingPlan(false);
     manuallyAnsweredDecisions.current.clear(); automaticallyAnsweredDecisions.current.clear();
     if (brief) updatePurpose(brief);
@@ -1083,6 +1116,21 @@ export default function App() {
     setIntelligence(refineLocalIntelligence(intelligence, followUps));
     setModifyingPlan(false);
   };
+  const applyPurposeClarification = () => {
+    const clarification = followUps['object-purpose-description']?.trim();
+    if (!clarification || !intelligence) return;
+    manuallyAnsweredDecisions.current.add('object-purpose-description');
+    const refined = refineLocalIntelligence(intelligence, {
+      ...followUps,
+      'object-purpose-description': clarification,
+    });
+    setPlanQuestions(current => {
+      const byId = new Map([...current, ...refined.questions].map(question => [question.id, question]));
+      return [...byId.values()];
+    });
+    setIntelligence(refined);
+    setModifyingPlan(true);
+  };
   const createPackage = async (mode: 'save' | 'open' = 'save') => {
     if (!sourcePath || !analysis || !intelligence || !orientation) { setError('3MF creation requires a model imported by the desktop app.'); return; }
     if (readiness?.conservativePlan !== 'ready') { setError('Check Make cannot export until every decision-changing requirement has been resolved.'); setView('analysis'); return; }
@@ -1173,9 +1221,8 @@ export default function App() {
     <ProcessBar stage={workflowStage} decisions={decisionCount} settingsOpen={settingsOpen} onToggleSettings={() => setSettingsOpen(current => !current)}/>
     {settingsOpen && <aside className="settings-popover" role="dialog" aria-modal="false" aria-labelledby="settings-title">
       <div><span className="kicker">APPLICATION SETTINGS</span><h2 id="settings-title">Project defaults</h2><button className="popover-close" aria-label="Close settings" onClick={() => setSettingsOpen(false)}>×</button></div>
-      <div className="settings-group"><span className="settings-label">Default printer</span><PrinterPicker value={preferences.defaultPrinterId} onChange={defaultPrinterId => updatePreferences({ defaultPrinterId })} label="Default printer" emptyLabel="No default printer" emptyDescription="New projects start without a printer"/><small>Used when a new project starts. Printer selection remains optional.</small></div>
-      <div className="settings-group"><b className="settings-label">Filament product profiles</b><label className="provider-option"><input type="checkbox" checked={preferences.preferMatchingFilamentProfiles} onChange={event => updatePreferences({ preferMatchingFilamentProfiles: event.target.checked })}/><span><b>Preselect matching filament profiles</b><small>When a project uses the default printer, preselect one reviewed and compatible filament profile from the same manufacturer. You can still choose the family fallback or another compatible product.</small></span></label></div>
-      <div className="settings-group plan-default-setting"><span className="settings-label">Default plan preference</span><OptionPicker label="Default plan preference" value={preferences.defaultPlanPreference} options={planPreferenceDefinitions.map(definition => ({ value: definition.id, label: definition.label, description: definition.shortDescription }))} onChange={updateDefaultPlanPreference}/><small>{planPreferenceDefinition(preferences.defaultPlanPreference).shortDescription} Applied to new projects only and never allowed to override confirmed part requirements.</small></div>
+      <div className="settings-group default-printer-settings"><b className="settings-label">Default printer</b><PrinterPicker value={preferences.defaultPrinterId} onChange={defaultPrinterId => updatePreferences({ defaultPrinterId })} label="Default printer" emptyLabel="No default printer" emptyDescription="New projects start without a printer"/><small>Used when a new project starts. Printer selection remains optional.</small><div className="filament-profile-default"><b className="settings-label">Filament product profiles</b><label className="provider-option"><input type="checkbox" checked={preferences.preferMatchingFilamentProfiles} onChange={event => updatePreferences({ preferMatchingFilamentProfiles: event.target.checked })}/><span><b>Preselect matching filament profiles</b><small>When a project uses the default printer, preselect one reviewed and compatible filament profile from the same manufacturer. You can still choose the family fallback or another compatible product.</small></span></label></div></div>
+      <div className="settings-group plan-default-setting"><b className="settings-label">Default plan preference</b><OptionPicker label="Default plan preference" value={preferences.defaultPlanPreference} options={planPreferenceDefinitions.map(definition => ({ value: definition.id, label: definition.label, description: definition.shortDescription }))} onChange={updateDefaultPlanPreference}/><small>{planPreferenceDefinition(preferences.defaultPlanPreference).shortDescription} Applied to new projects only and never allowed to override confirmed part requirements.</small></div>
       <div className="settings-group"><b className="settings-label">Default analysis</b>
         <label className="provider-option"><input type="radio" checked={preferences.defaultAnalysisMode === 'local'} onChange={() => { updatePreferences({ defaultAnalysisMode: 'local' }); selectAnalysisMode('local'); }}/><span><b>Local Analysis</b><small>Fast, private geometry and deterministic Context interpretation.</small></span></label>
         <label className="provider-option"><input type="radio" checked={preferences.defaultAnalysisMode === 'extended'} onChange={() => { updatePreferences({ defaultAnalysisMode: 'extended' }); selectAnalysisMode('extended'); }}/><span><b>Extended AI Analysis</b><small>Adds an AI-generated understanding of the object and its use before deterministic rules run.</small></span></label>
@@ -1206,13 +1253,13 @@ export default function App() {
       </aside>
 
       <section className="model-workspace">
-        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1>{analysis?.fileName ?? 'No model loaded'}</h1>{analysis && <span className="model-measured"><UiIcon name="check"/> Geometry measured</span>}</div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Model'], ['risk', 'Overhangs']] as Array<[PreviewMode, string]>).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => setPreviewMode(id)}>{label}</button>)}</div>}</header>
+        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1>{analysis?.fileName ?? 'No model loaded'}</h1>{analysis && <span className="model-measured"><UiIcon name="check"/> Geometry measured</span>}</div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Model'], ['risk', 'Overhangs'], ...(geometryWarnings.length ? [['mesh', 'Mesh issues'] as [PreviewMode, string]] : [])] as Array<[PreviewMode, string]>).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => setPreviewMode(id)}>{label}</button>)}</div>}</header>
         {analysis ? <>
-          <div ref={modelPreview} className={`workflow-preview ${spatialMarkingKind ? 'marking-spatial-region' : ''}`}><Suspense fallback={<div className="preview preview-loading" role="status">Loading 3D preview…</div>}><LazyModelPreview geometry={geometry} orientationId={previewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} overhangRegionCount={previewGeometryRisk?.overhangRegionCount ?? 0} spatialRegions={spatialPreviewRegions} markingKind={spatialMarkingKind} onFaceSelect={selectSpatialFace} captureKey={`${analysis.fileName}:${previewOrientationId}:${previewMode}`} onCapture={setPreviewImage}/></Suspense></div>
+          <div ref={modelPreview} className={`workflow-preview ${spatialMarkingKind ? 'marking-spatial-region' : ''}`}><Suspense fallback={<div className="preview preview-loading" role="status">Loading 3D preview…</div>}><LazyModelPreview geometry={geometry} orientationId={previewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} overhangRegionCount={previewGeometryRisk?.overhangRegionCount ?? 0} spatialRegions={spatialPreviewRegions} markingKind={spatialMarkingKind} meshTopology={analysis.topology} onFaceSelect={selectSpatialFace} captureKey={`${analysis.fileName}:${previewOrientationId}:${previewMode}`} onCapture={setPreviewImage}/></Suspense></div>
           <div className="workflow-metrics"><div><b>{(previewOrientation?.heightMm ?? analysis.heightMm).toFixed(1)} mm</b><span>Height</span></div><div><b>{analysis.topology?.componentCount ?? 1}</b><span>Mesh bodies</span></div><button className={previewMode === 'risk' ? 'active' : ''} aria-pressed={previewMode === 'risk'} onClick={() => setPreviewMode('risk')}><b>{previewGeometryRisk?.overhangRegionCount ?? 0}</b><span>Overhangs</span></button><div><b>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}%</b><span>Bed contact</span></div></div>
-          <details className="model-evidence-drawer" open={showPlanReview && spatialGaps.length > 0 ? true : undefined}><summary><span>Model checks</span><em className={geometryWarnings.length || spatialGaps.length ? 'warning' : 'ready'}>{spatialGaps.length ? `${spatialGaps.length} area decision${spatialGaps.length === 1 ? '' : 's'}` : geometryWarnings.length ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'}` : 'Mesh ready'}</em></summary>
+          <details className="model-evidence-drawer" open={showPlanReview && (spatialGaps.length > 0 || meshDecisionNeeded) ? true : undefined}><summary><span>Model checks</span><em className={geometryWarnings.length || spatialGaps.length ? 'warning' : 'ready'}>{meshDecisionNeeded ? '1 decision needed' : spatialGaps.length ? `${spatialGaps.length} area decision${spatialGaps.length === 1 ? '' : 's'}` : geometryWarnings.length ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'}` : 'Mesh ready'}</em></summary>
             <div className="model-checks">
-              <div><span className={`check-indicator ${geometryWarnings.length ? 'warning' : 'ready'}`}>{geometryWarnings.length ? '!' : <UiIcon name="check"/>}</span><span><b>Mesh integrity</b><small>{geometryWarnings.length ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'} needs review` : 'Closed printable mesh detected'}</small></span></div>
+              <details className="model-check-detail mesh-integrity-check" open={previewMode === 'mesh' ? true : undefined}><summary><span className={`check-indicator ${geometryWarnings.length ? 'warning' : 'ready'}`}>{geometryWarnings.length ? '!' : <UiIcon name="check"/>}</span><span><b>Mesh integrity</b><small>{meshDecisionNeeded ? 'A geometry decision is required before the plan is ready' : meshDecisionStatus ?? (geometryWarnings.length ? `${geometryWarnings.length} finding${geometryWarnings.length === 1 ? '' : 's'} reviewed` : 'Closed printable mesh detected')}</small></span><em>{geometryWarnings.length ? 'Review ›' : ''}</em></summary>{geometryWarnings.length > 0 && <div className="mesh-integrity-body"><p>Check Make found edges a slicer may interpret or repair. Review the highlighted areas and confirm whether they are intentional.</p><div className="geometry-warnings">{geometryWarnings.map(finding => <div key={finding.id}><b>{finding.label}</b><p>{finding.detail}</p></div>)}</div><div className="mesh-integrity-actions"><button type="button" onClick={showMeshIssues}>Show affected areas</button>{meshDecisionNeeded && <button type="button" onClick={() => document.getElementById('decision-mesh-repair')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Review decision</button>}</div></div>}</details>
               <div><span className="check-indicator neutral">%</span><span><b>Bed contact</b><small>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}% of the bounding footprint</small></span></div>
               <button type="button" onClick={() => { setPreviewMode('risk'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}><span className={`check-indicator ${previewGeometryRisk?.overhangRegionCount ? 'attention' : 'ready'}`}>{previewGeometryRisk?.overhangRegionCount ?? 0}</span><span><b>Overhangs</b><small>{previewGeometryRisk?.overhangRegionCount ? `${previewGeometryRisk.overhangRegionCount} region${previewGeometryRisk.overhangRegionCount === 1 ? '' : 's'} · largest ${previewGeometryRisk.largestOverhangRegionAreaMm2.toFixed(0)} mm²` : 'No angle-based regions detected'}</small></span><em>Show ›</em></button>
               {orientationComparisons.length > 0 && <details className="model-check-detail orientation-check"><summary><span className="check-indicator neutral">↻</span><span><b>Orientation</b><small>{previewOrientation?.label ?? 'As imported'} · select to test alternatives</small></span><em>Review ›</em></summary><div className="orientation-comparison embedded"><p>Compare six axis-aligned orientations using bed contact, overhang exposure, and height. Selecting one updates the 3D model immediately.</p>{orientationComparisons[0].constraintsApplied?.map(note => <p className="orientation-constraint applied" key={note}>Applied: {note}</p>)}{orientationComparisons[0].constraintsUnresolved?.map(note => <p className="orientation-constraint unresolved" key={note}>Not localized: {note}</p>)}{previewOrientationId !== 'as-imported' && <button type="button" className={`compare-orientation ${previewMode === 'compare' ? 'active' : ''}`} aria-pressed={previewMode === 'compare'} onClick={() => { setPreviewMode(previewMode === 'compare' ? 'recommended' : 'compare'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}>{previewMode === 'compare' ? 'Show selected orientation' : 'Compare with imported orientation'}</button>}<div>{orientationComparisons.map((item, index) => <button className={`${previewOrientationId === item.candidate.id ? 'selected ' : ''}${index === 0 ? 'recommended' : ''}`} aria-pressed={previewOrientationId === item.candidate.id} key={item.candidate.id} onClick={() => { setPreviewOrientationId(item.candidate.id); setPreviewMode('recommended'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}><span><b>{item.candidate.label}</b><small>{index === 0 ? 'Recommended for current objective' : 'Preview this orientation'}</small></span><span className="orientation-measures">{item.candidate.heightMm.toFixed(1)} mm high · {item.candidate.bedContactAreaMm2.toFixed(0)} mm² contact · {(item.candidate.overhangRatio * 100).toFixed(1)}% overhang</span></button>)}</div></div></details>}
@@ -1228,7 +1275,6 @@ export default function App() {
                 /></div>}
               </div>}
             </div>
-            {geometryWarnings.length > 0 && <div className="geometry-warnings">{geometryWarnings.map(finding => <div key={finding.id}><b>{finding.label}</b><p>{finding.detail}</p></div>)}</div>}
             <details className="technical-geometry"><summary>Technical geometry details</summary><dl><div><dt>Triangles</dt><dd>{analysis.triangleCount.toLocaleString()}</dd></div><div><dt>Largest overhang</dt><dd>{previewGeometryRisk?.largestOverhangRegionAreaMm2.toFixed(0) ?? 0} mm² · {previewGeometryRisk?.largestOverhangRegionSpanMm.toFixed(1) ?? '0.0'} mm span</dd></div><div><dt>Mesh boundaries</dt><dd>{analysis.topology?.boundaryEdgeCount ?? 0}</dd></div><div><dt>Non-manifold edges</dt><dd>{analysis.topology?.nonManifoldEdgeCount ?? 0}</dd></div></dl><p>Preliminary geometric measurements. These values are not calibrated failure probabilities.</p></details>
             <details className="analysis-limits"><summary>Analysis limits</summary><div>{analysis.analysisLimits?.map(limit => <div key={limit.id}><span>{limit.status === 'requires-input' ? 'Needs input' : limit.status === 'evaluated' ? 'Screened' : 'Not evaluated'}</span><p><b>{limit.label}</b>{limit.detail}</p></div>)}</div><p className="analysis-limit-note">No structural simulation is performed. Load paths and stress are not inferred from appearance; thickness screening is partial and geometric only.</p></details>
           </details>
@@ -1256,7 +1302,7 @@ export default function App() {
               inherited={inheritedPlanPreference}
               overridden={Boolean(projectPlanPreference)}
               onChange={selectProjectPlanPreference}
-              onUseDefault={() => { setProjectPlanPreference(undefined); setMaterialOverride(undefined); setFilamentProductId(undefined); }}
+              onUseDefault={() => { attemptedAutomaticFilamentSelection.current = ''; setProjectPlanPreference(undefined); setMaterialOverride(undefined); setFilamentProductId(undefined); }}
             />}
             {recommendations.length > 0 && <RecommendedKeySettings recommendations={recommendations} notices={notices} materialOptions={recommendedMaterial ? {
               candidates: materialDecision?.candidates ?? [],
@@ -1267,14 +1313,14 @@ export default function App() {
               productOptions,
               selectedProduct: selectedFilamentProduct,
               onSelectProduct: setFilamentProductId,
-              onSelect: selected => { setMaterialOverride(selected === recommendedMaterial ? undefined : selected); setFilamentProductId(undefined); },
+              onSelect: selected => { attemptedAutomaticFilamentSelection.current = ''; setMaterialOverride(selected === recommendedMaterial ? undefined : selected); setFilamentProductId(undefined); },
             } : undefined}/>}
             {materialPlanBlocked && <div className="context-warning unsupported-guidance" role="alert"><b>Material and printer combination is not exportable</b>{materialBlockReasons.map(reason => <p key={reason}>{reason}</p>)}<p>Select a compatible material option or modify the confirmed requirements.</p></div>}
             <div className="plan-result-actions"><button type="button" className="modify-plan" onClick={() => setModifyingPlan(true)}>Modify plan</button><button type="button" className="primary" disabled={materialPlanBlocked} onClick={() => setView('export')}>Continue to export</button></div>
           </> : <>
             <span className="kicker">PREPARE</span><div className="prepare-heading"><div><h1>{unsupportedPlan ? 'Review unsupported requirement' : modifyingPlan ? 'Modify plan' : 'Review assumptions'}</h1><p>{intelligence.objectName}</p></div><span className="review-pill">{unsupportedPlan ? 'Unsupported use' : 'Review required'}</span></div><div className="readiness-summary"><i style={{ '--readiness': `${Math.max(16, 100 - Math.max(1, decisionCount) * 12)}%` } as React.CSSProperties}/><div><b>{unsupportedPlan ? 'Export is paused for this requirement' : decisionCount ? `${decisionCount} item${decisionCount === 1 ? '' : 's'} to review` : 'Review the interpreted plan inputs'}</b><small>{intelligence.likelyPurpose}</small></div></div>
             {readiness?.unsupportedReasons.map(reason => <div className="context-warning unsupported-guidance" role="alert" key={reason}><b>Export paused for this requirement</b><p>{reason}</p><p>Correct the related answer below if the requirement was misunderstood. If it is accurate, Check Make does not yet have a qualified dataset for this use.</p></div>)}
-            <InterpretationSummary intelligence={intelligence} purposeClarification={followUps['object-purpose-description'] ?? ''} onPurposeClarification={value => updateDecision('object-purpose-description', value)}/>
+            <InterpretationSummary intelligence={intelligence} purposeClarification={followUps['object-purpose-description'] ?? ''} onPurposeClarification={updatePurposeClarificationDraft} onApplyPurposeClarification={applyPurposeClarification}/>
             {editableQuestions.length > 0 && <div className="workflow-questions"><div className="decision-heading"><div><h2>{unsupportedPlan ? 'Review the answer that paused export' : modifyingPlan ? 'Edit plan decisions' : 'Review Check Make’s assumptions'}</h2><p>{unsupportedPlan ? 'Change the answer only if Check Make misunderstood the requirement, then re-check the complete plan.' : modifyingPlan ? 'Your earlier answers remain editable. Changes are re-applied to the complete plan.' : 'Context statements and world-model assumptions are prefilled. Change only what Check Make misunderstood.'}</p></div><span>{unansweredQuestions.length ? `${unansweredQuestions.length} missing` : assumptionReviewCount ? `${assumptionReviewCount} to review` : 'Complete'}</span></div>{editableQuestions.map(question => {
               const inferredEvidence = autoFilledDecisions[question.id];
               const requirement = question.field && ['environment', 'load', 'impact', 'heat', 'priority', 'supportsAllowed'].includes(question.field)
@@ -1294,7 +1340,7 @@ export default function App() {
                 : requirement?.status === 'inferred'
                   ? 'Interpreted from Context · review if needed'
                   : inferredEvidence ? 'Prefilled · review if needed' : '';
-              return <label className={`${(followUps[question.id] ?? '').trim() ? 'answered ' : ''}${inferredEvidence ? 'inferred' : ''}`} key={question.id}><span className="decision-state">{(followUps[question.id] ?? '').trim() ? '✓' : editableQuestions.findIndex(item => item.id === question.id) + 1}</span><span className="decision-copy"><b>{question.question}</b><small>{question.why}</small>{input}{interpretationLabel && <em title={requirement?.evidence.join(', ') ?? inferredEvidence?.join(', ')}>{interpretationLabel}</em>}</span></label>;
+              return <label id={`decision-${question.id}`} onFocusCapture={() => { if (question.id === 'mesh-repair') setPreviewMode('mesh'); }} className={`${(followUps[question.id] ?? '').trim() ? 'answered ' : ''}${inferredEvidence ? 'inferred' : ''}${question.id === 'mesh-repair' ? ' mesh-decision' : ''}`} key={question.id}><span className="decision-state">{(followUps[question.id] ?? '').trim() ? '✓' : editableQuestions.findIndex(item => item.id === question.id) + 1}</span><span className="decision-copy"><b>{question.question}</b><small>{question.why}</small>{question.id === 'mesh-repair' && <button type="button" className="show-question-geometry" onClick={event => { event.preventDefault(); event.stopPropagation(); showMeshIssues(); }}>Show highlighted areas in 3D</button>}{input}{interpretationLabel && <em title={requirement?.evidence.join(', ') ?? inferredEvidence?.join(', ')}>{interpretationLabel}</em>}</span></label>;
             })}</div>}
             <section className="support-assessment"><div className="support-heading"><span className="kicker">SUPPORT RECOMMENDATION</span><h2>{supportRecommendationLabel}</h2><p>{selectedSupportPreference === 'auto' ? supportRecommendationReason : supportOverrideReason}</p></div><div className="support-choices" role="group" aria-label="Support recommendation">
               <button type="button" className={selectedSupportPreference === 'auto' ? 'selected' : ''} aria-pressed={selectedSupportPreference === 'auto'} onClick={() => updateSupportPreference('auto')}><b>Follow Check Make</b><small>{supportRecommendationLabel}</small></button>

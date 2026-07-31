@@ -41,7 +41,8 @@ describe('P2 model analysis', () => {
     const { analysis } = analyzeGeometry(geometry, 'open-triangle.stl', metadata);
 
     expect(analysis.topology).toMatchObject({ boundaryEdgeCount: 3, watertight: false });
-    expect(analysis.findings?.find(finding => finding.id === 'open-mesh')?.detail).toContain('boundary edges');
+    expect(analysis.findings?.find(finding => finding.id === 'open-mesh')?.detail).toContain('do not form a closed surface');
+    expect(analysis.topology?.boundaryTriangleIndices).toEqual([0]);
     expect(analysis.analysisLimits?.find(limit => limit.id === 'load-path')?.status).toBe('requires-input');
   });
 

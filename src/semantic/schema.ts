@@ -7,6 +7,7 @@ import {
   type SemanticConfirmationQuestion,
   type SemanticConflict,
   type SemanticFactKey,
+  type SemanticEvidenceStep,
   type SemanticInterpretation,
   type SemanticProposal,
 } from './types';
@@ -62,15 +63,29 @@ function proposal(value: unknown, path: string): SemanticProposal {
 }
 
 function candidateFact(value: unknown, path: string): CandidateFact {
-  const item = record(value, path, ['key', 'value', 'certainty', 'basis', 'evidence', 'needsConfirmation']);
+  const item = record(value, path, ['key', 'value', 'certainty', 'basis', 'evidence', 'evidencePath', 'needsConfirmation']);
   const key = factKey(item.key, `${path}.key`);
   const allowedValues = semanticFactVocabulary[key] as readonly string[];
+  let evidencePath: SemanticEvidenceStep[] | undefined;
+  if (item.evidencePath !== undefined) {
+    if (!Array.isArray(item.evidencePath) || !item.evidencePath.length || item.evidencePath.length > 12) {
+      throw new SemanticSchemaError(`${path}.evidencePath must contain 1–12 steps.`);
+    }
+    evidencePath = item.evidencePath.map((step, index) => {
+      const parsed = record(step, `${path}.evidencePath[${index}]`, ['kind', 'value']);
+      return {
+        kind: oneOf(parsed.kind, ['text_match', 'concept', 'relation', 'inheritance', 'composition', 'property'] as const, `${path}.evidencePath[${index}].kind`),
+        value: text(parsed.value, `${path}.evidencePath[${index}].value`, 180),
+      };
+    });
+  }
   return {
     key,
     value: oneOf(item.value, allowedValues, `${path}.value`) as CandidateFact['value'],
     certainty: oneOf(item.certainty, certainties, `${path}.certainty`) as SemanticCertainty,
     basis: oneOf(item.basis, bases, `${path}.basis`) as SemanticBasis,
     evidence: text(item.evidence, `${path}.evidence`),
+    ...(evidencePath ? { evidencePath } : {}),
     needsConfirmation: typeof item.needsConfirmation === 'boolean'
       ? item.needsConfirmation
       : (() => { throw new SemanticSchemaError(`${path}.needsConfirmation must be boolean.`); })(),
@@ -127,7 +142,7 @@ export const semanticOutputSchemaDescription = {
   parentSystem: { value: 'string', certainty: certainties, basis: bases, evidence: 'string', needsConfirmation: 'boolean' },
   primaryFunction: { value: 'string', certainty: certainties, basis: bases, evidence: 'string', needsConfirmation: 'boolean' },
   candidateFacts: Object.fromEntries(Object.entries(semanticFactVocabulary)),
-  candidateFactShape: { key: 'vocabulary key', value: 'allowed value for key', certainty: certainties, basis: bases, evidence: 'string', needsConfirmation: 'boolean' },
+  candidateFactShape: { key: 'vocabulary key', value: 'allowed value for key', certainty: certainties, basis: bases, evidence: 'string', evidencePath: [{ kind: 'string', value: 'string' }], needsConfirmation: 'boolean' },
   uncertainties: ['string'],
   conflicts: [{ factKeys: ['vocabulary key'], observation: 'string' }],
   confirmationQuestions: [{ id: 'string', question: 'string', why: 'string', factKeys: ['vocabulary key'] }],
@@ -170,6 +185,16 @@ export const semanticJsonSchema = {
           certainty: { type: 'string', enum: certainties },
           basis: { type: 'string', enum: bases },
           evidence: { type: 'string', minLength: 1, maxLength: 500 },
+          evidencePath: {
+            type: 'array', minItems: 1, maxItems: 12,
+            items: {
+              type: 'object', additionalProperties: false, required: ['kind', 'value'],
+              properties: {
+                kind: { type: 'string', enum: ['text_match', 'concept', 'relation', 'inheritance', 'composition', 'property'] },
+                value: { type: 'string', minLength: 1, maxLength: 180 },
+              },
+            },
+          },
           needsConfirmation: { type: 'boolean' },
         },
       },

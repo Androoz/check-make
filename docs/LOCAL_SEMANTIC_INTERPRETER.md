@@ -76,6 +76,8 @@ The automated suite verifies:
 
 The live-model corpus is `validation/semantic/local-semantic-v1-corpus.json` (the historical filename is retained so existing validation commands keep working). It is English-only. The deterministic v3.7 coverage corpus adds at least 100 phrasings across 20 common functional object families. Expectations are typed facts, conflicts, abstention, and semantic equivalence—not exact prose.
 
+Deterministic Local Analysis also includes the v3.9 compositional context graph. It combines reusable concepts rather than complete phrases: a signage role plus a disc-golf, golf-course, trail, or outdoor-site context can produce reviewable wayfinding, outdoor, exposure, and visible-surface hypotheses. Relation-bound composition prevents the same activity name from leaking outdoor assumptions into unrelated objects such as indoor disc holders. These inherited facts use the same confirmation gate as model-generated hypotheses.
+
 `semantic:acceptance` runs the release-oriented deterministic matrix: 30 varied descriptions and 133 identity, function, requirement, conflict, abstention, and safety-question checks. `semantic:providers` scores the smaller provider-neutral corpus against deterministic Local Analysis and, when available, a running llama.cpp server and OpenAI. Missing providers are reported as **unavailable**, never passed.
 
 These checks do **not** establish the real quality of Qwen3 4B or any other local model. A separate benchmark run must execute every corpus case against real model builds and record accuracy, false promotion risk, latency, memory, and hardware.

@@ -72,4 +72,24 @@ describe('Interpretation v3.8 parent-system integration', () => {
     const interpretation = deterministicSemanticInterpretation(semanticInput(description));
     expect(promotedSemanticFacts(interpretation, description)).toEqual([]);
   });
+
+  it('shows the composed object and purpose for disc-golf course signage', () => {
+    const description = 'Next tee sign for disc golf';
+    const interpretation = deterministicSemanticInterpretation(semanticInput(description));
+    expect(interpretation.objectIdentity).toMatchObject({
+      value: 'outdoor wayfinding or course sign',
+      certainty: 'strong_hypothesis',
+      needsConfirmation: true,
+    });
+    expect(interpretation.parentSystem).toMatchObject({
+      value: 'disc-golf course',
+      certainty: 'strong_hypothesis',
+    });
+    expect(interpretation.primaryFunction).toMatchObject({
+      value: 'guides visitors or players to a course location',
+      certainty: 'strong_hypothesis',
+      needsConfirmation: true,
+    });
+    expect(promotedSemanticFacts(interpretation, description)).toEqual([]);
+  });
 });

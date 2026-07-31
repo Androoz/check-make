@@ -10,8 +10,10 @@ const groups = {
 
 export function analyzePurpose(purpose: string): PurposeSignals {
   const text = purpose.toLocaleLowerCase('en-US');
+  const toyVehicle = /\b(?:toy(?:\s+rc)? car|model car|rc car|radio[- ]controlled car|remote[- ]controlled car|radio controlled vehicle|radiostyrd bil|leksaksbil)\b/i.test(text);
   const hits = (words: readonly string[]) => words.filter(word => text.includes(word));
   const matched = Object.fromEntries(Object.entries(groups).map(([key, words]) => [key, hits(words)]));
+  if (toyVehicle) matched.heatExposed = matched.heatExposed.filter(word => word !== 'car');
   return {
     structural: matched.structural.length > 0,
     fitCritical: matched.fitCritical.length > 0,

@@ -35,5 +35,10 @@ export const v38ContextCorpus: V38ContextCase[] = [
   { id: 'indoor-camp-chair', text: 'Spacer for camping chair, used indoors and not load-bearing.', parent: 'camping or folding chair', expectedFacts: ['environment.location:indoor', 'load.role:non_load_bearing'], forbiddenFacts: ['environment.location:outdoor', 'load.role:load_bearing'] },
   { id: 'unknown-parent', text: 'Replacement spacer for a custom assembly', forbiddenFacts: ['environment.location:outdoor', 'failure.consequence:safety_critical'] },
   { id: 'camping-not-chair', text: 'Spacer for a camping stove', forbiddenFacts: ['failure.consequence:safety_critical', 'load.role:load_bearing'] },
+  { id: 'disc-golf-tee-sign', text: 'Next tee sign for disc golf', parent: 'disc-golf course', expectedFacts: ['primary_function:guide', 'environment.location:outdoor', 'environment.exposure:uv', 'environment.exposure:moisture', 'appearance.requirement:visible_surface', 'priority:finish'] },
+  { id: 'disc-golf-indoor-override', text: 'Next tee sign for disc golf, used indoors and never outside.', parent: 'disc-golf course', expectedFacts: ['primary_function:guide', 'environment.location:indoor'], forbiddenFacts: ['environment.location:outdoor', 'environment.exposure:uv', 'environment.exposure:moisture'] },
+  { id: 'trail-marker', text: 'Trail marker for a hiking trail', parent: 'outdoor trail or route', expectedFacts: ['primary_function:guide', 'environment.location:outdoor', 'appearance.requirement:visible_surface'] },
+  { id: 'campground-sign', text: 'Information sign for a campground', parent: 'outdoor site', expectedFacts: ['primary_function:display', 'environment.location:outdoor', 'priority:finish'] },
+  { id: 'disc-holder-no-leak', text: 'Holder for disc golf discs', forbiddenFacts: ['environment.location:outdoor', 'environment.exposure:uv', 'primary_function:guide'] },
+  { id: 'golf-tee-organizer-no-leak', text: 'Organizer for golf tees', forbiddenFacts: ['environment.location:outdoor', 'environment.exposure:uv', 'primary_function:guide'] },
 ];
-

@@ -29,12 +29,18 @@ export type SemanticFactValue = (typeof semanticFactVocabulary)[SemanticFactKey]
 export type SemanticCertainty = 'explicit' | 'strong_hypothesis' | 'weak_hypothesis' | 'unknown';
 export type SemanticBasis = 'user_description' | 'geometry' | 'filename' | 'world_knowledge' | 'combined';
 
+export interface SemanticEvidenceStep {
+  kind: 'text_match' | 'concept' | 'relation' | 'inheritance' | 'composition' | 'property';
+  value: string;
+}
+
 export interface CandidateFact {
   key: SemanticFactKey;
   value: SemanticFactValue;
   certainty: SemanticCertainty;
   basis: SemanticBasis;
   evidence: string;
+  evidencePath?: SemanticEvidenceStep[];
   needsConfirmation: boolean;
 }
 
