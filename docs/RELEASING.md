@@ -40,17 +40,18 @@ configured. It does not make an unsigned build appear trusted.
 
 Record each result in the draft release notes or the release pull request:
 
-| Target | Bundle | Build | Signature | Install | Launch | Core workflow | Native slicer export |
+| Target | Bundle | Build | Checksum | Signature | Install/start | Core workflow | Native slicer export |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| macOS Apple Silicon | DMG | required | Developer ID + notarization preferred | required | required | required | test installed slicers |
-| macOS Intel | DMG | required | Developer ID + notarization preferred | required | required | required | test installed slicers |
-| Windows x64 | NSIS EXE | required | Authenticode preferred | required | required | required | test installed slicers |
-| Linux x64 | AppImage + DEB | required | document checksum/signature | required | required | required | currently incomplete |
+| macOS Apple Silicon | DMG | required | required | Developer ID + notarization preferred | required | required | test installed slicers |
+| macOS Intel | DMG | required | required | Developer ID + notarization preferred | required | required | test installed slicers |
+| Windows x64 | NSIS EXE | required | required | Authenticode preferred | required | required | test installed slicers |
+| Linux x64 | AppImage + DEB | required | required | document checksum/signature | required | required | currently incomplete |
 
 Report these states separately:
 
 - source checks passed;
-- package built;
+- platform-specific application build completed;
+- package or installer created and its checksum recorded;
 - package signature/notarization status;
 - installer tested on the target operating system;
 - application launched;
@@ -61,6 +62,12 @@ Report these states separately:
 Do not describe missing evidence as passed. Remove a failed or untested asset
 from the public release or label the release and limitation clearly as a
 prerelease.
+
+For a cross-platform beta, CI artifacts alone do not establish platform
+verification. Record at least one observed Inspect → Prepare → Export user flow
+on each advertised platform. Developer ID signing, notarization, and
+Authenticode are preferred but are not beta-exit requirements; every unsigned
+or ad-hoc-signed package must carry explicit installation and trust warnings.
 
 ## Publish
 

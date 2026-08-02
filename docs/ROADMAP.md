@@ -267,9 +267,13 @@ Priority 5 expands the intelligence layer only after deterministic requirements,
 
 Lower cost and Lower weight remain deferred until Check Make has a stable toolpath-aware quantity source. They must not be reintroduced using bounding-box estimates or by launching an installed slicer invisibly.
 
-## First public release focus
+## Cross-platform public beta focus
 
-After the 0.2.6 material-alternatives test slice, development should pivot from feature breadth to launch hardening. The first public release should prove Check Make's differentiating path from intended use to a model-bound, validated slicer project before adding more optimization modes.
+After the 0.2.6 material-alternatives test slice, development should pivot from feature breadth to launch hardening. The next external milestone is a testable public beta for macOS, Windows, and Linux before adding more optimization modes.
+
+> An external tester on macOS, Windows, and Linux can install or start a published package, open a supported model, complete Inspect → Prepare → Export, save the result, and report the platform, version, and observed outcome.
+
+CI-produced packages are build evidence, not proof that a platform is testable. Platform verification requires at least one observed real user flow on that platform. Full Apple Developer ID signing and notarization are preferred but are not mandatory for beta exit; unsigned or ad-hoc-signed packages must include explicit installation and trust warnings.
 
 ### Release-critical
 
@@ -280,7 +284,8 @@ After the 0.2.6 material-alternatives test slice, development should pivot from 
 - [ ] Require explicit, provider-specific consent and a payload preview before any OpenAI transfer, or remove cloud analysis from the first public build.
 - [ ] Add release-grade error recovery for missing slicers, stale source files, invalid saved projects, failed package validation, and incompatible material overrides.
 - [ ] Complete focused usability and accessibility testing of the current Inspect → Prepare → Export workflow without adding new result modes.
-- [ ] Sign and notarize the macOS application, test the DMG on a clean supported Mac, and document the supported macOS versions. Treat Windows packaging and installation validation as the next platform release rather than a blocker for a macOS-first launch.
+- [ ] Build packages for macOS, Windows, and Linux, record checksums and signing state, and test installation or startup plus Inspect → Prepare → Export on each platform with at least one external tester.
+- [ ] Document explicit installation and trust warnings for every unsigned or ad-hoc-signed package. Treat Developer ID signing, notarization, and Authenticode as preferred distribution hardening rather than proof of the core workflow.
 
 ### Differentiators to preserve in the first release
 
@@ -297,7 +302,7 @@ After the 0.2.6 material-alternatives test slice, development should pivot from 
 - Post-print feedback, shared learning, and community evidence ingestion.
 - Additional cloud or local AI providers and bundled local model runtimes.
 - Optional automatic opening of the exported project in its target slicer.
-- Broad tier-2 printer coverage, Linux, mobile companion experiences, STEP import, arbitrary-angle optimization, and full mesh repair.
+- Broad tier-2 printer coverage, mobile companion experiences, STEP import, arbitrary-angle optimization, and full mesh repair.
 
 ## Product experience — implemented foundation
 

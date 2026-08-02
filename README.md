@@ -47,6 +47,14 @@ Official installers are distributed through
 signatures, installation tests, and live slicer checks are reported as
 separate release states; see [the release process](docs/RELEASING.md).
 
+## Release status
+
+- **Published:** [`v0.2.6-beta.3`](https://github.com/Androoz/check-make/releases/tag/v0.2.6-beta.3) from commit `fcc53c3`, with an ad-hoc-signed macOS Universal DMG. It is not Developer ID signed or notarized.
+- **In progress:** `0.2.6-beta.4` in draft PR [#16](https://github.com/Androoz/check-make/pull/16). At commit `e7ef69f`, source tests and the local production build pass; a local ad-hoc-signed macOS Universal DMG exists separately and is not a published beta 4 release.
+- **Not yet established for beta 4:** clean-machine installation, Intel launch, Windows or Linux packaging and user-flow validation, installed-slicer integration, live llama.cpp or OpenAI behavior, and physical printing.
+
+Source validation, building, packaging, signing, installation, launch, core-workflow testing, slicer integration, live-provider testing, physical printing, and publication are independent evidence states. A passed source or CI build does not imply that a package is installable or tested on its target platform.
+
 Maintainers can generate and check the optional physical P1 geometry pilot with `npm run p1:generate` and `npm run p1:verify`; ordinary users are not expected to run it. External observations are cataloged and scope-matched with `npm run evidence:report`; see the [external evidence architecture](docs/EXTERNAL_EVIDENCE_ARCHITECTURE.md) and [generated gap report](docs/EXTERNAL_EVIDENCE_GAP_REPORT.md). See [P1 geometry validation](docs/P1_GEOMETRY_VALIDATION.md) before locking a printer/material scope or recording observations.
 
 Reviewed filament-product data and its native-export boundary are documented in [Filament product profiles](docs/FILAMENT_PRODUCT_PROFILES.md).
