@@ -50,7 +50,9 @@ separate release states; see [the release process](docs/RELEASING.md).
 ## Release status
 
 - **Published:** [`v0.2.6-beta.3`](https://github.com/Androoz/check-make/releases/tag/v0.2.6-beta.3) from commit `fcc53c3`, with an ad-hoc-signed macOS Universal DMG. It is not Developer ID signed or notarized.
-- **In progress:** `0.2.6-beta.4` in draft PR [#16](https://github.com/Androoz/check-make/pull/16). At commit `e7ef69f`, source tests and the local production build pass; a local ad-hoc-signed macOS Universal DMG exists separately and is not a published beta 4 release.
+- **Merged candidate:** `0.2.6-beta.4` is consolidated in `main`. PR [#16](https://github.com/Androoz/check-make/pull/16) was merged on 2 August 2026. The verified candidate baseline is commit `6ef6e99`, which contains the beta 4 product commit `e7ef69f` plus the repository-consolidation documentation and scoped opener permission.
+- **Automatically verified at `6ef6e99`:** 313 TypeScript tests in 51 files, the production frontend build and bundle budget, 132/132 semantic acceptance checks, 34/34 deterministic provider checks, and 15 Rust tests. Nine installed-slicer tests were ignored; live llama.cpp and OpenAI were unavailable and are not counted as passed.
+- **Package status:** an earlier local ad-hoc-signed macOS Universal DMG was built from `e7ef69f`. It is not package evidence for `6ef6e99`, and no public beta 4 release exists.
 - **Not yet established for beta 4:** clean-machine installation, Intel launch, Windows or Linux packaging and user-flow validation, installed-slicer integration, live llama.cpp or OpenAI behavior, and physical printing.
 
 Source validation, building, packaging, signing, installation, launch, core-workflow testing, slicer integration, live-provider testing, physical printing, and publication are independent evidence states. A passed source or CI build does not imply that a package is installable or tested on its target platform.
