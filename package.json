@@ -34,7 +34,7 @@
     "@react-three/fiber": "^9.4.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
-    "react": "^19.1.1",
+    "react": "^19.2.8",
     "react-dom": "^19.1.1",
     "three": "^0.180.0",
     "yaml": "^2.8.1"
