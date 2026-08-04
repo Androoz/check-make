@@ -48,12 +48,17 @@ describe('P1 analytical geometry fixtures', () => {
     expect(analysis.geometryRisk.largestOverhangRegionAreaMm2).toBeCloseTo(4, 5);
     expect(analysis.geometryRisk.largestOverhangRegionSpanMm).toBeCloseTo(2, 5);
     expect(analysis.geometryRisk.overhangRegions[0]).toMatchObject({
+      id: 'overhang-1',
       triangleCount: 2,
+      triangleIndices: expect.any(Array),
       minZMm: 10,
       maxZMm: 10,
       meanDownwardNormalAngleDeg: 0,
       horizontalAreaFraction: 1,
+      supportAssessment: 'inspect',
     });
+    expect(analysis.geometryRisk.overhangRegions[0].centroid).toBeDefined();
+    expect(analysis.geometryRisk.overhangRegions[0].boundingBox?.size.x).toBeCloseTo(2, 5);
     expect(analysis.geometryRisk.bridgeClassification).toBe('not-evaluated');
   });
 

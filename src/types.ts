@@ -62,13 +62,20 @@ export interface ModelMetadata {
   clues: ModelClue[];
 }
 export interface OverhangRegion {
+  id?: string;
   triangleCount: number;
+  triangleIndices?: number[];
   areaMm2: number;
   projectedSpanMm: number;
   minZMm: number;
   maxZMm: number;
+  centroid?: Vec3;
+  meanNormal?: Vec3;
+  boundingBox?: { min: Vec3; max: Vec3; size: Vec3 };
   meanDownwardNormalAngleDeg: number;
   horizontalAreaFraction: number;
+  supportAssessment?: 'likely-support' | 'inspect';
+  assessmentReason?: string;
 }
 export interface GeometryRiskMetrics {
   boundingFootprintAreaMm2: number;
@@ -98,6 +105,49 @@ export interface MeshTopology {
   boundaryTriangleIndices?: number[];
   nonManifoldTriangleIndices?: number[];
 }
+export interface IndexedMeshTopology {
+  partCount: number;
+  shellCount: number;
+  vertexCount: number;
+  edgeCount: number;
+  boundaryEdgeCount: number;
+  nonManifoldEdgeCount: number;
+}
+export interface PartRelationSummary {
+  kind: 'separate' | 'touching-or-overlapping';
+  shellCount: number;
+  spatialComponentCount: number;
+  detail: string;
+}
+export interface ModelTopologyReport {
+  indexed: IndexedMeshTopology;
+  spatial: MeshTopology;
+  coincidentEdgeCount: number;
+  relations: PartRelationSummary[];
+}
+export interface ModelDocumentSummary {
+  sourceFormat: ModelFormat;
+  exportSource: 'original' | 'normalized-stl';
+  preservesSourceTopology: boolean;
+  partCount: number;
+  partNames: string[];
+  objectCount?: number;
+  instanceCount?: number;
+  plateCount?: number;
+  plates?: Array<{
+    id: string;
+    name: string;
+    instanceCount: number;
+    instances: Array<{ objectId: string; instanceId: string; identifyId?: string }>;
+    triangleCount: number;
+    sizeMm: [number, number, number];
+    minMm?: [number, number, number];
+    maxMm?: [number, number, number];
+  }>;
+  sourceProjectFlavor?: string;
+  overrideKeys?: string[];
+}
+export type GeometryStrategy = 'preserve' | 'multipart' | 'single-solid';
 export interface GeometryFinding {
   id: string;
   severity: 'info' | 'warning';
@@ -120,6 +170,8 @@ export interface ModelAnalysis {
   metadata: ModelMetadata;
   geometryRisk: GeometryRiskMetrics;
   topology?: MeshTopology;
+  topologyReport?: ModelTopologyReport;
+  document?: ModelDocumentSummary;
   components?: MeshComponent[];
   findings?: GeometryFinding[];
   analysisLimits?: AnalysisLimit[];

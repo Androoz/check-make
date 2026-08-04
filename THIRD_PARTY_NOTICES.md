@@ -12,8 +12,10 @@ the license published by its respective author. Distributors are responsible
 for preserving notices required by those licenses.
 
 The primary runtime projects include React, Three.js, Tauri, Serde, Reqwest,
-`stl_io`, `rfd`, and `zip`. Their inclusion does not imply endorsement of Check
-Make.
+`stl_io`, `rfd`, `zip`, `quick-xml` (MIT), and Manifold (Apache-2.0). Manifold
+is used only by a gated internal geometry-validation path; normal Check Make
+export does not repair or boolean-union user geometry. Their inclusion does not
+imply endorsement of Check Make.
 
 ## Research data redistributed in this repository
 

@@ -15,6 +15,12 @@ use tauri::{
 };
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
+mod model_document;
+use model_document::{
+    load_model_document, prepare_document, BuildPlate, GeometryStrategy, ModelDocument,
+    ModelDocumentSummary,
+};
+
 const MAX_MODEL_BYTES: u64 = 100 * 1024 * 1024;
 
 #[derive(Clone, Copy, Serialize)]
@@ -102,6 +108,20 @@ struct ManufacturingPackageResult {
     validated: bool,
     applied_settings: Vec<String>,
     warnings: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PlateExportCapability {
+    NativeProject,
+    PerPlateBundle,
+}
+
+fn plate_export_capability(target: &str) -> PlateExportCapability {
+    match target {
+        "bambu" | "orca" | "creality" => PlateExportCapability::NativeProject,
+        "generic" | "prusa" | "cura" => PlateExportCapability::PerPlateBundle,
+        _ => PlateExportCapability::PerPlateBundle,
+    }
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,8 +245,8 @@ fn validate_model_path(path: &str) -> Result<PathBuf, String> {
         .and_then(|v| v.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if ext != "stl" {
-        return Err("Check Make Desktop MVP currently accepts STL files only.".into());
+    if !["stl", "3mf"].contains(&ext.as_str()) {
+        return Err("The manufacturing pipeline requires an STL or canonical 3MF source.".into());
     }
     let size = fs::metadata(&canonical).map_err(|e| e.to_string())?.len();
     if size > MAX_MODEL_BYTES {
@@ -271,16 +291,6 @@ fn transform(v: [f32; 3], kind: usize) -> [f32; 3] {
         3 => [-v[2], v[1], v[0]],
         4 => [v[0], v[2], -v[1]],
         _ => [v[0], -v[2], v[1]],
-    }
-}
-fn orientation_kind(id: &str) -> usize {
-    match id {
-        "flip-z" => 1,
-        "right-side" => 2,
-        "left-side" => 3,
-        "front-side" => 4,
-        "back-side" => 5,
-        _ => 0,
     }
 }
 fn xml_escape(value: &str) -> String {
@@ -590,6 +600,12 @@ fn read_model_bytes(path: String) -> Result<Response, String> {
 }
 
 #[tauri::command]
+fn inspect_model_document(path: String) -> Result<ModelDocumentSummary, String> {
+    let path = validate_import_path(&path)?;
+    load_model_document(&path).map(|document| document.summary())
+}
+
+#[tauri::command]
 fn cache_normalized_stl(original_path: String, bytes: Vec<u8>) -> Result<String, String> {
     validate_import_path(&original_path)?;
     if bytes.is_empty() || bytes.len() as u64 > MAX_MODEL_BYTES {
@@ -778,7 +794,30 @@ fn write_3mf(
     orientation_id: &str,
     metadata_json: &str,
 ) -> Result<usize, String> {
-    write_3mf_with_build_center(source, target, orientation_id, metadata_json, None)
+    write_3mf_with_strategy(
+        source,
+        target,
+        orientation_id,
+        metadata_json,
+        GeometryStrategy::Preserve,
+    )
+}
+
+fn write_3mf_with_strategy(
+    source: &Path,
+    target: &Path,
+    orientation_id: &str,
+    metadata_json: &str,
+    strategy: GeometryStrategy,
+) -> Result<usize, String> {
+    write_3mf_with_build_center_strategy(
+        source,
+        target,
+        orientation_id,
+        metadata_json,
+        None,
+        strategy,
+    )
 }
 
 fn write_3mf_with_build_center(
@@ -788,48 +827,36 @@ fn write_3mf_with_build_center(
     metadata_json: &str,
     build_center: Option<(f32, f32)>,
 ) -> Result<usize, String> {
-    let mesh = stl_io::read_stl(&mut BufReader::new(
-        File::open(source).map_err(|e| e.to_string())?,
-    ))
-    .map_err(|e| format!("Invalid STL: {e}"))?;
-    let kind = orientation_kind(orientation_id);
-    let mut vertices: Vec<[f32; 3]> = mesh
-        .vertices
-        .iter()
-        .map(|v| transform([v[0], v[1], v[2]], kind))
-        .collect();
-    let mut min = [f32::INFINITY; 3];
-    let mut max = [f32::NEG_INFINITY; 3];
-    for v in &vertices {
-        for axis in 0..3 {
-            min[axis] = min[axis].min(v[axis]);
-            max[axis] = max[axis].max(v[axis]);
-        }
-    }
-    for v in &mut vertices {
-        for axis in 0..3 {
-            v[axis] -= min[axis]
-        }
-    }
-    let valid_faces: Vec<_> = mesh
-        .faces
-        .iter()
-        .filter(|face| {
-            let a = vertices[face.vertices[0]];
-            let b = vertices[face.vertices[1]];
-            let c = vertices[face.vertices[2]];
-            let n = cross(sub(b, a), sub(c, a));
-            n[0] * n[0] + n[1] * n[1] + n[2] * n[2] > 1e-12
-        })
-        .collect();
-    let removed = mesh.faces.len() - valid_faces.len();
-    let title = xml_escape(
-        source
-            .file_stem()
-            .and_then(|v| v.to_str())
-            .unwrap_or("Check Make model"),
-    );
+    write_3mf_with_build_center_strategy(
+        source,
+        target,
+        orientation_id,
+        metadata_json,
+        build_center,
+        GeometryStrategy::Preserve,
+    )
+}
+
+fn write_3mf_with_build_center_strategy(
+    source: &Path,
+    target: &Path,
+    orientation_id: &str,
+    metadata_json: &str,
+    build_center: Option<(f32, f32)>,
+    strategy: GeometryStrategy,
+) -> Result<usize, String> {
+    let document = prepare_document(source, orientation_id, strategy)?;
+    let removed = document.removed_triangles;
+    let title = xml_escape(&document.title);
     let metadata = xml_escape(metadata_json);
+    let part_count = document.parts.len();
+    let triangle_count = document
+        .parts
+        .iter()
+        .map(|part| part.triangles.len())
+        .sum::<usize>();
+    let source_format = xml_escape(&document.source_format);
+    let geometry_strategy = strategy.as_str();
     let mut model_xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
@@ -838,35 +865,82 @@ fn write_3mf_with_build_center(
  <metadata name="checkmake:analysis">{metadata}</metadata>
  <metadata name="checkmake:orientation">{}</metadata>
  <metadata name="checkmake:degenerate-triangles-removed">{removed}</metadata>
- <resources><object id="1" type="model"><mesh><vertices>
+ <metadata name="checkmake:source-format">{source_format}</metadata>
+ <metadata name="checkmake:part-count">{part_count}</metadata>
+ <metadata name="checkmake:triangle-count">{triangle_count}</metadata>
+ <metadata name="checkmake:geometry-strategy">{geometry_strategy}</metadata>
+ <resources>
 "#,
         xml_escape(orientation_id)
     );
-    for v in &vertices {
-        model_xml.push_str(&format!(
-            "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>\n",
-            v[0], v[1], v[2]
-        ))
+    let max_extruder = document
+        .parts
+        .iter()
+        .map(|part| part.extruder)
+        .max()
+        .unwrap_or(1);
+    if max_extruder > 1 {
+        const COLORS: [&str; 8] = [
+            "#FFFFFFFF",
+            "#E44B4BFF",
+            "#3D7BE0FF",
+            "#46A758FF",
+            "#F2C94CFF",
+            "#9B51E0FF",
+            "#F2994AFF",
+            "#222222FF",
+        ];
+        model_xml.push_str("<basematerials id=\"100\">\n");
+        for extruder in 1..=max_extruder {
+            model_xml.push_str(&format!(
+                "<base name=\"Filament {extruder}\" displaycolor=\"{}\"/>\n",
+                COLORS[(extruder - 1) % COLORS.len()]
+            ));
+        }
+        model_xml.push_str("</basematerials>\n");
     }
-    model_xml.push_str("</vertices><triangles>\n");
-    for face in valid_faces {
+    for (index, part) in document.parts.iter().enumerate() {
+        let material = if max_extruder > 1 {
+            format!(" pid=\"100\" pindex=\"{}\"", part.extruder - 1)
+        } else {
+            String::new()
+        };
         model_xml.push_str(&format!(
-            "<triangle v1=\"{}\" v2=\"{}\" v3=\"{}\"/>\n",
-            face.vertices[0], face.vertices[1], face.vertices[2]
-        ))
+            "<object id=\"{}\" type=\"model\" name=\"{}\"{material}><mesh><vertices>\n",
+            index + 1,
+            xml_escape(&part.name)
+        ));
+        for vertex in &part.vertices {
+            model_xml.push_str(&format!(
+                "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>\n",
+                vertex[0], vertex[1], vertex[2]
+            ));
+        }
+        model_xml.push_str("</vertices><triangles>\n");
+        for triangle in &part.triangles {
+            model_xml.push_str(&format!(
+                "<triangle v1=\"{}\" v2=\"{}\" v3=\"{}\"/>\n",
+                triangle[0], triangle[1], triangle[2]
+            ));
+        }
+        model_xml.push_str("</triangles></mesh></object>\n");
     }
-    let build_item = build_center
+    let size_x = document.max[0] - document.min[0];
+    let size_y = document.max[1] - document.min[1];
+    let build_transform = build_center
         .map(|(center_x, center_y)| {
-            let translate_x = center_x - (max[0] - min[0]) / 2.0;
-            let translate_y = center_y - (max[1] - min[1]) / 2.0;
-            format!(
-                "<item objectid=\"1\" transform=\"1 0 0 0 1 0 0 0 1 {translate_x} {translate_y} 0\"/>"
-            )
+            let translate_x = center_x - size_x / 2.0;
+            let translate_y = center_y - size_y / 2.0;
+            format!(" transform=\"1 0 0 0 1 0 0 0 1 {translate_x} {translate_y} 0\"")
         })
-        .unwrap_or_else(|| "<item objectid=\"1\"/>".into());
-    model_xml.push_str(&format!(
-        "</triangles></mesh></object></resources><build>{build_item}</build></model>"
-    ));
+        .unwrap_or_default();
+    let build_items = document
+        .parts
+        .iter()
+        .enumerate()
+        .map(|(index, _)| format!("<item objectid=\"{}\"{build_transform}/>", index + 1))
+        .collect::<String>();
+    model_xml.push_str(&format!("</resources><build>{build_items}</build></model>"));
     let content_types = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#;
     let rels = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#;
     let file = File::create(target).map_err(|e| e.to_string())?;
@@ -885,6 +959,139 @@ fn write_3mf_with_build_center(
         .map_err(|e| e.to_string())?;
     zip.finish().map_err(|e| e.to_string())?;
     Ok(removed)
+}
+
+fn safe_plate_file_name(value: &str) -> String {
+    let cleaned = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let compact = cleaned
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if compact.is_empty() {
+        "plate".into()
+    } else {
+        compact
+    }
+}
+
+fn write_core_plate_3mf(
+    document: &ModelDocument,
+    plate: &BuildPlate,
+    target: &Path,
+    metadata_json: &str,
+) -> Result<(), String> {
+    let parts = document.parts_for_plate(plate);
+    if parts.is_empty() {
+        return Err(format!(
+            "Build plate {} contains no resolved printable objects.",
+            plate.id
+        ));
+    }
+    let mut min = [f32::INFINITY; 3];
+    for vertex in parts.iter().flat_map(|part| part.vertices.iter()) {
+        for axis in 0..3 {
+            min[axis] = min[axis].min(vertex[axis]);
+        }
+    }
+    // Bambu-family projects may represent later plates with virtual bed offsets.
+    // Remove only the common offset; relative instance placement is unchanged.
+    let translation = [5.0 - min[0], 5.0 - min[1], -min[2]];
+    let triangle_count = parts.iter().map(|part| part.triangles.len()).sum::<usize>();
+    let plate_title = if plate.name.is_empty() {
+        format!("Plate {}", plate.id)
+    } else {
+        plate.name.clone()
+    };
+    let mut model = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+ <metadata name="Title">{}</metadata>
+ <metadata name="Application">Check Make 0.2.6-beta.5</metadata>
+ <metadata name="checkmake:analysis">{}</metadata>
+ <metadata name="checkmake:source-plate-id">{}</metadata>
+ <metadata name="checkmake:source-plate-name">{}</metadata>
+ <metadata name="checkmake:part-count">{}</metadata>
+ <metadata name="checkmake:triangle-count">{triangle_count}</metadata>
+ <resources>"#,
+        xml_escape(&plate_title),
+        xml_escape(metadata_json),
+        xml_escape(&plate.id),
+        xml_escape(&plate.name),
+        parts.len(),
+    );
+    for (index, part) in parts.iter().enumerate() {
+        model.push_str(&format!(
+            "<object id=\"{}\" type=\"model\" name=\"{}\"><mesh><vertices>",
+            index + 1,
+            xml_escape(&part.name)
+        ));
+        for vertex in &part.vertices {
+            model.push_str(&format!(
+                "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>",
+                vertex[0] + translation[0],
+                vertex[1] + translation[1],
+                vertex[2] + translation[2]
+            ));
+        }
+        model.push_str("</vertices><triangles>");
+        for triangle in &part.triangles {
+            model.push_str(&format!(
+                "<triangle v1=\"{}\" v2=\"{}\" v3=\"{}\"/>",
+                triangle[0], triangle[1], triangle[2]
+            ));
+        }
+        model.push_str("</triangles></mesh></object>");
+    }
+    model.push_str("</resources><build>");
+    for index in 0..parts.len() {
+        model.push_str(&format!("<item objectid=\"{}\"/>", index + 1));
+    }
+    model.push_str("</build></model>");
+    let content_types = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#;
+    let rels = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#;
+    let mut output = ZipWriter::new(File::create(target).map_err(|error| error.to_string())?);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for (name, bytes) in [
+        ("[Content_Types].xml", content_types.as_bytes()),
+        ("_rels/.rels", rels.as_bytes()),
+        ("3D/3dmodel.model", model.as_bytes()),
+    ] {
+        output
+            .start_file(name, options)
+            .map_err(|error| error.to_string())?;
+        output.write_all(bytes).map_err(|error| error.to_string())?;
+    }
+    output.finish().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn same_plate_graph(expected: &ModelDocument, actual: &ModelDocument) -> Result<(), String> {
+    if expected.plates != actual.plates {
+        return Err(format!(
+            "The exported plate graph changed: expected {} plates and {} instances, reopened {} plates and {} instances.",
+            expected.plates.len(), expected.instance_count, actual.plates.len(), actual.instance_count
+        ));
+    }
+    if expected.object_count != actual.object_count
+        || expected.instance_count != actual.instance_count
+        || expected.parts != actual.parts
+    {
+        return Err(
+            "The exported project changed object identity, instance identity, geometry, or imported instance transforms."
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 fn build_bambu_project_settings(
@@ -933,6 +1140,128 @@ fn build_bambu_project_settings(
     project
 }
 
+fn write_preserved_bambu_project_3mf(
+    source: &Path,
+    target: &Path,
+    project_settings: &Value,
+    metadata_json: &str,
+    orientation_id: &str,
+) -> Result<(), String> {
+    write_preserved_bambu_family_project_3mf(
+        source,
+        target,
+        project_settings,
+        metadata_json,
+        orientation_id,
+        None,
+    )
+}
+
+fn write_preserved_bambu_family_project_3mf(
+    source: &Path,
+    target: &Path,
+    project_settings: &Value,
+    metadata_json: &str,
+    orientation_id: &str,
+    application_identity: Option<(&str, &str)>,
+) -> Result<(), String> {
+    if orientation_id != "as-imported" {
+        return Err("A multi-plate Bambu project can currently be preserved only with its imported object orientations and placements.".into());
+    }
+    let source_file =
+        File::open(source).map_err(|error| format!("Cannot open source Bambu project: {error}"))?;
+    let mut input = ZipArchive::new(source_file)
+        .map_err(|error| format!("Invalid source Bambu project: {error}"))?;
+    let output_file = File::create(target)
+        .map_err(|error| format!("Cannot create preserved Bambu project: {error}"))?;
+    let mut output = ZipWriter::new(output_file);
+    let project_json = serde_json::to_vec_pretty(project_settings).map_err(|e| e.to_string())?;
+    let mut replaced_project_settings = false;
+    for index in 0..input.len() {
+        let mut entry = input.by_index(index).map_err(|error| error.to_string())?;
+        let name = entry.name().to_string();
+        let normalized = name.trim_start_matches('/');
+        let is_project_settings =
+            normalized.eq_ignore_ascii_case("Metadata/project_settings.config");
+        let is_root_model = normalized.eq_ignore_ascii_case("3D/3dmodel.model");
+        if normalized.eq_ignore_ascii_case("Metadata/check_make.json")
+            || normalized.eq_ignore_ascii_case("Metadata/check_make_orientation.txt")
+        {
+            continue;
+        }
+        let mut options = SimpleFileOptions::default().compression_method(entry.compression());
+        if let Some(mode) = entry.unix_mode() {
+            options = options.unix_permissions(mode);
+        }
+        if entry.is_dir() {
+            output
+                .add_directory(name, options)
+                .map_err(|error| error.to_string())?;
+            continue;
+        }
+        output
+            .start_file(name, options)
+            .map_err(|error| error.to_string())?;
+        if is_project_settings {
+            output
+                .write_all(&project_json)
+                .map_err(|error| error.to_string())?;
+            replaced_project_settings = true;
+        } else if is_root_model && application_identity.is_some() {
+            let mut model = String::new();
+            entry
+                .read_to_string(&mut model)
+                .map_err(|error| format!("Cannot read preserved root model: {error}"))?;
+            let (name, version) = application_identity.unwrap();
+            let marker = format!("<metadata name=\"{name}\">");
+            if !model.contains(&marker) {
+                let insertion = format!("{marker}{}</metadata>", xml_escape(version));
+                let model_start = model
+                    .find("<model")
+                    .ok_or("The preserved root model has no model element.")?;
+                let model_end = model[model_start..]
+                    .find('>')
+                    .map(|offset| model_start + offset + 1)
+                    .ok_or("The preserved root model element is incomplete.")?;
+                model.insert_str(model_end, &insertion);
+            }
+            output
+                .write_all(model.as_bytes())
+                .map_err(|error| error.to_string())?;
+        } else {
+            std::io::copy(&mut entry, &mut output).map_err(|error| error.to_string())?;
+        }
+    }
+    if !replaced_project_settings {
+        output
+            .start_file(
+                "Metadata/project_settings.config",
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+            )
+            .map_err(|error| error.to_string())?;
+        output
+            .write_all(&project_json)
+            .map_err(|error| error.to_string())?;
+    }
+    for (name, bytes) in [
+        ("Metadata/check_make.json", metadata_json.as_bytes()),
+        (
+            "Metadata/check_make_orientation.txt",
+            orientation_id.as_bytes(),
+        ),
+    ] {
+        output
+            .start_file(
+                name,
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+            )
+            .map_err(|error| error.to_string())?;
+        output.write_all(bytes).map_err(|error| error.to_string())?;
+    }
+    output.finish().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn write_bambu_family_project_3mf(
     source: &Path,
     target: &Path,
@@ -941,80 +1270,62 @@ fn write_bambu_family_project_3mf(
     project_settings: &Value,
     application: &str,
 ) -> Result<usize, String> {
-    let mesh = stl_io::read_stl(&mut BufReader::new(
-        File::open(source).map_err(|e| e.to_string())?,
-    ))
-    .map_err(|e| format!("Invalid STL: {e}"))?;
-    let kind = orientation_kind(orientation_id);
-    let mut vertices: Vec<[f32; 3]> = mesh
-        .vertices
-        .iter()
-        .map(|v| transform([v[0], v[1], v[2]], kind))
-        .collect();
-    let mut min = [f32::INFINITY; 3];
-    let mut max = [f32::NEG_INFINITY; 3];
-    for vertex in &vertices {
-        for axis in 0..3 {
-            min[axis] = min[axis].min(vertex[axis]);
-            max[axis] = max[axis].max(vertex[axis]);
-        }
-    }
-    for vertex in &mut vertices {
-        for axis in 0..3 {
-            vertex[axis] -= min[axis];
-        }
-    }
-    let valid_faces: Vec<_> = mesh
-        .faces
-        .iter()
-        .filter(|face| {
-            let a = vertices[face.vertices[0]];
-            let b = vertices[face.vertices[1]];
-            let c = vertices[face.vertices[2]];
-            let normal = cross(sub(b, a), sub(c, a));
-            normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] > 1e-12
-        })
-        .collect();
-    let removed = mesh.faces.len() - valid_faces.len();
-    let title = xml_escape(
-        source
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or("Check Make model"),
-    );
+    let document = prepare_document(source, orientation_id, GeometryStrategy::Preserve)?;
+    let removed = document.removed_triangles;
+    let title = xml_escape(&document.title);
     let source_name = xml_escape(
         source
             .file_name()
             .and_then(|value| value.to_str())
-            .unwrap_or("model.stl"),
+            .unwrap_or("model.3mf"),
     );
-    let size_x = max[0] - min[0];
-    let size_y = max[1] - min[1];
+    let size_x = document.max[0] - document.min[0];
+    let size_y = document.max[1] - document.min[1];
     let translate_x = 128.0 - size_x / 2.0;
     let translate_y = 128.0 - size_y / 2.0;
+    let root_object_id = document.parts.len() + 1;
+    let total_faces = document
+        .parts
+        .iter()
+        .map(|part| part.triangles.len())
+        .sum::<usize>();
+    let part_count = document.parts.len();
+    let source_format = xml_escape(&document.source_format);
 
     let mut object_model = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p">
  <metadata name="BambuStudio:3mfVersion">1</metadata>
  <resources>
-  <object id="1" p:UUID="00010000-81cb-4c03-9d28-80fed5dfa1dc" type="model"><mesh><vertices>
 "#,
     );
-    for vertex in &vertices {
+    for (index, part) in document.parts.iter().enumerate() {
+        let object_id = index + 1;
         object_model.push_str(&format!(
-            "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>\n",
-            vertex[0], vertex[1], vertex[2]
+            "<object id=\"{object_id}\" name=\"{}\" p:UUID=\"{object_id:08x}-81cb-4c03-9d28-80fed5dfa1dc\" type=\"model\"><mesh><vertices>\n",
+            xml_escape(&part.name),
         ));
+        for vertex in &part.vertices {
+            object_model.push_str(&format!(
+                "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>\n",
+                vertex[0], vertex[1], vertex[2]
+            ));
+        }
+        object_model.push_str("</vertices><triangles>\n");
+        for triangle in &part.triangles {
+            object_model.push_str(&format!(
+                "<triangle v1=\"{}\" v2=\"{}\" v3=\"{}\"/>\n",
+                triangle[0], triangle[1], triangle[2]
+            ));
+        }
+        object_model.push_str("</triangles></mesh></object>\n");
     }
-    object_model.push_str("</vertices><triangles>\n");
-    for face in &valid_faces {
-        object_model.push_str(&format!(
-            "<triangle v1=\"{}\" v2=\"{}\" v3=\"{}\"/>\n",
-            face.vertices[0], face.vertices[1], face.vertices[2]
-        ));
-    }
-    object_model.push_str("</triangles></mesh></object></resources><build/></model>");
+    object_model.push_str("</resources><build/></model>");
+
+    let components = document.parts.iter().enumerate().map(|(index, _)| {
+        let object_id = index + 1;
+        format!("<component p:path=\"/3D/Objects/object_1.model\" objectid=\"{object_id}\" p:UUID=\"{object_id:08x}-b206-40ff-9872-83e8017abed1\" transform=\"1 0 0 0 1 0 0 0 1 0 0 0\"/>")
+    }).collect::<String>();
 
     let root_model = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -1026,24 +1337,29 @@ fn write_bambu_family_project_3mf(
  <metadata name="checkmake:analysis">{}</metadata>
  <metadata name="checkmake:orientation">{}</metadata>
  <metadata name="checkmake:degenerate-triangles-removed">{removed}</metadata>
- <resources><object id="2" p:UUID="00000001-61cb-4c03-9d28-80fed5dfa1dc" type="model"><components><component p:path="/3D/Objects/object_1.model" objectid="1" p:UUID="00010000-b206-40ff-9872-83e8017abed1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object></resources>
- <build p:UUID="2c7c17d8-22b5-4d84-8835-1976022ea369"><item objectid="2" p:UUID="00000002-b1ec-4553-aec9-835e5b724bb4" transform="1 0 0 0 1 0 0 0 1 {translate_x} {translate_y} 0" printable="1"/></build>
+ <metadata name="checkmake:source-format">{source_format}</metadata>
+ <metadata name="checkmake:part-count">{part_count}</metadata>
+ <metadata name="checkmake:triangle-count">{total_faces}</metadata>
+ <resources><object id="{root_object_id}" p:UUID="00000001-61cb-4c03-9d28-80fed5dfa1dc" type="model"><components>{components}</components></object></resources>
+ <build p:UUID="2c7c17d8-22b5-4d84-8835-1976022ea369"><item objectid="{root_object_id}" p:UUID="00000002-b1ec-4553-aec9-835e5b724bb4" transform="1 0 0 0 1 0 0 0 1 {translate_x} {translate_y} 0" printable="1"/></build>
 </model>"#,
         xml_escape(application),
         xml_escape(metadata_json),
         xml_escape(orientation_id),
     );
+    let part_settings = document.parts.iter().enumerate().map(|(index, part)| {
+        let part_id = index + 1;
+        format!(r#"<part id="{part_id}" subtype="normal_part"><metadata key="name" value="{}"/><metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/><metadata key="source_file" value="{source_name}"/><metadata key="source_object_id" value="0"/><metadata key="source_volume_id" value="{index}"/><metadata key="extruder" value="{}"/><mesh_stat face_count="{}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/></part>"#, xml_escape(&part.name), part.extruder, part.triangles.len())
+    }).collect::<String>();
     let model_settings = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <config>
- <object id="2"><metadata key="name" value="{title}"/><metadata key="extruder" value="1"/><metadata face_count="{}"/>
-  <part id="1" subtype="normal_part"><metadata key="name" value="{title}"/><metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/><metadata key="source_file" value="{source_name}"/><metadata key="source_object_id" value="0"/><metadata key="source_volume_id" value="0"/><mesh_stat face_count="{}" edges_fixed="0" degenerate_facets="{removed}" facets_removed="{removed}" facets_reversed="0" backwards_edges="0"/></part>
+ <object id="{root_object_id}"><metadata key="name" value="{title}"/><metadata key="extruder" value="1"/><metadata face_count="{total_faces}"/>
+  {part_settings}
  </object>
- <plate><metadata key="plater_id" value="1"/><metadata key="plater_name" value=""/><metadata key="locked" value="false"/><metadata key="filament_map_mode" value="Auto For Flush"/><metadata key="gcode_file" value=""/><model_instance><metadata key="object_id" value="2"/><metadata key="instance_id" value="0"/><metadata key="identify_id" value="1"/></model_instance></plate>
+ <plate><metadata key="plater_id" value="1"/><metadata key="plater_name" value=""/><metadata key="locked" value="false"/><metadata key="filament_map_mode" value="Auto For Flush"/><metadata key="gcode_file" value=""/><model_instance><metadata key="object_id" value="{root_object_id}"/><metadata key="instance_id" value="0"/><metadata key="identify_id" value="1"/></model_instance></plate>
  <assemble></assemble>
-</config>"#,
-        valid_faces.len(),
-        valid_faces.len(),
+</config>"#
     );
     let content_types = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#;
     let package_rels = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#;
@@ -1686,6 +2002,80 @@ fn validate_bambu_family_override_markers(
     }
     Ok(())
 }
+
+fn append_bambu_family_override_markers(
+    path: &Path,
+    process_keys: &[String],
+    filament_keys: &[String],
+) -> Result<(), String> {
+    let mut settings = read_bambu_family_project_settings(path)?;
+    let object = settings
+        .as_object_mut()
+        .ok_or_else(|| "Slicer project settings are not a JSON object.".to_string())?;
+    object.insert(
+        "different_settings_to_system".into(),
+        json!([process_keys.join(";"), filament_keys.join(";"), ""]),
+    );
+    let bytes = serde_json::to_vec_pretty(&settings)
+        .map_err(|error| format!("Cannot serialize slicer override markers: {error}"))?;
+    let temporary = path.with_extension("override-markers.tmp");
+    let result = (|| {
+        let file = File::open(path)
+            .map_err(|error| format!("Cannot open slicer project for rewrite: {error}"))?;
+        let mut input = ZipArchive::new(file)
+            .map_err(|error| format!("Cannot read slicer project for rewrite: {error}"))?;
+        let output_file = File::create(&temporary)
+            .map_err(|error| format!("Cannot create slicer project rewrite: {error}"))?;
+        let mut output = ZipWriter::new(output_file);
+        for index in 0..input.len() {
+            let mut entry = input
+                .by_index(index)
+                .map_err(|error| format!("Cannot read slicer project entry: {error}"))?;
+            let name = entry.name().to_string();
+            if name
+                .trim_start_matches('/')
+                .eq_ignore_ascii_case("Metadata/project_settings.config")
+            {
+                continue;
+            }
+            let mut options = SimpleFileOptions::default().compression_method(entry.compression());
+            if let Some(mode) = entry.unix_mode() {
+                options = options.unix_permissions(mode);
+            }
+            if entry.is_dir() {
+                output
+                    .add_directory(name, options)
+                    .map_err(|error| format!("Cannot copy slicer project directory: {error}"))?;
+            } else {
+                output
+                    .start_file(name, options)
+                    .map_err(|error| format!("Cannot copy slicer project entry: {error}"))?;
+                std::io::copy(&mut entry, &mut output)
+                    .map_err(|error| format!("Cannot copy slicer project data: {error}"))?;
+            }
+        }
+        output
+            .start_file(
+                "Metadata/project_settings.config",
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+            )
+            .map_err(|error| format!("Cannot create slicer override marker entry: {error}"))?;
+        output
+            .write_all(&bytes)
+            .map_err(|error| format!("Cannot write slicer override markers: {error}"))?;
+        output
+            .finish()
+            .map_err(|error| format!("Cannot finish slicer override markers: {error}"))?;
+        drop(input);
+        fs::rename(&temporary, path)
+            .map_err(|error| format!("Cannot install slicer override markers: {error}"))?;
+        Ok(())
+    })();
+    if result.is_err() {
+        fs::remove_file(&temporary).ok();
+    }
+    result
+}
 fn bambu_profile_names(
     printer_id: &str,
     material: &str,
@@ -1966,6 +2356,72 @@ fn unique_temp_dir() -> Result<PathBuf, String> {
     Ok(path)
 }
 
+struct PreparedExportSource {
+    path: PathBuf,
+    temporary_directory: Option<PathBuf>,
+}
+
+impl Drop for PreparedExportSource {
+    fn drop(&mut self) {
+        if let Some(directory) = self.temporary_directory.as_ref() {
+            fs::remove_dir_all(directory).ok();
+        }
+    }
+}
+
+fn prepare_export_source(
+    source: &Path,
+    strategy: GeometryStrategy,
+    metadata_json: &str,
+) -> Result<PreparedExportSource, String> {
+    if strategy == GeometryStrategy::Preserve {
+        return Ok(PreparedExportSource {
+            path: source.to_path_buf(),
+            temporary_directory: None,
+        });
+    }
+    let directory = unique_temp_dir()?;
+    let target = directory.join("check-make-canonical.3mf");
+    if let Err(error) =
+        write_3mf_with_strategy(source, &target, "as-imported", metadata_json, strategy)
+    {
+        fs::remove_dir_all(&directory).ok();
+        return Err(error);
+    }
+    Ok(PreparedExportSource {
+        path: target,
+        temporary_directory: Some(directory),
+    })
+}
+
+fn validate_project_export_scope(
+    source: &Path,
+    strategy: GeometryStrategy,
+    target: &str,
+    orientation_id: &str,
+) -> Result<(), String> {
+    if source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case("3mf"))
+        != Some(true)
+    {
+        return Ok(());
+    }
+    let document = load_model_document(source)?;
+    if !document.is_multi_plate() {
+        return Ok(());
+    }
+    if strategy != GeometryStrategy::Preserve {
+        return Err("Multi-plate projects currently require Preserve source. Shell splitting and boolean union must be applied to an explicitly selected object, not the entire project.".into());
+    }
+    if orientation_id != "as-imported" {
+        return Err("Multi-plate projects preserve imported object orientations and placements. Project-wide reorientation is not available.".into());
+    }
+    let _capability = plate_export_capability(target);
+    Ok(())
+}
+
 fn gcode_number(line: &str, label: &str) -> Option<f64> {
     if !line.contains(label) {
         return None;
@@ -2072,6 +2528,12 @@ fn export_bambu_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let source_document = load_model_document(source)?;
+    let preserve_bambu_project = source_document.source_project_flavor == "bambu-family"
+        && !source_document.plates.is_empty();
+    if source_document.is_multi_plate() && orientation_id != "as-imported" {
+        return Err("Multi-plate export preserves each imported object orientation. Select the imported orientation before exporting.".into());
+    }
     let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     let executable = find_executable("bambu").ok_or_else(|| {
         "Bambu Studio was not detected. Install it to create a Bambu project 3MF.".to_string()
@@ -2121,14 +2583,24 @@ fn export_bambu_project(
             &process_override_keys,
             &filament_override_keys,
         );
-        write_bambu_family_project_3mf(
-            source,
-            &generated_project,
-            orientation_id,
-            metadata_json,
-            &project_settings,
-            "BambuStudio-02.07.01.62",
-        )?;
+        if preserve_bambu_project {
+            write_preserved_bambu_project_3mf(
+                source,
+                &generated_project,
+                &project_settings,
+                metadata_json,
+                orientation_id,
+            )?;
+        } else {
+            write_bambu_family_project_3mf(
+                source,
+                &generated_project,
+                orientation_id,
+                metadata_json,
+                &project_settings,
+                "BambuStudio-02.07.01.62",
+            )?;
+        }
         let applied = validate_bambu_family_project_settings(&generated_project, &expected)?;
         validate_bambu_product_identity(&generated_project, filament_product.as_ref())?;
         validate_bambu_family_override_markers(
@@ -2143,6 +2615,21 @@ fn export_bambu_project(
             )
         })?;
         let mut warnings = Vec::new();
+        if preserve_bambu_project {
+            warnings.push(format!(
+                "Preserved {} build plate{} and {} object instance{} from the imported Bambu project.",
+                source_document.plates.len(),
+                if source_document.plates.len() == 1 { "" } else { "s" },
+                source_document.instance_count,
+                if source_document.instance_count == 1 { "" } else { "s" },
+            ));
+        }
+        if !source_document.override_keys.is_empty() {
+            warnings.push(format!(
+                "Preserved source object or plate overrides: {}. These may take precedence over the shared process profile.",
+                source_document.override_keys.join(", ")
+            ));
+        }
         if recommendations
             .iter()
             .any(|item| item.setting == "speed_preset")
@@ -2289,6 +2776,8 @@ fn export_orca_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let source_document = load_model_document(source)?;
+    let preserve_plate_graph = source_document.has_explicit_plate_metadata();
     let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     let executable = find_executable("orca").ok_or_else(|| {
         "OrcaSlicer was not detected. Install it to create a native Orca project 3MF.".to_string()
@@ -2327,42 +2816,78 @@ fn export_orca_project(
             apply_bambu_product_identity(&mut filament, product);
         }
         let expected = expected_bambu_project_values(&process, &filament, recommendations);
-        write_3mf(source, &core_project, orientation_id, metadata_json)?;
-        write_slicer_json(&machine_path, &machine)?;
-        write_slicer_json(&process_path, &process)?;
-        write_slicer_json(&filament_path, &filament)?;
-        let settings = format!("{};{}", machine_path.display(), process_path.display());
-        let output_name = generated_project
-            .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| "Cannot construct OrcaSlicer output filename.".to_string())?;
-        let output = Command::new(&executable)
-            .arg("--load-settings")
-            .arg(settings)
-            .arg("--load-filaments")
-            .arg(&filament_path)
-            .arg("--arrange")
-            .arg("1")
-            .arg("--ensure-on-bed")
-            .arg("--outputdir")
-            .arg(&temp)
-            .arg("--export-3mf")
-            .arg(output_name)
-            .arg(&core_project)
-            .output()
-            .map_err(|e| format!("Could not create the project with OrcaSlicer: {e}"))?;
-        if !output.status.success() || !generated_project.is_file() {
-            return Err(format!(
-                "OrcaSlicer could not create its native project ({}). {}{}",
-                output.status,
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            ));
+        let (process_override_keys, filament_override_keys) = bambu_override_keys(recommendations);
+        let native_filament_name = filament_product
+            .as_ref()
+            .map(FilamentProductInput::native_name)
+            .unwrap_or_else(|| spec.filament_name.clone());
+        if preserve_plate_graph {
+            let project_settings = build_bambu_project_settings(
+                &machine,
+                &process,
+                &filament,
+                spec.machine_name,
+                spec.process_name,
+                &native_filament_name,
+                &process_override_keys,
+                &filament_override_keys,
+            );
+            write_preserved_bambu_family_project_3mf(
+                source,
+                &generated_project,
+                &project_settings,
+                metadata_json,
+                orientation_id,
+                Some(("OrcaSlicer", "2.4.2")),
+            )?;
+        } else {
+            write_3mf(source, &core_project, orientation_id, metadata_json)?;
+            write_slicer_json(&machine_path, &machine)?;
+            write_slicer_json(&process_path, &process)?;
+            write_slicer_json(&filament_path, &filament)?;
+            let settings = format!("{};{}", machine_path.display(), process_path.display());
+            let output_name = generated_project
+                .file_name()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| "Cannot construct OrcaSlicer output filename.".to_string())?;
+            let output = Command::new(&executable)
+                .arg("--load-settings")
+                .arg(settings)
+                .arg("--load-filaments")
+                .arg(&filament_path)
+                .arg("--arrange")
+                .arg("1")
+                .arg("--ensure-on-bed")
+                .arg("--outputdir")
+                .arg(&temp)
+                .arg("--export-3mf")
+                .arg(output_name)
+                .arg(&core_project)
+                .output()
+                .map_err(|e| format!("Could not create the project with OrcaSlicer: {e}"))?;
+            if !output.status.success() || !generated_project.is_file() {
+                return Err(format!(
+                    "OrcaSlicer could not create its native project ({}). {}{}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            append_check_make_metadata(&generated_project, metadata_json, orientation_id)?;
+            append_bambu_family_override_markers(
+                &generated_project,
+                &process_override_keys,
+                &filament_override_keys,
+            )?;
         }
-        append_check_make_metadata(&generated_project, metadata_json, orientation_id)?;
         validate_orca_project_identity(&generated_project)?;
         let applied = validate_bambu_family_project_settings(&generated_project, &expected)?;
         validate_bambu_product_identity(&generated_project, filament_product.as_ref())?;
+        validate_bambu_family_override_markers(
+            &generated_project,
+            &process_override_keys,
+            &filament_override_keys,
+        )?;
         validate_bambu_family_effective_settings(
             &executable,
             "OrcaSlicer",
@@ -2370,6 +2895,10 @@ fn export_orca_project(
             &expected,
             &temp,
         )?;
+        if preserve_plate_graph {
+            let reopened = load_model_document(&generated_project)?;
+            same_plate_graph(&source_document, &reopened)?;
+        }
         fs::copy(&generated_project, target).map_err(|e| {
             format!(
                 "The validated OrcaSlicer project could not be saved to {}: {e}",
@@ -2377,6 +2906,12 @@ fn export_orca_project(
             )
         })?;
         let mut warnings = Vec::new();
+        if preserve_plate_graph {
+            warnings.push(format!(
+                "Preserved {} imported build plates and {} object instances in the OrcaSlicer project.",
+                source_document.plates.len(), source_document.instance_count
+            ));
+        }
         if recommendations
             .iter()
             .any(|item| item.setting == "speed_preset")
@@ -2943,6 +3478,8 @@ fn export_creality_project(
     printer_id: &str,
     recommendations: &[RecommendationInput],
 ) -> Result<ManufacturingPackageResult, String> {
+    let source_document = load_model_document(source)?;
+    let preserve_plate_graph = source_document.has_explicit_plate_metadata();
     let filament_product = filament_product_from_metadata(metadata_json, recommendations)?;
     if ![
         "bambu-x1c",
@@ -3010,14 +3547,26 @@ fn export_creality_project(
             &process_override_keys,
             &filament_override_keys,
         );
-        write_bambu_family_project_3mf(
-            source,
-            &generated_project,
-            orientation_id,
-            metadata_json,
-            &project_settings,
-            "CrealityPrint-7.2.0",
-        )?;
+        if preserve_plate_graph {
+            write_preserved_bambu_project_3mf(
+                source,
+                &generated_project,
+                &project_settings,
+                metadata_json,
+                orientation_id,
+            )?;
+            let reopened = load_model_document(&generated_project)?;
+            same_plate_graph(&source_document, &reopened)?;
+        } else {
+            write_bambu_family_project_3mf(
+                source,
+                &generated_project,
+                orientation_id,
+                metadata_json,
+                &project_settings,
+                "CrealityPrint-7.2.0",
+            )?;
+        }
         let applied = validate_bambu_family_project_settings(&generated_project, &expected)?;
         validate_bambu_product_identity(&generated_project, filament_product.as_ref())?;
         validate_bambu_family_override_markers(
@@ -3035,6 +3584,12 @@ fn export_creality_project(
             "Creality Print’s own headless round-trip was not run because its macOS CLI can crash while reopening a valid project. Active profile overrides were verified directly instead."
                 .into(),
         ];
+        if preserve_plate_graph {
+            warnings.push(format!(
+                "Preserved {} imported build plates and {} object instances in the Creality Print project.",
+                source_document.plates.len(), source_document.instance_count
+            ));
+        }
         if recommendations
             .iter()
             .any(|item| item.setting == "speed_preset")
@@ -3587,6 +4142,138 @@ fn export_cura_project(
     result
 }
 
+fn export_multi_plate_bundle(
+    source: &Path,
+    target: &Path,
+    target_slicer: &str,
+    metadata_json: &str,
+    printer_id: &str,
+    recommendations: &[RecommendationInput],
+) -> Result<ManufacturingPackageResult, String> {
+    let document = load_model_document(source)?;
+    if !document.has_explicit_plate_metadata() {
+        return Err("A per-plate bundle requires explicit source build-plate metadata.".into());
+    }
+    let temp = unique_temp_dir()?;
+    let result = (|| {
+        let mut files = Vec::new();
+        let mut applied_settings = Vec::new();
+        let mut adapter_warnings = Vec::new();
+        for (index, plate) in document.plates.iter().enumerate() {
+            let ordinal = index + 1;
+            let label = if plate.name.is_empty() {
+                format!("plate-{ordinal}")
+            } else {
+                safe_plate_file_name(&plate.name)
+            };
+            let core_source = temp.join(format!("source-{ordinal:02}-{label}.3mf"));
+            write_core_plate_3mf(&document, plate, &core_source, metadata_json)?;
+            let project_name = format!("plate-{ordinal:02}-{label}.{target_slicer}.3mf");
+            let project_path = temp.join(&project_name);
+            let plate_result = match target_slicer {
+                "generic" => {
+                    fs::copy(&core_source, &project_path).map_err(|error| error.to_string())?;
+                    ManufacturingPackageResult {
+                        path: project_path.to_string_lossy().into_owned(),
+                        target: "generic".into(),
+                        validated: true,
+                        applied_settings: Vec::new(),
+                        warnings: Vec::new(),
+                    }
+                }
+                "prusa" => export_prusa_project(
+                    &core_source,
+                    &project_path,
+                    "as-imported",
+                    metadata_json,
+                    printer_id,
+                    recommendations,
+                )?,
+                "cura" => export_cura_project(
+                    &core_source,
+                    &project_path,
+                    "as-imported",
+                    metadata_json,
+                    printer_id,
+                    recommendations,
+                )?,
+                _ => {
+                    return Err(format!(
+                        "{target_slicer} does not use per-plate bundle export."
+                    ))
+                }
+            };
+            for setting in plate_result.applied_settings {
+                if !applied_settings.contains(&setting) {
+                    applied_settings.push(setting);
+                }
+            }
+            adapter_warnings.extend(plate_result.warnings);
+            files.push(json!({
+                "ordinal": ordinal,
+                "sourcePlateId": plate.id,
+                "sourcePlateName": plate.name,
+                "instanceCount": plate.instances.len(),
+                "instances": plate.instances,
+                "file": project_name,
+                "normalization": "common translation only; relative instance placement preserved"
+            }));
+        }
+        let manifest = json!({
+            "product": "Check Make",
+            "schemaVersion": 1,
+            "kind": "per-plate-project-bundle",
+            "target": target_slicer,
+            "sourceProjectFlavor": document.source_project_flavor,
+            "plateCount": document.plates.len(),
+            "sourceHadExplicitPlateMetadata": true,
+            "sharedSettingsAssumption": true,
+            "plates": files,
+        });
+        let output_file = File::create(target)
+            .map_err(|error| format!("Could not create plate bundle: {error}"))?;
+        let mut bundle = ZipWriter::new(output_file);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        bundle
+            .start_file("check-make-plate-manifest.json", options)
+            .map_err(|error| error.to_string())?;
+        bundle
+            .write_all(
+                serde_json::to_string_pretty(&manifest)
+                    .map_err(|error| error.to_string())?
+                    .as_bytes(),
+            )
+            .map_err(|error| error.to_string())?;
+        for plate in manifest["plates"].as_array().into_iter().flatten() {
+            let name = plate["file"]
+                .as_str()
+                .ok_or("Plate bundle manifest contains an invalid filename.")?;
+            bundle
+                .start_file(name, options)
+                .map_err(|error| error.to_string())?;
+            let mut input = File::open(temp.join(name)).map_err(|error| error.to_string())?;
+            std::io::copy(&mut input, &mut bundle).map_err(|error| error.to_string())?;
+        }
+        bundle.finish().map_err(|error| error.to_string())?;
+        adapter_warnings.sort();
+        adapter_warnings.dedup();
+        let mut warnings = vec![format!(
+            "Exported {} source build plates as separate {} projects in one ZIP bundle; no new plate assignments were created.",
+            document.plates.len(), target_slicer
+        )];
+        warnings.extend(adapter_warnings);
+        Ok(ManufacturingPackageResult {
+            path: target.to_string_lossy().into_owned(),
+            target: target_slicer.into(),
+            validated: true,
+            applied_settings,
+            warnings,
+        })
+    })();
+    fs::remove_dir_all(&temp).ok();
+    result
+}
+
 #[tauri::command]
 fn create_3mf(
     path: String,
@@ -3616,23 +4303,71 @@ fn create_manufacturing_package(
     default_name: String,
     printer_id: String,
     recommendations_json: String,
+    geometry_strategy: String,
 ) -> Result<Option<ManufacturingPackageResult>, String> {
     let source = validate_model_path(&path)?;
+    let strategy = GeometryStrategy::parse(&geometry_strategy)?;
     if !["generic", "bambu", "orca", "prusa", "cura", "creality"].contains(&target.as_str()) {
         return Err(format!("Unsupported export target: {target}."));
     }
-    let destination = rfd::FileDialog::new()
-        .set_file_name(&default_name)
-        .add_filter("3MF project", &["3mf"])
-        .save_file();
+    validate_project_export_scope(&source, strategy, &target, &orientation_id)?;
+    let source_document = load_model_document(&source)?;
+    let bundle_export = source_document.has_explicit_plate_metadata()
+        && plate_export_capability(&target) == PlateExportCapability::PerPlateBundle;
+    let bundle_name = if bundle_export {
+        format!(
+            "{}.zip",
+            default_name.strip_suffix(".3mf").unwrap_or(&default_name)
+        )
+    } else {
+        default_name.clone()
+    };
+    let mut dialog = rfd::FileDialog::new().set_file_name(&bundle_name);
+    dialog = if bundle_export {
+        dialog.add_filter("Check Make plate bundle", &["zip"])
+    } else {
+        dialog.add_filter("3MF project", &["3mf"])
+    };
+    let destination = dialog.save_file();
     let Some(destination) = destination else {
         return Ok(None);
     };
     let recommendations: Vec<RecommendationInput> = serde_json::from_str(&recommendations_json)
         .map_err(|e| format!("Invalid recommendation payload: {e}"))?;
+    if bundle_export {
+        return export_multi_plate_bundle(
+            &source,
+            &destination,
+            &target,
+            &metadata_json,
+            &printer_id,
+            &recommendations,
+        )
+        .map(Some);
+    }
+    if target == "generic" {
+        write_3mf_with_strategy(
+            &source,
+            &destination,
+            &orientation_id,
+            &metadata_json,
+            strategy,
+        )?;
+        return Ok(Some(ManufacturingPackageResult {
+            path: destination.to_string_lossy().into_owned(),
+            target,
+            validated: true,
+            applied_settings: Vec::new(),
+            warnings: vec![
+                "A portable Core 3MF does not guarantee that another application will apply Check Make’s process recommendations automatically."
+                    .into(),
+            ],
+        }));
+    }
+    let prepared_source = prepare_export_source(&source, strategy, &metadata_json)?;
     if target == "bambu" {
         return export_bambu_project(
-            &source,
+            &prepared_source.path,
             &destination,
             &orientation_id,
             &metadata_json,
@@ -3643,7 +4378,7 @@ fn create_manufacturing_package(
     }
     if target == "orca" {
         return export_orca_project(
-            &source,
+            &prepared_source.path,
             &destination,
             &orientation_id,
             &metadata_json,
@@ -3654,7 +4389,7 @@ fn create_manufacturing_package(
     }
     if target == "prusa" {
         return export_prusa_project(
-            &source,
+            &prepared_source.path,
             &destination,
             &orientation_id,
             &metadata_json,
@@ -3665,7 +4400,7 @@ fn create_manufacturing_package(
     }
     if target == "cura" {
         return export_cura_project(
-            &source,
+            &prepared_source.path,
             &destination,
             &orientation_id,
             &metadata_json,
@@ -3676,7 +4411,7 @@ fn create_manufacturing_package(
     }
     if target == "creality" {
         return export_creality_project(
-            &source,
+            &prepared_source.path,
             &destination,
             &orientation_id,
             &metadata_json,
@@ -3685,17 +4420,7 @@ fn create_manufacturing_package(
         )
         .map(Some);
     }
-    write_3mf(&source, &destination, &orientation_id, &metadata_json)?;
-    Ok(Some(ManufacturingPackageResult {
-        path: destination.to_string_lossy().into_owned(),
-        target,
-        validated: true,
-        applied_settings: Vec::new(),
-        warnings: vec![
-            "A portable Core 3MF does not guarantee that another application will apply Check Make’s process recommendations automatically."
-                .into(),
-        ],
-    }))
+    Err(format!("Unsupported export target: {target}."))
 }
 
 #[tauri::command]
@@ -3706,8 +4431,11 @@ fn create_and_open_bambu_project(
     default_name: String,
     printer_id: String,
     recommendations_json: String,
+    geometry_strategy: String,
 ) -> Result<ManufacturingPackageResult, String> {
     let source = validate_model_path(&path)?;
+    let strategy = GeometryStrategy::parse(&geometry_strategy)?;
+    validate_project_export_scope(&source, strategy, "bambu", &orientation_id)?;
     let recommendations: Vec<RecommendationInput> = serde_json::from_str(&recommendations_json)
         .map_err(|e| format!("Invalid recommendation payload: {e}"))?;
     let executable =
@@ -3719,8 +4447,9 @@ fn create_and_open_bambu_project(
         .filter(|value| !value.is_empty())
         .unwrap_or("check-make-project.3mf");
     let destination = directory.join(file_name);
+    let prepared_source = prepare_export_source(&source, strategy, &metadata_json)?;
     let mut result = export_bambu_project(
-        &source,
+        &prepared_source.path,
         &destination,
         &orientation_id,
         &metadata_json,
@@ -3808,6 +4537,100 @@ fn package_check(
     }
 }
 
+fn model_metadata_value<'a>(searchable: &'a str, name: &str) -> Option<&'a str> {
+    let marker = format!("<metadata name=\"{name}\">");
+    let start = searchable.find(&marker)? + marker.len();
+    let end = searchable[start..].find("</metadata>")? + start;
+    Some(searchable[start..end].trim())
+}
+
+fn validate_plate_bundle(source: &Path, target: String) -> Result<PackageValidationReport, String> {
+    let mut archive = ZipArchive::new(
+        File::open(source).map_err(|error| format!("Cannot reopen plate bundle: {error}"))?,
+    )
+    .map_err(|error| format!("The exported plate bundle is not a valid ZIP archive: {error}"))?;
+    let mut manifest_text = String::new();
+    archive
+        .by_name("check-make-plate-manifest.json")
+        .map_err(|error| format!("Plate bundle manifest is missing: {error}"))?
+        .read_to_string(&mut manifest_text)
+        .map_err(|error| format!("Cannot read plate bundle manifest: {error}"))?;
+    let manifest: Value = serde_json::from_str(&manifest_text)
+        .map_err(|error| format!("Plate bundle manifest is invalid: {error}"))?;
+    let plates = manifest["plates"].as_array().cloned().unwrap_or_default();
+    let declared_count = manifest["plateCount"].as_u64().unwrap_or(0) as usize;
+    let mut project_checks = Vec::new();
+    for plate in &plates {
+        let Some(name) = plate["file"].as_str() else {
+            project_checks.push(("unnamed plate".to_string(), false));
+            continue;
+        };
+        let valid = archive
+            .by_name(name)
+            .ok()
+            .and_then(|mut entry| {
+                let mut bytes = Vec::new();
+                entry.read_to_end(&mut bytes).ok()?;
+                let mut project = ZipArchive::new(Cursor::new(bytes)).ok()?;
+                let mut model = String::new();
+                project
+                    .by_name("3D/3dmodel.model")
+                    .ok()?
+                    .read_to_string(&mut model)
+                    .ok()?;
+                Some(
+                    model.contains("<build")
+                        && model.contains("<item")
+                        && model.contains("<triangle"),
+                )
+            })
+            .unwrap_or(false);
+        project_checks.push((name.to_string(), valid));
+    }
+    let all_projects_valid =
+        !project_checks.is_empty() && project_checks.iter().all(|(_, valid)| *valid);
+    let checks = vec![
+        package_check(
+            "bundle",
+            "Reopen plate bundle",
+            true,
+            "ZIP archive and Check Make manifest reopened successfully",
+        ),
+        package_check(
+            "plate-count",
+            "Preserved build-plate count",
+            declared_count > 0 && declared_count == plates.len(),
+            format!(
+                "{declared_count} plates declared; {} plate records found",
+                plates.len()
+            ),
+        ),
+        package_check(
+            "explicit-source",
+            "Explicit source plate provenance",
+            manifest["sourceHadExplicitPlateMetadata"].as_bool() == Some(true),
+            "The bundle records that plate assignments came from the imported project",
+        ),
+        package_check(
+            "plate-projects",
+            "Printable project for every plate",
+            all_projects_valid,
+            project_checks
+                .iter()
+                .map(|(name, valid)| {
+                    format!("{name}: {}", if *valid { "valid" } else { "invalid" })
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
+    ];
+    Ok(PackageValidationReport {
+        valid: checks.iter().all(|check| check.passed),
+        target,
+        checks,
+    })
+}
+
 #[tauri::command]
 fn validate_manufacturing_package(
     path: String,
@@ -3816,6 +4639,15 @@ fn validate_manufacturing_package(
     let source = Path::new(&path)
         .canonicalize()
         .map_err(|e| format!("Cannot reopen exported 3MF: {e}"))?;
+    if source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+        == Some("zip")
+    {
+        return validate_plate_bundle(&source, target);
+    }
     if source
         .extension()
         .and_then(|value| value.to_str())
@@ -3830,6 +4662,7 @@ fn validate_manufacturing_package(
         .map_err(|e| format!("The exported file is not a valid 3MF archive: {e}"))?;
     let mut names = Vec::new();
     let mut searchable = String::new();
+    let mut check_make_json = None;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
         let name = entry.name().to_string();
@@ -3841,6 +4674,12 @@ fn validate_manufacturing_package(
             if entry.size() <= 8 * 1024 * 1024 {
                 let mut text = String::new();
                 entry.read_to_string(&mut text).ok();
+                if name
+                    .trim_start_matches('/')
+                    .eq_ignore_ascii_case("Metadata/check_make.json")
+                {
+                    check_make_json = Some(text.clone());
+                }
                 searchable.push_str(&text);
             }
         }
@@ -3856,6 +4695,19 @@ fn validate_manufacturing_package(
         || names
             .iter()
             .any(|name| name.to_ascii_lowercase().contains("check_make"));
+    let declared_part_count = model_metadata_value(&searchable, "checkmake:part-count")
+        .and_then(|value| value.parse::<usize>().ok());
+    let declared_triangle_count = model_metadata_value(&searchable, "checkmake:triangle-count")
+        .and_then(|value| value.parse::<usize>().ok());
+    let mesh_count = searchable.matches("<mesh>").count();
+    let triangle_count = searchable.matches("<triangle ").count();
+    let expected_document = check_make_json
+        .as_deref()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .and_then(|value| value.get("sourceDocument").cloned());
+    let actual_document = load_model_document(&source)
+        .ok()
+        .map(|document| document.summary());
     let settings_entry = match target.as_str() {
         "bambu" | "orca" | "creality" => Some("Metadata/project_settings.config"),
         "prusa" => Some("Metadata/Slic3r_PE.config"),
@@ -3903,12 +4755,73 @@ fn validate_manufacturing_package(
             "Model units are explicitly millimetres",
         ),
         package_check(
+            "part-identity",
+            "Preserved part identity",
+            declared_part_count.map(|count| count == mesh_count).unwrap_or(true),
+            declared_part_count.map(|count| format!("{mesh_count} mesh parts reopened; {count} declared by Check Make")).unwrap_or_else(|| format!("{mesh_count} mesh parts reopened; the target adapter did not retain a structural declaration")),
+        ),
+        package_check(
+            "triangle-identity",
+            "Preserved triangle identity",
+            declared_triangle_count.map(|count| count == triangle_count).unwrap_or(true),
+            declared_triangle_count.map(|count| format!("{triangle_count} triangles reopened; {count} declared by Check Make")).unwrap_or_else(|| format!("{triangle_count} triangles reopened; the target adapter did not retain a structural declaration")),
+        ),
+        package_check(
             "analysis",
             "Check Make analysis metadata",
             has_check_make,
             "Analysis provenance is embedded",
         ),
     ];
+    if let Some(expected) = expected_document.filter(|document| {
+        document
+            .get("plateCount")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            > 0
+    }) {
+        let actual_value = actual_document
+            .as_ref()
+            .and_then(|document| serde_json::to_value(document).ok());
+        for (id, label, key) in [
+            ("plate-count", "Preserved build-plate count", "plateCount"),
+            (
+                "object-count",
+                "Preserved project object count",
+                "objectCount",
+            ),
+            (
+                "instance-count",
+                "Preserved project instance count",
+                "instanceCount",
+            ),
+        ] {
+            let expected_value = expected.get(key);
+            let actual_value_for_key = actual_value.as_ref().and_then(|value| value.get(key));
+            checks.push(package_check(
+                id,
+                label,
+                expected_value.is_some() && expected_value == actual_value_for_key,
+                format!(
+                    "Expected {}; reopened {}",
+                    expected_value.unwrap_or(&Value::Null),
+                    actual_value_for_key.unwrap_or(&Value::Null)
+                ),
+            ));
+        }
+        let expected_plates = expected.get("plates");
+        let actual_plates = actual_value.as_ref().and_then(|value| value.get("plates"));
+        checks.push(package_check(
+            "plate-identity",
+            "Preserved plate names and instance assignments",
+            expected_plates.is_some() && expected_plates == actual_plates,
+            if expected_plates == actual_plates {
+                String::from("Plate IDs, names, instance IDs, object IDs, and identify IDs match the imported project")
+            } else {
+                String::from("The reopened plate-to-instance mapping differs from the imported project")
+            },
+        ));
+    }
     if let Some(expected) = settings_entry {
         checks.push(package_check(
             "settings",
@@ -4013,6 +4926,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pick_model_path,
             read_model_bytes,
+            inspect_model_document,
             cache_normalized_stl,
             save_check_make_project,
             open_check_make_project,
@@ -4033,6 +4947,37 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_external_3mf_fixture(path: &Path) {
+        let file = File::create(path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        archive.start_file("3D/3dmodel.model", options).unwrap();
+        archive.write_all(br#"<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06"><metadata name="Title">Multipart fixture</metadata><resources><object id="2"><components><component p:path="/3D/Objects/object.model" objectid="1"/></components></object></resources><build><item objectid="2"/></build></model>"#).unwrap();
+        archive
+            .start_file("3D/Objects/object.model", options)
+            .unwrap();
+        archive.write_all(br#"<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" name="Touching regions"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/><vertex x="2" y="0" z="0"/><vertex x="3" y="0" z="0"/><vertex x="2" y="1" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/><triangle v1="3" v2="4" v3="5"/></triangles></mesh></object></resources><build/></model>"#).unwrap();
+        archive.finish().unwrap();
+    }
+
+    fn write_multi_plate_bambu_fixture(path: &Path) {
+        let file = File::create(path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        for (name, bytes) in [
+            ("[Content_Types].xml", br#"<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#.as_slice()),
+            ("_rels/.rels", br#"<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#.as_slice()),
+            ("3D/3dmodel.model", br#"<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">Two plates</metadata><resources><object id="10" name="mesh-a" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="10" y="0" z="0"/><vertex x="0" y="10" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object><object id="20" name="mesh-b" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="5" y="0" z="0"/><vertex x="0" y="5" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources><build><item objectid="10" transform="1 0 0 0 1 0 0 0 1 20 20 0"/><item objectid="20" transform="1 0 0 0 1 0 0 0 1 300 20 0"/></build></model>"#.as_slice()),
+            ("Metadata/model_settings.config", br#"<?xml version="1.0"?><config><object id="20"><metadata key="name" value="Beta"/><metadata key="extruder" value="2"/><part id="2" subtype="normal_part"><metadata key="name" value="Beta part"/></part></object><object id="10"><metadata key="name" value="Alpha"/><metadata key="extruder" value="1"/><part id="1" subtype="normal_part"><metadata key="name" value="Alpha part"/></part></object><plate><metadata key="plater_id" value="1"/><metadata key="plater_name" value="Alpha plate"/><model_instance><metadata key="object_id" value="10"/><metadata key="instance_id" value="0"/><metadata key="identify_id" value="101"/></model_instance></plate><plate><metadata key="plater_id" value="2"/><metadata key="plater_name" value="Beta plate"/><model_instance><metadata key="object_id" value="20"/><metadata key="instance_id" value="0"/><metadata key="identify_id" value="202"/></model_instance></plate></config>"#.as_slice()),
+            ("Metadata/project_settings.config", br#"{"wall_loops":"3"}"#.as_slice()),
+            ("Metadata/filament_sequence.json", br#"{"plate_1":{},"plate_2":{}}"#.as_slice()),
+        ] {
+            archive.start_file(name, options).unwrap();
+            archive.write_all(bytes).unwrap();
+        }
+        archive.finish().unwrap();
+    }
     #[test]
     fn builds_schema_locked_openai_semantic_request() {
         let schema = json!({
@@ -4221,6 +5166,435 @@ mod tests {
         assert!(xml.contains("<triangle v1=\"0\""));
         fs::remove_file(source).ok();
         fs::remove_file(target).ok();
+    }
+    #[test]
+    fn preserves_bambu_plate_identity_and_uses_object_ids_for_metadata() {
+        let source = std::env::temp_dir().join(format!(
+            "check-make-multiplate-source-{}.3mf",
+            std::process::id()
+        ));
+        let target = std::env::temp_dir().join(format!(
+            "check-make-multiplate-target-{}.3mf",
+            std::process::id()
+        ));
+        write_multi_plate_bambu_fixture(&source);
+        let source_document = load_model_document(&source).unwrap();
+        assert_eq!(source_document.plates.len(), 2);
+        assert_eq!(source_document.instance_count, 2);
+        assert_eq!(source_document.parts[0].name, "Alpha");
+        assert_eq!(source_document.parts[0].extruder, 1);
+        assert_eq!(source_document.parts[1].name, "Beta");
+        assert_eq!(source_document.parts[1].extruder, 2);
+        assert!(validate_project_export_scope(
+            &source,
+            GeometryStrategy::Preserve,
+            "bambu",
+            "as-imported"
+        )
+        .is_ok());
+        assert!(validate_project_export_scope(
+            &source,
+            GeometryStrategy::Multipart,
+            "bambu",
+            "as-imported"
+        )
+        .is_err());
+        assert!(validate_project_export_scope(
+            &source,
+            GeometryStrategy::Preserve,
+            "orca",
+            "as-imported"
+        )
+        .is_ok());
+        assert!(validate_project_export_scope(
+            &source,
+            GeometryStrategy::Preserve,
+            "bambu",
+            "flip-z"
+        )
+        .is_err());
+        let source_summary = serde_json::to_value(source_document.summary()).unwrap();
+        let metadata =
+            json!({ "product": "Check Make", "sourceDocument": source_summary }).to_string();
+        write_preserved_bambu_project_3mf(
+            &source,
+            &target,
+            &json!({"wall_loops":"5"}),
+            &metadata,
+            "as-imported",
+        )
+        .unwrap();
+
+        let reopened = load_model_document(&target).unwrap();
+        assert_eq!(reopened.summary(), source_document.summary());
+        let report =
+            validate_manufacturing_package(target.to_string_lossy().into_owned(), "bambu".into())
+                .unwrap();
+        assert!(
+            report.valid,
+            "{:?}",
+            report
+                .checks
+                .iter()
+                .filter(|check| !check.passed)
+                .map(|check| (&check.id, &check.detail))
+                .collect::<Vec<_>>()
+        );
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.id == "plate-identity" && check.passed));
+        let settings = read_bambu_family_project_settings(&target).unwrap();
+        assert_eq!(settings["wall_loops"], "5");
+        fs::remove_file(source).ok();
+        fs::remove_file(target).ok();
+    }
+    #[test]
+    fn exports_explicit_plates_as_a_valid_generic_bundle() {
+        let source = std::env::temp_dir().join(format!(
+            "check-make-plate-bundle-source-{}.3mf",
+            std::process::id()
+        ));
+        let target = std::env::temp_dir().join(format!(
+            "check-make-plate-bundle-target-{}.zip",
+            std::process::id()
+        ));
+        write_multi_plate_bambu_fixture(&source);
+        let result = export_multi_plate_bundle(
+            &source,
+            &target,
+            "generic",
+            r#"{"product":"Check Make"}"#,
+            "unselected",
+            &[],
+        )
+        .unwrap();
+        assert!(result.validated);
+        let report = validate_plate_bundle(&target, "generic".into()).unwrap();
+        assert!(report.valid);
+        let mut archive = ZipArchive::new(File::open(&target).unwrap()).unwrap();
+        assert!(archive.by_name("check-make-plate-manifest.json").is_ok());
+        assert_eq!(archive.len(), 3);
+        fs::remove_file(source).ok();
+        fs::remove_file(target).ok();
+    }
+
+    #[test]
+    fn core_export_does_not_invent_plate_metadata() {
+        let source = std::env::temp_dir().join(format!(
+            "check-make-no-plate-source-{}.3mf",
+            std::process::id()
+        ));
+        let target = std::env::temp_dir().join(format!(
+            "check-make-no-plate-target-{}.3mf",
+            std::process::id()
+        ));
+        write_external_3mf_fixture(&source);
+        assert!(!load_model_document(&source)
+            .unwrap()
+            .has_explicit_plate_metadata());
+        write_3mf(&source, &target, "as-imported", "{}").unwrap();
+        assert!(!load_model_document(&target)
+            .unwrap()
+            .has_explicit_plate_metadata());
+        fs::remove_file(source).ok();
+        fs::remove_file(target).ok();
+    }
+    #[test]
+    #[ignore = "requires Bambu Studio and CHECK_MAKE_MULTIPLATE_FIXTURE"]
+    fn exports_reference_multi_plate_bambu_project_without_changing_plate_graph() {
+        let Ok(source_value) = std::env::var("CHECK_MAKE_MULTIPLATE_FIXTURE") else {
+            return;
+        };
+        if find_executable("bambu").is_none() {
+            return;
+        }
+        let source = PathBuf::from(source_value);
+        let target = std::env::temp_dir().join(format!(
+            "check-make-reference-multiplate-{}.3mf",
+            std::process::id()
+        ));
+        let source_document = load_model_document(&source).unwrap();
+        assert!(source_document.is_multi_plate());
+        let metadata = json!({
+            "product": "Check Make",
+            "sourceDocument": source_document.summary(),
+        })
+        .to_string();
+        let recommendations = vec![
+            RecommendationInput {
+                setting: "material".into(),
+                value: json!("PLA"),
+            },
+            RecommendationInput {
+                setting: "layer_height".into(),
+                value: json!("0.20 mm"),
+            },
+            RecommendationInput {
+                setting: "wall_loops".into(),
+                value: json!(4),
+            },
+            RecommendationInput {
+                setting: "infill_percent".into(),
+                value: json!(20),
+            },
+        ];
+        let result = export_bambu_project(
+            &source,
+            &target,
+            "as-imported",
+            &metadata,
+            "bambu-x1c",
+            &recommendations,
+        )
+        .unwrap();
+        assert!(result.validated);
+        let reopened = load_model_document(&target).unwrap();
+        assert_eq!(reopened.summary(), source_document.summary());
+        let validation =
+            validate_manufacturing_package(target.to_string_lossy().into_owned(), "bambu".into())
+                .unwrap();
+        assert!(validation.valid);
+        assert!(validation
+            .checks
+            .iter()
+            .any(|check| check.id == "plate-identity" && check.passed));
+        fs::remove_file(target).ok();
+    }
+    #[test]
+    #[ignore = "requires OrcaSlicer and CHECK_MAKE_MULTIPLATE_FIXTURE"]
+    fn exports_reference_multi_plate_orca_project_without_changing_plate_graph() {
+        let Ok(source_value) = std::env::var("CHECK_MAKE_MULTIPLATE_FIXTURE") else {
+            return;
+        };
+        if find_executable("orca").is_none() {
+            return;
+        }
+        let source = PathBuf::from(source_value);
+        let target = std::env::temp_dir().join(format!(
+            "check-make-reference-multiplate-orca-{}.3mf",
+            std::process::id()
+        ));
+        let source_document = load_model_document(&source).unwrap();
+        let metadata = json!({
+            "product": "Check Make",
+            "sourceDocument": source_document.summary(),
+        })
+        .to_string();
+        let recommendations = vec![
+            RecommendationInput {
+                setting: "material".into(),
+                value: json!("PLA"),
+            },
+            RecommendationInput {
+                setting: "layer_height".into(),
+                value: json!("0.20 mm"),
+            },
+            RecommendationInput {
+                setting: "wall_loops".into(),
+                value: json!(4),
+            },
+            RecommendationInput {
+                setting: "infill_percent".into(),
+                value: json!(20),
+            },
+        ];
+        let result = export_orca_project(
+            &source,
+            &target,
+            "as-imported",
+            &metadata,
+            "bambu-x1c",
+            &recommendations,
+        )
+        .unwrap();
+        assert!(result.validated);
+        same_plate_graph(&source_document, &load_model_document(&target).unwrap()).unwrap();
+        fs::remove_file(target).ok();
+    }
+
+    #[test]
+    #[ignore = "requires Creality Print and CHECK_MAKE_MULTIPLATE_FIXTURE"]
+    fn exports_reference_multi_plate_creality_project_without_changing_plate_graph() {
+        let Ok(source_value) = std::env::var("CHECK_MAKE_MULTIPLATE_FIXTURE") else {
+            return;
+        };
+        if find_executable("creality").is_none() {
+            return;
+        }
+        let source = PathBuf::from(source_value);
+        let target = std::env::temp_dir().join(format!(
+            "check-make-reference-multiplate-creality-{}.3mf",
+            std::process::id()
+        ));
+        let source_document = load_model_document(&source).unwrap();
+        let metadata = json!({
+            "product": "Check Make",
+            "sourceDocument": source_document.summary(),
+        })
+        .to_string();
+        let recommendations = vec![
+            RecommendationInput {
+                setting: "material".into(),
+                value: json!("PLA"),
+            },
+            RecommendationInput {
+                setting: "wall_loops".into(),
+                value: json!(4),
+            },
+        ];
+        let result = export_creality_project(
+            &source,
+            &target,
+            "as-imported",
+            &metadata,
+            "creality-k1c",
+            &recommendations,
+        )
+        .unwrap();
+        assert!(result.validated);
+        same_plate_graph(&source_document, &load_model_document(&target).unwrap()).unwrap();
+        fs::remove_file(target).ok();
+    }
+    #[test]
+    #[ignore = "requires UltiMaker Cura and CHECK_MAKE_MULTIPLATE_FIXTURE"]
+    fn exports_reference_multi_plate_cura_bundle() {
+        let Ok(source_value) = std::env::var("CHECK_MAKE_MULTIPLATE_FIXTURE") else {
+            return;
+        };
+        if find_executable("cura").is_none() {
+            return;
+        }
+        let source = PathBuf::from(source_value);
+        let target = std::env::temp_dir().join(format!(
+            "check-make-reference-multiplate-cura-{}.zip",
+            std::process::id()
+        ));
+        let metadata = json!({
+            "product": "Check Make",
+            "sourceDocument": load_model_document(&source).unwrap().summary(),
+        })
+        .to_string();
+        let recommendations = vec![
+            RecommendationInput {
+                setting: "material".into(),
+                value: json!("PLA"),
+            },
+            RecommendationInput {
+                setting: "wall_loops".into(),
+                value: json!(4),
+            },
+        ];
+        let result = export_multi_plate_bundle(
+            &source,
+            &target,
+            "cura",
+            &metadata,
+            "creality-ender3-v3-se",
+            &recommendations,
+        )
+        .unwrap();
+        assert!(result.validated);
+        assert!(validate_plate_bundle(&target, "cura".into()).unwrap().valid);
+        fs::remove_file(target).ok();
+    }
+    #[test]
+    fn preserves_and_explicitly_splits_canonical_3mf_parts() {
+        let source = std::env::temp_dir().join(format!(
+            "check-make-canonical-source-{}.3mf",
+            std::process::id()
+        ));
+        let preserved = std::env::temp_dir().join(format!(
+            "check-make-canonical-preserved-{}.3mf",
+            std::process::id()
+        ));
+        let multipart = std::env::temp_dir().join(format!(
+            "check-make-canonical-multipart-{}.3mf",
+            std::process::id()
+        ));
+        let bambu = std::env::temp_dir().join(format!(
+            "check-make-canonical-bambu-{}.3mf",
+            std::process::id()
+        ));
+        write_external_3mf_fixture(&source);
+        write_3mf_with_strategy(
+            &source,
+            &preserved,
+            "as-imported",
+            "{}",
+            GeometryStrategy::Preserve,
+        )
+        .unwrap();
+        write_3mf_with_strategy(
+            &source,
+            &multipart,
+            "as-imported",
+            "{}",
+            GeometryStrategy::Multipart,
+        )
+        .unwrap();
+        write_bambu_family_project_3mf(
+            &multipart,
+            &bambu,
+            "as-imported",
+            "{}",
+            &json!({}),
+            "BambuStudio-02.07.01.62",
+        )
+        .unwrap();
+
+        let read_model = |path: &Path| {
+            let mut archive = ZipArchive::new(File::open(path).unwrap()).unwrap();
+            let mut model = String::new();
+            archive
+                .by_name("3D/3dmodel.model")
+                .unwrap()
+                .read_to_string(&mut model)
+                .unwrap();
+            model
+        };
+        let preserved_xml = read_model(&preserved);
+        let multipart_xml = read_model(&multipart);
+        assert!(preserved_xml.contains("<metadata name=\"checkmake:part-count\">1</metadata>"));
+        assert_eq!(preserved_xml.matches("<vertex ").count(), 6);
+        assert_eq!(preserved_xml.matches("<triangle ").count(), 2);
+        assert!(multipart_xml.contains("<metadata name=\"checkmake:part-count\">2</metadata>"));
+        assert_eq!(multipart_xml.matches("<object ").count(), 2);
+        assert_eq!(multipart_xml.matches("<triangle ").count(), 2);
+        let mut bambu_archive = ZipArchive::new(File::open(&bambu).unwrap()).unwrap();
+        let mut bambu_objects = String::new();
+        bambu_archive
+            .by_name("3D/Objects/object_1.model")
+            .unwrap()
+            .read_to_string(&mut bambu_objects)
+            .unwrap();
+        let mut bambu_settings = String::new();
+        bambu_archive
+            .by_name("Metadata/model_settings.config")
+            .unwrap()
+            .read_to_string(&mut bambu_settings)
+            .unwrap();
+        assert_eq!(bambu_objects.matches("<object ").count(), 2);
+        assert_eq!(bambu_settings.matches("<part ").count(), 2);
+        let validation = validate_manufacturing_package(
+            multipart.to_string_lossy().into_owned(),
+            "generic".into(),
+        )
+        .unwrap();
+        assert!(
+            validation.valid,
+            "{:?}",
+            validation
+                .checks
+                .iter()
+                .filter(|check| !check.passed)
+                .map(|check| &check.detail)
+                .collect::<Vec<_>>()
+        );
+        fs::remove_file(source).ok();
+        fs::remove_file(preserved).ok();
+        fs::remove_file(multipart).ok();
+        fs::remove_file(bambu).ok();
     }
     #[test]
     fn reopens_and_validates_reference_core_3mf() {
@@ -4551,6 +5925,14 @@ mod tests {
             );
             assert_eq!(settings["nozzle_temperature"], json!(["250"]));
             assert_eq!(settings["hot_plate_temp"], json!(["80"]));
+            assert!(
+                validate_manufacturing_package(
+                    target.to_string_lossy().into_owned(),
+                    "orca".into()
+                )
+                .unwrap()
+                .valid
+            );
             fs::remove_file(target).ok();
         }
     }
@@ -4728,6 +6110,11 @@ mod tests {
             .read_to_string(&mut archived_metadata)
             .unwrap();
         assert_eq!(archived_metadata, product_metadata);
+        assert!(
+            validate_manufacturing_package(target.to_string_lossy().into_owned(), "prusa".into())
+                .unwrap()
+                .valid
+        );
         fs::remove_file(target).ok();
     }
     #[test]
@@ -4832,6 +6219,14 @@ mod tests {
                 .read_to_string(&mut extruder)
                 .unwrap();
             assert!(extruder.contains("name = Prusa Polymers · Prusament PETG"));
+            assert!(
+                validate_manufacturing_package(
+                    target.to_string_lossy().into_owned(),
+                    "cura".into()
+                )
+                .unwrap()
+                .valid
+            );
             fs::remove_file(target).ok();
         }
     }
@@ -4939,6 +6334,14 @@ mod tests {
             assert_eq!(settings["wall_loops"], "5");
             assert_eq!(settings["sparse_infill_density"], "25%");
             assert_eq!(settings["sparse_infill_pattern"], "gyroid");
+            assert!(
+                validate_manufacturing_package(
+                    target.to_string_lossy().into_owned(),
+                    "creality".into()
+                )
+                .unwrap()
+                .valid
+            );
             fs::remove_file(target).ok();
         }
     }
@@ -5035,6 +6438,11 @@ mod tests {
             .unwrap();
         assert!(overrides.contains("wall_loops"));
         assert!(overrides.contains("sparse_infill_pattern"));
+        assert!(
+            validate_manufacturing_package(target.to_string_lossy().into_owned(), "bambu".into())
+                .unwrap()
+                .valid
+        );
         assert!(overrides.contains("skeleton_infill_density"));
         let validation = Command::new(find_executable("bambu").unwrap())
             .arg(&target)
