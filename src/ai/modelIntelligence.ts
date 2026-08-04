@@ -368,14 +368,17 @@ export function localModelAnalysis(model: ModelAnalysis, contextText = ''): Mode
     `Bed contact covers ${(model.geometryRisk.bedCoverageRatio * 100).toFixed(1)}% of the XY bounding footprint.`,
     `${model.geometryRisk.overhangRegionCount} connected overhang region(s) were measured; the largest projected span is ${model.geometryRisk.largestOverhangRegionSpanMm.toFixed(1)} mm.`,
   ] : [];
+  const importedPlateCount = model.document?.plateCount ?? 0;
   const topologyEvidence = model.topology ? [
-    `${model.topology.componentCount} disconnected mesh component(s) were detected.`,
+    importedPlateCount > 1
+      ? `${model.topology.componentCount} mesh bodies are already assigned across ${importedPlateCount} imported build plates.`
+      : `${model.topology.componentCount} disconnected mesh component(s) were detected.`,
     model.topology.watertight
       ? 'The measured edge topology is closed and manifold.'
       : `${model.topology.boundaryEdgeCount} boundary edge(s) and ${model.topology.nonManifoldEdgeCount} non-manifold edge(s) were detected.`,
   ] : [];
   const topologyQuestions: FollowUpQuestion[] = [];
-  if ((model.topology?.componentCount ?? 1) > 1) topologyQuestions.push({
+  if ((model.topology?.componentCount ?? 1) > 1 && importedPlateCount <= 1) topologyQuestions.push({
     id: 'components', question: 'Are the disconnected parts meant to be printed together or handled as separate objects?',
     why: 'Separate parts can require different orientations or process settings.',
   });

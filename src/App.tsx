@@ -31,7 +31,7 @@ import { deriveWorkflowStage, isPreparationComplete, prepareStatus } from './wor
 import { analyzePurposeContext } from './workflow/decisionAutomation';
 import { intentFactUsable } from './intent/manufacturingIntent';
 import type { AIConnection, ModelIntelligence } from './ai/modelIntelligence';
-import type { ChecklistField, CompatibilityNotice, ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, PlanPreference, Questionnaire, Recommendation, SlicerAdapterStatus, SlicerTarget, SpatialManufacturingIntent, SpatialRegion, SpatialRegionKind } from './types';
+import type { ChecklistField, CompatibilityNotice, GeometryStrategy, ManufacturingPackageResult, Material, ModelAnalysis, PackageValidationReport, PlanPreference, Questionnaire, Recommendation, SlicerAdapterStatus, SlicerTarget, SpatialManufacturingIntent, SpatialRegion, SpatialRegionKind } from './types';
 import './styles.css';
 import './desktop-mvp.css';
 import './workflow-v4.css';
@@ -477,10 +477,12 @@ export default function App() {
   const [packageResult, setPackageResult] = useState<ManufacturingPackageResult>();
   const [validationReport, setValidationReport] = useState<PackageValidationReport>();
   const [packageTarget, setPackageTarget] = useState<SlicerTarget>('generic');
+  const [geometryStrategy, setGeometryStrategy] = useState<GeometryStrategy>('preserve');
   const [packageTargetManuallySelected, setPackageTargetManuallySelected] = useState(false);
   const [adapters, setAdapters] = useState<SlicerAdapterStatus[]>(adapterPlaceholders);
   const [previewMode, setPreviewMode] = useState<PreviewMode>('recommended');
   const [previewOrientationId, setPreviewOrientationId] = useState('as-imported');
+  const [selectedOverhangRegionId, setSelectedOverhangRegionId] = useState<string>();
   const [spatialIntent, setSpatialIntent] = useState<SpatialManufacturingIntent>(() => emptySpatialManufacturingIntent());
   const [spatialMarkingKind, setSpatialMarkingKind] = useState<SpatialRegionKind>();
   const [spatialFocusKind, setSpatialFocusKind] = useState<SpatialRegionKind>();
@@ -499,12 +501,20 @@ export default function App() {
   const printer = printerProfiles.find(profile => profile.id === printerId);
   const analysisPrinter = printer ?? printerAgnosticProfile;
   const previewPlate = printer?.buildVolume ?? { x: 250, y: 250, z: 250 };
-  const previewOrientation = analysis?.orientations.find(candidate => candidate.id === previewOrientationId) ?? analysis?.orientations[0];
+  const multiPlateProject = (analysis?.document?.plateCount ?? 0) > 1;
+  const importedBuildPlates = multiPlateProject ? analysis?.document?.plates ?? [] : [];
+  const effectivePreviewOrientationId = multiPlateProject ? 'as-imported' : previewOrientationId;
+  const previewOrientation = analysis?.orientations.find(candidate => candidate.id === effectivePreviewOrientationId) ?? analysis?.orientations[0];
   const previewGeometryRisk = previewOrientation?.geometryRisk ?? analysis?.geometryRisk;
-  const geometryWarnings = analysis?.findings?.filter(finding => finding.severity === 'warning') ?? [];
+  useEffect(() => { setSelectedOverhangRegionId(undefined); }, [analysis?.fileName, previewOrientationId]);
+  const geometryWarnings = analysis?.findings?.filter(finding => finding.severity === 'warning' && !(multiPlateProject && finding.id === 'multiple-components')) ?? [];
   const meshDecisionNeeded = Boolean(intelligence?.questions.some(question => question.id === 'mesh-repair') && !(followUps['mesh-repair'] ?? '').trim());
+  const intentionalGeometryConfirmed = followUps['mesh-repair'] === 'intentional';
+  const sourceCorrectionRequired = followUps['mesh-repair'] === 'closed-solid';
+  const unresolvedGeometry = followUps['mesh-repair'] === 'not-sure';
+  const meshFindingNeedsAttention = geometryWarnings.length > 0 && !intentionalGeometryConfirmed;
   const meshDecisionStatus = followUps['mesh-repair'] === 'closed-solid'
-    ? 'Source model marked as needing repair'
+    ? 'Source correction required before export'
     : followUps['mesh-repair'] === 'intentional'
       ? 'Separate or overlapping geometry confirmed as intentional'
       : followUps['mesh-repair'] === 'not-sure'
@@ -520,10 +530,14 @@ export default function App() {
       answer === 'xy' || answer === 'z' || answer === 'surface' ? answer : 'unknown';
     return { ...questionnaireFromIntelligence(intelligence, analysisPrinter), criticalDimension, spatialIntent };
   }, [followUps, intelligence, analysisPrinter, spatialIntent]);
-  const recommendedOrientation = useMemo(() => analysis && questionnaire ? chooseOrientation(analysis, questionnaire.priority, questionnaire.manufacturingIntent, spatialIntent) : undefined, [analysis, questionnaire, spatialIntent]);
+  const recommendedOrientation = useMemo(() => analysis && questionnaire
+    ? multiPlateProject
+      ? analysis.orientations.find(candidate => candidate.id === 'as-imported') ?? analysis.orientations[0]
+      : chooseOrientation(analysis, questionnaire.priority, questionnaire.manufacturingIntent, spatialIntent)
+    : undefined, [analysis, questionnaire, multiPlateProject, spatialIntent]);
   const orientation = recommendedOrientation;
   const orientationPriority = questionnaire?.priority;
-  const orientationComparisons = useMemo(() => analysis && orientationPriority ? compareOrientations(analysis, orientationPriority, questionnaire?.manufacturingIntent, spatialIntent) : [], [analysis, orientationPriority, questionnaire?.manufacturingIntent, spatialIntent]);
+  const orientationComparisons = useMemo(() => !multiPlateProject && analysis && orientationPriority ? compareOrientations(analysis, orientationPriority, questionnaire?.manufacturingIntent, spatialIntent) : [], [analysis, multiPlateProject, orientationPriority, questionnaire?.manufacturingIntent, spatialIntent]);
   const recommendedEvaluated = useMemo(() => analysisForOrientation(analysis, recommendedOrientation), [analysis, recommendedOrientation]);
   const checkMakeRecommendsSupports = (recommendedEvaluated?.overhangRatio ?? analysis?.overhangRatio ?? 0) > 0.08;
   const selectedSupportPreference = (followUps['support-preference'] ?? 'auto') as 'auto' | 'required' | 'forbidden';
@@ -612,17 +626,18 @@ export default function App() {
     ];
   }, [material, printer, analysis, intelligence?.manufacturingIntent, selectedProductAssessment]);
   const nativeProjectTarget = packageTarget === 'bambu' || packageTarget === 'orca' || packageTarget === 'prusa' || packageTarget === 'cura' || packageTarget === 'creality';
+  const selectedStructureSupported = true;
   const nativeTargetLabel = packageTarget === 'bambu' ? 'Bambu Studio' : packageTarget === 'orca' ? 'OrcaSlicer' : packageTarget === 'prusa' ? 'PrusaSlicer' : packageTarget === 'cura' ? 'UltiMaker Cura' : 'Creality Print';
-  const nativeValidationText = packageTarget === 'bambu' ? 'Check Make writes the Bambu project directly and verifies its structure and mapped settings before saving.' : packageTarget === 'orca' ? 'Check Make verifies both the project structure and OrcaSlicer’s effective settings before saving.' : packageTarget === 'prusa' ? 'Check Make lets PrusaSlicer build the project, then verifies both its embedded and effective settings before saving.' : packageTarget === 'cura' ? 'Check Make validates Cura’s workspace structure, installed profiles, and embedded process settings before saving.' : packageTarget === 'creality' ? 'Check Make validates Creality Print profile values and active project overrides before saving.' : 'The selected slicer can import the model, but process settings remain advisory metadata.';
+  const nativeValidationText = packageTarget === 'bambu' ? multiPlateProject ? 'Check Make preserves the imported Bambu archive, updates the shared process profile, and verifies plate names and instance assignments before saving.' : 'Check Make writes the Bambu project directly and verifies its structure and mapped settings before saving.' : packageTarget === 'orca' ? multiPlateProject ? 'Check Make lets OrcaSlicer rewrite the native project without arranging it, then verifies the complete imported plate graph and effective settings.' : 'Check Make verifies both the project structure and OrcaSlicer’s effective settings before saving.' : packageTarget === 'prusa' ? multiPlateProject ? 'Check Make creates one validated native PrusaSlicer project per imported plate in a named ZIP bundle.' : 'Check Make lets PrusaSlicer build the project, then verifies both its embedded and effective settings before saving.' : packageTarget === 'cura' ? multiPlateProject ? 'Check Make creates one validated Cura workspace per imported plate in a named ZIP bundle.' : 'Check Make validates Cura’s workspace structure, installed profiles, and embedded process settings before saving.' : packageTarget === 'creality' ? multiPlateProject ? 'Check Make preserves the imported plate graph and validates Creality Print profile values and active project overrides.' : 'Check Make validates Creality Print profile values and active project overrides before saving.' : multiPlateProject ? 'Check Make creates one portable Core 3MF per imported plate in a named ZIP bundle; it does not invent plate assignments.' : 'The selected slicer can import the model, but process settings remain advisory metadata.';
   const selectedAdapter = adapters.find(item => item.target === packageTarget);
   const selectedPrinterSupported = packageTarget === 'generic' || Boolean(printer && supportsPrinter(selectedAdapter, printerId));
-  const supportedPrinterNames = selectedAdapter?.supportedPrinterIds?.map(id => getPrinter(id).model).join(', ') ?? '';
   const readiness = useMemo(() => intelligence ? assessDecisionReadiness(intelligence, spatialIntent) : undefined, [intelligence, spatialIntent]);
   const importedBuildVolumeNotice = analysis && printer ? checkBuildVolume(analysis, printer)[0] : undefined;
-  const unansweredQuestions = intelligence?.questions.filter(question => !(followUps[question.id] ?? '').trim()) ?? [];
-  const editableQuestions = (modifyingPlan || readiness?.conservativePlan === 'unsupported') && planQuestions.length
+  const relevantQuestions = intelligence?.questions.filter(question => !(multiPlateProject && question.id === 'components')) ?? [];
+  const unansweredQuestions = relevantQuestions.filter(question => !(followUps[question.id] ?? '').trim());
+  const editableQuestions = ((modifyingPlan || readiness?.conservativePlan === 'unsupported') && planQuestions.length
     ? planQuestions
-    : intelligence?.questions ?? [];
+    : relevantQuestions).filter(question => !(multiPlateProject && question.id === 'components'));
   const spatialGaps = readiness?.gaps.filter(gap => gap.id.startsWith('spatial-')) ?? [];
   const preparationComplete = isPreparationComplete(readiness?.conservativePlan === 'ready', unansweredQuestions.length + spatialGaps.length);
   const purposeNeedsContext = Boolean(intelligence && !intelligence.purposeConfirmed && !intelligence.questions.some(question => question.id === 'object-purpose'));
@@ -658,12 +673,23 @@ export default function App() {
   }, [orientation]);
 
   useEffect(() => {
-    decisionPanel.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    decisionPanel.current?.scrollTo({ top: 0 });
   }, [preparationComplete, workflowStage]);
 
   useEffect(() => {
+    if (multiPlateProject) {
+      setGeometryStrategy('preserve');
+      setPackageTarget('bambu');
+      return;
+    }
     if (!packageTargetManuallySelected) setPackageTarget(suggestedPackageTarget);
-  }, [packageTargetManuallySelected, suggestedPackageTarget]);
+  }, [multiPlateProject, packageTargetManuallySelected, suggestedPackageTarget]);
+
+  useEffect(() => {
+    if (packageTarget === 'generic' || (selectedAdapter?.available && selectedPrinterSupported)) return;
+    setPackageTarget('generic');
+    setPackageTargetManuallySelected(false);
+  }, [packageTarget, selectedAdapter?.available, selectedPrinterSupported]);
 
   useEffect(() => {
     if (!materialOverride) return;
@@ -857,6 +883,13 @@ export default function App() {
     setPreviewMode('mesh');
     requestAnimationFrame(() => requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })));
   };
+  const showOverhangRegion = (id?: string) => {
+    setSpatialFocusKind(undefined);
+    setSpatialMarkingKind(undefined);
+    setSelectedOverhangRegionId(id);
+    setPreviewMode('risk');
+    requestAnimationFrame(() => requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })));
+  };
   const markSpatialNotApplicable = (kind: SpatialRegionKind) => {
     setSpatialIntent(current => setSpatialRegionNotApplicable(current, kind)); setSpatialFocusKind(undefined); setSpatialMarkingKind(undefined);
   };
@@ -876,7 +909,7 @@ export default function App() {
   const resetAnalysis = (preserveBrief = false) => {
     const brief = preserveBrief ? followUps.purpose ?? '' : '';
     attemptedAutomaticFilamentSelection.current = '';
-    setIntelligence(undefined); setPlanQuestions([]); setStatus(''); setPackageResult(undefined); setValidationReport(undefined); setMaterialOverride(undefined); setFilamentProductId(undefined); setModifyingPlan(false);
+    setIntelligence(undefined); setPlanQuestions([]); setStatus(''); setPackageResult(undefined); setValidationReport(undefined); setMaterialOverride(undefined); setFilamentProductId(undefined); setModifyingPlan(false); setSelectedOverhangRegionId(undefined);
     manuallyAnsweredDecisions.current.clear(); automaticallyAnsweredDecisions.current.clear();
     if (brief) updatePurpose(brief);
     else { setFollowUps({}); setAutoFilledDecisions({}); }
@@ -884,7 +917,7 @@ export default function App() {
   const resetProjectForReplacement = () => {
     resetAnalysis(false);
     setAnalysis(undefined); setGeometry(undefined); setSourcePath(undefined); setSourceModelPath(undefined); setPreviewImage(undefined);
-    setPrinterId(preferences.defaultPrinterId); setPackageTarget('generic'); setPackageTargetManuallySelected(false);
+    setPrinterId(preferences.defaultPrinterId); setPackageTarget('generic'); setPackageTargetManuallySelected(false); setGeometryStrategy('preserve');
     setInheritedPlanPreference(preferences.defaultPlanPreference); setProjectPlanPreference(undefined);
     setPreviewMode('recommended'); setPreviewOrientationId('as-imported'); setSpatialIntent(emptySpatialManufacturingIntent());
     setSpatialFocusKind(undefined); setSpatialMarkingKind(undefined); setImportantAreasOpen(false); setView('import'); setError('');
@@ -910,12 +943,17 @@ export default function App() {
       const fileName = path.split(/[\\/]/).at(-1) ?? 'model.stl';
       const imported = await importModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, fileName);
       const native = imported.analysis.metadata.format === 'stl' ? await invoke<ModelAnalysis>('analyze_stl_native', { path }) : imported.analysis;
-      const exportPath = imported.normalizedStl
+      const document = imported.analysis.metadata.format === '3mf'
+        ? await invoke<NonNullable<ModelAnalysis['document']>>('inspect_model_document', { path })
+        : imported.analysis.document;
+      const exportPath = imported.analysis.metadata.format === '3mf'
+        ? path
+        : imported.normalizedStl
         ? await invoke<string>('cache_normalized_stl', { originalPath: path, bytes: Array.from(imported.normalizedStl) })
         : path;
       const analysisWithP1Metrics = imported.analysis.metadata.format === 'stl'
         ? { ...imported.analysis, metadata: native.metadata }
-        : imported.analysis;
+        : { ...imported.analysis, document };
       setAnalysis(analysisWithP1Metrics); setGeometry(imported.geometry); setSourcePath(exportPath); setSourceModelPath(path); setPreviewImage(undefined); setSpatialIntent(emptySpatialManufacturingIntent()); setSpatialFocusKind(undefined); setSpatialMarkingKind(undefined); setView('import');
       return true;
     } catch (reason) { setError(String(reason)); return false; }
@@ -938,7 +976,7 @@ export default function App() {
     if (!analysis || !sourceModelPath) return;
     const contents = JSON.stringify({
       product: 'Check Make',
-      schemaVersion: 5,
+      schemaVersion: 6,
       savedAt: new Date().toISOString(),
       sourcePath: sourceModelPath,
       view,
@@ -948,6 +986,7 @@ export default function App() {
       printerId,
       followUps,
       packageTarget,
+      geometryStrategy,
       planPolicy: {
         inheritedPreference: inheritedPlanPreference,
         projectOverride: projectPlanPreference ?? null,
@@ -982,6 +1021,7 @@ export default function App() {
         printerId?: string;
         followUps?: Record<string, string>;
         packageTarget?: SlicerTarget;
+        geometryStrategy?: GeometryStrategy;
         materialOverride?: Material;
         filamentProductId?: string;
         planObjective?: string;
@@ -1001,7 +1041,7 @@ export default function App() {
       const restoredOverride = isPlanPreference(project.planPolicy?.projectOverride)
         ? project.planPolicy.projectOverride
         : legacyOverride;
-      setIntelligence(restoredIntelligence); setPlanQuestions(project.planQuestions ?? restoredIntelligence?.questions ?? []); setSpatialIntent(normalizeSpatialManufacturingIntent(project.spatialIntent)); setPrinterId(project.printerId ?? ''); setFollowUps(project.followUps ?? {}); setPackageTarget(project.packageTarget ?? 'generic'); setPackageTargetManuallySelected(Boolean(project.packageTarget)); setMaterialOverride(project.materialOverride); setFilamentProductId(project.filamentProductId); setInheritedPlanPreference(inheritedPreference); setProjectPlanPreference(restoredOverride); setModifyingPlan(false); setView(project.intelligence ? project.view ?? 'analysis' : 'import');
+      setIntelligence(restoredIntelligence); setPlanQuestions(project.planQuestions ?? restoredIntelligence?.questions ?? []); setSpatialIntent(normalizeSpatialManufacturingIntent(project.spatialIntent)); setPrinterId(project.printerId ?? ''); setFollowUps(project.followUps ?? {}); setPackageTarget(project.packageTarget ?? 'generic'); setPackageTargetManuallySelected(Boolean(project.packageTarget)); setGeometryStrategy(project.geometryStrategy === 'multipart' ? 'multipart' : 'preserve'); setMaterialOverride(project.materialOverride); setFilamentProductId(project.filamentProductId); setInheritedPlanPreference(inheritedPreference); setProjectPlanPreference(restoredOverride); setModifyingPlan(false); setView(project.intelligence ? project.view ?? 'analysis' : 'import');
       setStatus('Check Make project reopened.');
     } catch (reason) { setError(`Could not open project. ${String(reason)}`); }
   };
@@ -1135,12 +1175,13 @@ export default function App() {
     if (!sourcePath || !analysis || !intelligence || !orientation) { setError('3MF creation requires a model imported by the desktop app.'); return; }
     if (readiness?.conservativePlan !== 'ready') { setError('Check Make cannot export until every decision-changing requirement has been resolved.'); setView('analysis'); return; }
     if (materialPlanBlocked) { setError(`Check Make cannot export this material and printer combination. ${materialBlockReasons.join(' ')}`); setView('analysis'); return; }
+    if (sourceCorrectionRequired) { setError('Export is paused because you confirmed that the source should be one closed solid. Correct the source model and import it again; Check Make will not alter the design geometry.'); return; }
     setBusy(true); setError(''); setStatus(''); setPackageResult(undefined); setValidationReport(undefined);
     try {
       const appliedPreference = appliedPlanCandidate?.id ?? 'balanced';
       const metadata = JSON.stringify({
         product: 'Check Make',
-        schemaVersion: 5,
+        schemaVersion: 6,
         intelligence,
         spatialIntent,
         printer: printer ?? null,
@@ -1155,11 +1196,14 @@ export default function App() {
         },
         recommendations,
         notices,
+        sourceDocument: analysis.document ?? null,
+        geometryStrategy,
+        geometryReview: followUps['mesh-repair'] ?? null,
       }, null, 2);
       const args = {
-        path: sourcePath, orientationId: orientation.id, metadataJson: metadata,
+        path: sourcePath, orientationId: multiPlateProject ? 'as-imported' : orientation.id, metadataJson: metadata,
         defaultName: packageFileName(analysis.fileName, packageTarget), printerId: printerId || 'unselected',
-        recommendationsJson: serializeRecommendations(recommendations),
+        recommendationsJson: serializeRecommendations(recommendations), geometryStrategy,
       };
       const result = mode === 'open'
         ? await invoke<ManufacturingPackageResult>('create_and_open_bambu_project', args)
@@ -1253,15 +1297,15 @@ export default function App() {
       </aside>
 
       <section className="model-workspace">
-        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1>{analysis?.fileName ?? 'No model loaded'}</h1>{analysis && <span className="model-measured"><UiIcon name="check"/> Geometry measured</span>}</div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Model'], ['risk', 'Overhangs'], ...(geometryWarnings.length ? [['mesh', 'Mesh issues'] as [PreviewMode, string]] : [])] as Array<[PreviewMode, string]>).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => setPreviewMode(id)}>{label}</button>)}</div>}</header>
+        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1>{analysis?.fileName ?? 'No model loaded'}</h1>{analysis && <span className="model-measured"><UiIcon name="check"/> Geometry measured</span>}</div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Model'], ['risk', 'Overhangs'], ...(geometryWarnings.length ? [['mesh', 'Mesh issues'] as [PreviewMode, string]] : [])] as Array<[PreviewMode, string]>).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => { setSelectedOverhangRegionId(undefined); setPreviewMode(id); }}>{label}</button>)}</div>}</header>
         {analysis ? <>
-          <div ref={modelPreview} className={`workflow-preview ${spatialMarkingKind ? 'marking-spatial-region' : ''}`}><Suspense fallback={<div className="preview preview-loading" role="status">Loading 3D preview…</div>}><LazyModelPreview geometry={geometry} orientationId={previewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} overhangRegionCount={previewGeometryRisk?.overhangRegionCount ?? 0} spatialRegions={spatialPreviewRegions} markingKind={spatialMarkingKind} meshTopology={analysis.topology} onFaceSelect={selectSpatialFace} captureKey={`${analysis.fileName}:${previewOrientationId}:${previewMode}`} onCapture={setPreviewImage}/></Suspense></div>
-          <div className="workflow-metrics"><div><b>{(previewOrientation?.heightMm ?? analysis.heightMm).toFixed(1)} mm</b><span>Height</span></div><div><b>{analysis.topology?.componentCount ?? 1}</b><span>Mesh bodies</span></div><button className={previewMode === 'risk' ? 'active' : ''} aria-pressed={previewMode === 'risk'} onClick={() => setPreviewMode('risk')}><b>{previewGeometryRisk?.overhangRegionCount ?? 0}</b><span>Overhangs</span></button><div><b>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}%</b><span>Bed contact</span></div></div>
-          <details className="model-evidence-drawer" open={showPlanReview && (spatialGaps.length > 0 || meshDecisionNeeded) ? true : undefined}><summary><span>Model checks</span><em className={geometryWarnings.length || spatialGaps.length ? 'warning' : 'ready'}>{meshDecisionNeeded ? '1 decision needed' : spatialGaps.length ? `${spatialGaps.length} area decision${spatialGaps.length === 1 ? '' : 's'}` : geometryWarnings.length ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'}` : 'Mesh ready'}</em></summary>
+          <div ref={modelPreview} className={`workflow-preview ${spatialMarkingKind ? 'marking-spatial-region' : ''}`}><Suspense fallback={<div className="preview preview-loading" role="status">Loading 3D preview…</div>}><LazyModelPreview geometry={geometry} orientationId={effectivePreviewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} buildPlates={importedBuildPlates} overhangRegionCount={previewGeometryRisk?.overhangRegionCount ?? 0} overhangRegions={previewGeometryRisk?.overhangRegions ?? []} selectedOverhangRegionId={selectedOverhangRegionId} onSelectOverhangRegion={showOverhangRegion} spatialRegions={spatialPreviewRegions} markingKind={spatialMarkingKind} meshTopology={analysis.topology} onFaceSelect={selectSpatialFace} captureKey={`${analysis.fileName}:${effectivePreviewOrientationId}:${previewMode}:${analysis.document?.plateCount ?? 1}:${selectedOverhangRegionId ?? 'all'}`} onCapture={setPreviewImage}/></Suspense></div>
+          <div className="workflow-metrics"><div><b>{(previewOrientation?.heightMm ?? analysis.heightMm).toFixed(1)} mm</b><span>Height</span></div><div><b>{multiPlateProject ? analysis.document?.plateCount : analysis.topology?.componentCount ?? 1}</b><span>{multiPlateProject ? 'Build plates' : 'Mesh bodies'}</span></div><button className={previewMode === 'risk' ? 'active' : ''} aria-pressed={previewMode === 'risk'} onClick={() => showOverhangRegion()}><b>{previewGeometryRisk?.overhangRegionCount ?? 0}</b><span>Overhangs</span></button><div><b>{multiPlateProject ? '—' : `${((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}%`}</b><span>{multiPlateProject ? 'Per-plate contact' : 'Bed contact'}</span></div></div>
+          <details className="model-evidence-drawer" open={showPlanReview && (spatialGaps.length > 0 || meshDecisionNeeded) ? true : undefined}><summary><span>Model checks</span><em className={meshFindingNeedsAttention || spatialGaps.length ? 'warning' : 'ready'}>{meshDecisionNeeded ? '1 decision needed' : spatialGaps.length ? `${spatialGaps.length} area decision${spatialGaps.length === 1 ? '' : 's'}` : sourceCorrectionRequired ? 'Correction required' : unresolvedGeometry ? 'Unresolved' : intentionalGeometryConfirmed && geometryWarnings.length ? 'Reviewed' : meshFindingNeedsAttention ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'}` : 'Mesh ready'}</em></summary>
             <div className="model-checks">
-              <details className="model-check-detail mesh-integrity-check" open={previewMode === 'mesh' ? true : undefined}><summary><span className={`check-indicator ${geometryWarnings.length ? 'warning' : 'ready'}`}>{geometryWarnings.length ? '!' : <UiIcon name="check"/>}</span><span><b>Mesh integrity</b><small>{meshDecisionNeeded ? 'A geometry decision is required before the plan is ready' : meshDecisionStatus ?? (geometryWarnings.length ? `${geometryWarnings.length} finding${geometryWarnings.length === 1 ? '' : 's'} reviewed` : 'Closed printable mesh detected')}</small></span><em>{geometryWarnings.length ? 'Review ›' : ''}</em></summary>{geometryWarnings.length > 0 && <div className="mesh-integrity-body"><p>Check Make found edges a slicer may interpret or repair. Review the highlighted areas and confirm whether they are intentional.</p><div className="geometry-warnings">{geometryWarnings.map(finding => <div key={finding.id}><b>{finding.label}</b><p>{finding.detail}</p></div>)}</div><div className="mesh-integrity-actions"><button type="button" onClick={showMeshIssues}>Show affected areas</button>{meshDecisionNeeded && <button type="button" onClick={() => document.getElementById('decision-mesh-repair')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Review decision</button>}</div></div>}</details>
-              <div><span className="check-indicator neutral">%</span><span><b>Bed contact</b><small>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}% of the bounding footprint</small></span></div>
-              <button type="button" onClick={() => { setPreviewMode('risk'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}><span className={`check-indicator ${previewGeometryRisk?.overhangRegionCount ? 'attention' : 'ready'}`}>{previewGeometryRisk?.overhangRegionCount ?? 0}</span><span><b>Overhangs</b><small>{previewGeometryRisk?.overhangRegionCount ? `${previewGeometryRisk.overhangRegionCount} region${previewGeometryRisk.overhangRegionCount === 1 ? '' : 's'} · largest ${previewGeometryRisk.largestOverhangRegionAreaMm2.toFixed(0)} mm²` : 'No angle-based regions detected'}</small></span><em>Show ›</em></button>
+              <details className="model-check-detail mesh-integrity-check" open={previewMode === 'mesh' ? true : undefined}><summary><span className={`check-indicator ${meshFindingNeedsAttention ? 'warning' : 'ready'}`}>{meshFindingNeedsAttention ? '!' : <UiIcon name="check"/>}</span><span><b>Mesh integrity</b><small>{meshDecisionNeeded ? 'A geometry decision is required before the plan is ready' : meshDecisionStatus ?? (geometryWarnings.length ? `${geometryWarnings.length} finding${geometryWarnings.length === 1 ? '' : 's'} reviewed` : 'Closed printable mesh detected')}</small></span><em>{sourceCorrectionRequired ? 'Correct source' : unresolvedGeometry ? 'Review ›' : intentionalGeometryConfirmed && geometryWarnings.length ? 'Reviewed' : geometryWarnings.length ? 'Review ›' : ''}</em></summary>{geometryWarnings.length > 0 && <div className="mesh-integrity-body"><p>{sourceCorrectionRequired ? 'You confirmed that this should be one closed solid. Correct it in the source model and import the revised file; Check Make will not alter the design geometry.' : intentionalGeometryConfirmed ? 'These coincident or shared edges were confirmed as intentional. The source remains unchanged.' : unresolvedGeometry ? 'The geometry remains unresolved. Check Make will preserve the source and warn before export.' : 'Check Make found edges a slicer may interpret or repair. Review the highlighted areas and confirm whether they are intentional.'}</p><div className="geometry-warnings">{geometryWarnings.map(finding => <div key={finding.id}><b>{finding.label}</b><p>{finding.detail}</p></div>)}</div><div className="mesh-integrity-actions"><button type="button" onClick={showMeshIssues}>Show affected areas</button>{meshDecisionNeeded && <button type="button" onClick={() => document.getElementById('decision-mesh-repair')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Review decision</button>}</div></div>}</details>
+              {multiPlateProject ? <div><span className="check-indicator ready"><UiIcon name="check"/></span><span><b>Build plate placement</b><small>{analysis.document?.plateCount} imported build plates · source assignments preserved</small></span></div> : <div><span className="check-indicator neutral">%</span><span><b>Bed contact</b><small>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}% of the bounding footprint</small></span></div>}
+              {previewGeometryRisk?.overhangRegionCount ? <details className="model-check-detail overhang-check"><summary><span className="check-indicator attention">{previewGeometryRisk.overhangRegionCount}</span><span><b>Overhangs</b><small>{previewGeometryRisk.overhangRegionCount} area{previewGeometryRisk.overhangRegionCount === 1 ? '' : 's'} to inspect · largest {previewGeometryRisk.largestOverhangRegionAreaMm2.toFixed(0)} mm²</small></span><em>Review ›</em></summary><div className="overhang-review"><div className="overhang-review-heading"><p>Select an area to focus the 3D camera, expose its underside, and inspect the highlighted faces.</p><button type="button" onClick={() => showOverhangRegion()}>Show all</button></div><div className="overhang-region-list">{previewGeometryRisk.overhangRegions.map((region, index) => { const regionId = region.id ?? `overhang-${index + 1}`; const location = region.minZMm <= Math.max(0.3, (previewOrientation?.heightMm ?? analysis.heightMm) * 0.003) ? 'Near build plate' : region.maxZMm >= (previewOrientation?.heightMm ?? analysis.heightMm) * 0.7 ? 'Upper model' : region.minZMm >= (previewOrientation?.heightMm ?? analysis.heightMm) * 0.3 ? 'Middle of model' : 'Lower model'; return <article className={selectedOverhangRegionId === regionId ? 'selected' : ''} key={regionId}><div><span><b>Area {index + 1}</b><em className={region.supportAssessment === 'inspect' ? 'inspect' : 'likely'}>{region.supportAssessment === 'inspect' ? 'Inspect' : 'Support likely'}</em></span><small>{location} · {region.areaMm2.toFixed(0)} mm² · {region.projectedSpanMm.toFixed(1)} mm span</small><p>{region.assessmentReason ?? 'Angle-based candidate; confirm in the slicer before printing.'}</p></div><button type="button" onClick={() => showOverhangRegion(regionId)}>Show in 3D</button></article>; })}</div></div></details> : <div><span className="check-indicator ready">0</span><span><b>Overhangs</b><small>No angle-based regions detected</small></span></div>}
               {orientationComparisons.length > 0 && <details className="model-check-detail orientation-check"><summary><span className="check-indicator neutral">↻</span><span><b>Orientation</b><small>{previewOrientation?.label ?? 'As imported'} · select to test alternatives</small></span><em>Review ›</em></summary><div className="orientation-comparison embedded"><p>Compare six axis-aligned orientations using bed contact, overhang exposure, and height. Selecting one updates the 3D model immediately.</p>{orientationComparisons[0].constraintsApplied?.map(note => <p className="orientation-constraint applied" key={note}>Applied: {note}</p>)}{orientationComparisons[0].constraintsUnresolved?.map(note => <p className="orientation-constraint unresolved" key={note}>Not localized: {note}</p>)}{previewOrientationId !== 'as-imported' && <button type="button" className={`compare-orientation ${previewMode === 'compare' ? 'active' : ''}`} aria-pressed={previewMode === 'compare'} onClick={() => { setPreviewMode(previewMode === 'compare' ? 'recommended' : 'compare'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}>{previewMode === 'compare' ? 'Show selected orientation' : 'Compare with imported orientation'}</button>}<div>{orientationComparisons.map((item, index) => <button className={`${previewOrientationId === item.candidate.id ? 'selected ' : ''}${index === 0 ? 'recommended' : ''}`} aria-pressed={previewOrientationId === item.candidate.id} key={item.candidate.id} onClick={() => { setPreviewOrientationId(item.candidate.id); setPreviewMode('recommended'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}><span><b>{item.candidate.label}</b><small>{index === 0 ? 'Recommended for current objective' : 'Preview this orientation'}</small></span><span className="orientation-measures">{item.candidate.heightMm.toFixed(1)} mm high · {item.candidate.bedContactAreaMm2.toFixed(0)} mm² contact · {(item.candidate.overhangRatio * 100).toFixed(1)}% overhang</span></button>)}</div></div></details>}
               {showPlanReview && intelligence && <div className="important-areas-check">
                 <button type="button" className="model-check-toggle" aria-expanded={importantAreasOpen} onClick={() => setImportantAreasOpen(open => !open)}><span className={`check-indicator ${spatialGaps.length ? 'attention' : spatialIntent.regions.some(region => region.status === 'confirmed') ? 'ready' : 'neutral'}`}>{spatialGaps.length || spatialIntent.regions.filter(region => region.status === 'confirmed').length}</span><span><b>Important areas</b><small>{spatialGaps.length ? `${spatialGaps.length} location decision${spatialGaps.length === 1 ? '' : 's'} to review` : spatialIntent.regions.some(region => region.status === 'confirmed') ? 'Confirmed areas are used in the plan' : 'Optional · Check Make suggestions need your confirmation'}</small></span><em>{importantAreasOpen ? 'Hide' : 'Review'} ›</em></button>
@@ -1275,7 +1319,7 @@ export default function App() {
                 /></div>}
               </div>}
             </div>
-            <details className="technical-geometry"><summary>Technical geometry details</summary><dl><div><dt>Triangles</dt><dd>{analysis.triangleCount.toLocaleString()}</dd></div><div><dt>Largest overhang</dt><dd>{previewGeometryRisk?.largestOverhangRegionAreaMm2.toFixed(0) ?? 0} mm² · {previewGeometryRisk?.largestOverhangRegionSpanMm.toFixed(1) ?? '0.0'} mm span</dd></div><div><dt>Mesh boundaries</dt><dd>{analysis.topology?.boundaryEdgeCount ?? 0}</dd></div><div><dt>Non-manifold edges</dt><dd>{analysis.topology?.nonManifoldEdgeCount ?? 0}</dd></div></dl><p>Preliminary geometric measurements. These values are not calibrated failure probabilities.</p></details>
+            <details className="technical-geometry"><summary>Technical geometry details</summary><dl><div><dt>Triangles</dt><dd>{analysis.triangleCount.toLocaleString()}</dd></div><div><dt>Source parts / indexed shells</dt><dd>{analysis.topologyReport ? `${analysis.topologyReport.indexed.partCount} / ${analysis.topologyReport.indexed.shellCount}` : 'Not available'}</dd></div><div><dt>Indexed non-manifold edges</dt><dd>{analysis.topologyReport?.indexed.nonManifoldEdgeCount ?? analysis.topology?.nonManifoldEdgeCount ?? 0}</dd></div><div><dt>Spatial coincident edges</dt><dd>{analysis.topologyReport?.coincidentEdgeCount ?? analysis.topology?.nonManifoldEdgeCount ?? 0}</dd></div><div><dt>Spatial mesh boundaries</dt><dd>{analysis.topology?.boundaryEdgeCount ?? 0}</dd></div><div><dt>Largest overhang</dt><dd>{previewGeometryRisk?.largestOverhangRegionAreaMm2.toFixed(0) ?? 0} mm² · {previewGeometryRisk?.largestOverhangRegionSpanMm.toFixed(1) ?? '0.0'} mm span</dd></div></dl><p>{analysis.topologyReport?.relations[0]?.detail ?? 'Preliminary geometric measurements. These values are not calibrated failure probabilities.'}</p></details>
             <details className="analysis-limits"><summary>Analysis limits</summary><div>{analysis.analysisLimits?.map(limit => <div key={limit.id}><span>{limit.status === 'requires-input' ? 'Needs input' : limit.status === 'evaluated' ? 'Screened' : 'Not evaluated'}</span><p><b>{limit.label}</b>{limit.detail}</p></div>)}</div><p className="analysis-limit-note">No structural simulation is performed. Load paths and stress are not inferred from appearance; thickness screening is partial and geometric only.</p></details>
           </details>
         </> : <div className={`workspace-dropzone ${dropActive ? 'drag-active' : ''}`} onDragOver={event => { event.preventDefault(); setDropActive(true); }} onDragLeave={() => setDropActive(false)} onDrop={event => { event.preventDefault(); setDropActive(false); void loadBrowserFile(event.dataTransfer.files[0]); }}><img src="/check-make-symbol.svg" alt=""/><h2>{busy ? 'Reading model…' : dropActive ? 'Release to inspect' : 'Drop a 3D model to begin'}</h2><p>Check Make starts from geometry, then asks only for decisions that can change the print plan.</p><button className="primary" disabled={busy} onClick={() => void browse()}>Choose model…</button></div>}
@@ -1316,7 +1360,8 @@ export default function App() {
               onSelect: selected => { attemptedAutomaticFilamentSelection.current = ''; setMaterialOverride(selected === recommendedMaterial ? undefined : selected); setFilamentProductId(undefined); },
             } : undefined}/>}
             {materialPlanBlocked && <div className="context-warning unsupported-guidance" role="alert"><b>Material and printer combination is not exportable</b>{materialBlockReasons.map(reason => <p key={reason}>{reason}</p>)}<p>Select a compatible material option or modify the confirmed requirements.</p></div>}
-            <div className="plan-result-actions"><button type="button" className="modify-plan" onClick={() => setModifyingPlan(true)}>Modify plan</button><button type="button" className="primary" disabled={materialPlanBlocked} onClick={() => setView('export')}>Continue to export</button></div>
+            {sourceCorrectionRequired && <div className="context-warning source-correction-guidance" role="alert"><b>Source correction required</b><p>You confirmed that the model should be one closed solid. Check Make will preserve the source and pause manufacturing export until you import a corrected file.</p></div>}
+            <div className="plan-result-actions"><button type="button" className="modify-plan" onClick={() => setModifyingPlan(true)}>Modify plan</button><button type="button" className="primary" disabled={materialPlanBlocked} onClick={() => setView('export')}>{sourceCorrectionRequired ? 'Review export status' : 'Continue to export'}</button></div>
           </> : <>
             <span className="kicker">PREPARE</span><div className="prepare-heading"><div><h1>{unsupportedPlan ? 'Review unsupported requirement' : modifyingPlan ? 'Modify plan' : 'Review assumptions'}</h1><p>{intelligence.objectName}</p></div><span className="review-pill">{unsupportedPlan ? 'Unsupported use' : 'Review required'}</span></div><div className="readiness-summary"><i style={{ '--readiness': `${Math.max(16, 100 - Math.max(1, decisionCount) * 12)}%` } as React.CSSProperties}/><div><b>{unsupportedPlan ? 'Export is paused for this requirement' : decisionCount ? `${decisionCount} item${decisionCount === 1 ? '' : 's'} to review` : 'Review the interpreted plan inputs'}</b><small>{intelligence.likelyPurpose}</small></div></div>
             {readiness?.unsupportedReasons.map(reason => <div className="context-warning unsupported-guidance" role="alert" key={reason}><b>Export paused for this requirement</b><p>{reason}</p><p>Correct the related answer below if the requirement was misunderstood. If it is accurate, Check Make does not yet have a qualified dataset for this use.</p></div>)}
@@ -1350,12 +1395,34 @@ export default function App() {
           </>}
         </section>}
 
-        {workflowStage === 'export' && intelligence && <section className="export-panel"><span className="kicker">EXPORT</span><h1>Export project</h1><p>The preparation is complete. Choose a portable Core 3MF or a compatible slicer-native project.</p><button className="quiet back-to-prepare" onClick={() => setView('analysis')}>← Return to Prepare</button>
-          <div className="workflow-adapters">{adapters.map(adapter => { const compatible = adapter.target === 'generic' || Boolean(printer && supportsPrinter(adapter, printerId)); const icon = slicerIcon[adapter.target]; return <button key={adapter.target} data-target={adapter.target} style={{ '--adapter-accent': slicerAccent[adapter.target] } as React.CSSProperties} aria-pressed={packageTarget === adapter.target} className={packageTarget === adapter.target ? 'selected' : ''} disabled={!adapter.available || (adapter.target !== 'generic' && !printer)} onClick={() => { setPackageTarget(adapter.target); setPackageTargetManuallySelected(true); }}><span className="adapter-icon" aria-hidden="true">{icon ? <img src={icon} alt=""/> : <UiIcon name="package"/>}</span><span><b>{adapter.label}</b><small>{!adapter.available ? 'Not installed' : !printer && adapter.target !== 'generic' ? 'Select a printer for native export' : compatible ? adapter.capability === 'core-3mf' ? 'Portable 3MF' : 'Native project · Ready' : 'Choose a compatible printer'}</small></span><em>{packageTarget === adapter.target ? '✓' : '›'}</em></button>; })}</div>
-          {selectedAdapter?.available && !selectedPrinterSupported && <div className="context-warning"><b>{printer ? `${selectedAdapter.label} does not yet support ${printer.model}.` : 'Select a printer for slicer-native export.'}</b>{printer && <p>Supported profiles: {supportedPrinterNames}.</p>}</div>}
-          <details className="workflow-evidence"><summary>Package contents & validation</summary><ul><li>Core 3MF geometry in millimetres</li><li>Selected orientation baked into geometry</li><li>Degenerate triangles removed</li><li>Check Make analysis and canonical settings metadata</li>{nativeProjectTarget && <li>{nativeTargetLabel} native profiles and mapped settings</li>}</ul><p>{nativeValidationText}</p></details>
+        {workflowStage === 'export' && intelligence && <section className="export-panel"><span className="kicker">EXPORT</span><h1>Export project</h1><p>Choose a portable 3MF or a slicer-native project.</p><button className="quiet back-to-prepare" onClick={() => setView('analysis')}>← Return to Prepare</button>
+          {sourceCorrectionRequired && <div className="context-warning source-correction-guidance" role="alert"><b>Correct the source model before export</b><p>This model was confirmed as needing one closed solid. Repair it in CAD or a dedicated mesh editor, then replace the model in Check Make.</p><button type="button" onClick={() => void replaceModel()}>Replace model…</button></div>}
+          {unresolvedGeometry && <div className="context-warning geometry-unresolved-guidance" role="status"><b>Geometry remains unresolved</b><p>Check Make will preserve the source. The target slicer may interpret or repair the highlighted edges.</p></div>}
+          <div className="export-format-heading"><span className="kicker">EXPORT FORMAT</span><h2>Choose format</h2></div>
+          <div className="workflow-adapters">{adapters.map(adapter => {
+            const compatible = adapter.target === 'generic' || Boolean(printer && supportsPrinter(adapter, printerId));
+            const selectable = adapter.available && compatible;
+            const icon = slicerIcon[adapter.target];
+            const plateMode = multiPlateProject ? adapter.target === 'bambu' || adapter.target === 'orca' || adapter.target === 'creality' ? 'Native multi-plate project' : 'Per-plate ZIP bundle' : '';
+            const supportedPrinters = adapter.supportedPrinterIds?.map(id => getPrinter(id).model).join(', ') ?? '';
+            const unavailableReason = !adapter.available
+              ? `${adapter.label} is not installed.`
+              : !printer && adapter.target !== 'generic'
+                ? `Choose a compatible printer to enable ${adapter.label}.`
+                : !compatible
+                  ? `${adapter.label} does not support ${printer?.model ?? 'the selected printer'}.${supportedPrinters ? ` Supported printers: ${supportedPrinters}.` : ''}`
+                  : '';
+            const tooltipId = `adapter-help-${adapter.target}`;
+            return <div className={`adapter-option ${selectable ? '' : 'unavailable'}`} key={adapter.target} tabIndex={selectable ? undefined : 0} title={unavailableReason || undefined} aria-describedby={unavailableReason ? tooltipId : undefined}>
+              <button data-target={adapter.target} style={{ '--adapter-accent': slicerAccent[adapter.target] } as React.CSSProperties} aria-pressed={packageTarget === adapter.target} className={packageTarget === adapter.target ? 'selected' : ''} disabled={!selectable} onClick={() => { setPackageTarget(adapter.target); setPackageTargetManuallySelected(true); }}><span className="adapter-icon" aria-hidden="true">{icon ? <img src={icon} alt=""/> : <UiIcon name="package"/>}</span><span><b>{adapter.label}</b><small>{!adapter.available ? 'Not installed' : compatible ? plateMode || (adapter.capability === 'core-3mf' ? 'Portable 3MF' : 'Native project · Ready') : 'Choose compatible printer'}</small></span><em>{packageTarget === adapter.target ? '✓' : selectable ? '›' : '—'}</em></button>
+              {unavailableReason && <span className="adapter-tooltip" id={tooltipId} role="tooltip"><span className="notice-symbol" aria-hidden="true">i</span>{unavailableReason}</span>}
+            </div>;
+          })}</div>
           {materialPlanBlocked && <div className="context-warning unsupported-guidance" role="alert"><b>Export blocked by material compatibility</b>{materialBlockReasons.map(reason => <p key={reason}>{reason}</p>)}</div>}
-          <div className="export-actions"><button type="button" className="export-save-project" disabled={!sourceModelPath || busy} onClick={() => void saveProject()}>Save Check Make project…</button><button className="primary" disabled={busy || materialPlanBlocked || !sourcePath || !selectedAdapter?.available || !selectedPrinterSupported} onClick={() => void createPackage(packageTarget === 'bambu' ? 'open' : 'save')}>{busy ? 'Creating…' : packageTarget === 'generic' ? 'Create Core 3MF…' : packageTarget === 'bambu' ? 'Open in Bambu Studio' : `Export for ${selectedAdapter?.label ?? packageTarget}…`}</button></div>
+          <div className="export-actions"><button type="button" className="export-save-project" disabled={!sourceModelPath || busy} onClick={() => void saveProject()}>Save Project…</button><button className="primary" disabled={busy || sourceCorrectionRequired || materialPlanBlocked || !sourcePath || !selectedAdapter?.available || !selectedPrinterSupported || !selectedStructureSupported} onClick={() => void createPackage(packageTarget === 'bambu' ? 'open' : 'save')}>{busy ? 'Creating…' : sourceCorrectionRequired ? 'Source correction required' : packageTarget === 'generic' ? multiPlateProject ? 'Create plate bundle…' : 'Create Core 3MF…' : packageTarget === 'bambu' ? 'Open in Bambu Studio' : `Export for ${selectedAdapter?.label ?? packageTarget}…`}</button></div>
+          <details className="advanced-packaging"><summary><span><b>Advanced packaging</b><small>{geometryStrategy === 'multipart' ? 'Separate shells as parts' : 'Preserve source structure'}</small></span><em>Options</em></summary><label className={multiPlateProject || sourceCorrectionRequired ? 'disabled' : ''}><input type="checkbox" checked={geometryStrategy === 'multipart'} disabled={multiPlateProject || sourceCorrectionRequired} onChange={event => setGeometryStrategy(event.target.checked ? 'multipart' : 'preserve')}/><span><b>Export disconnected shells as separate parts</b><small>{multiPlateProject ? 'Unavailable for multi-plate projects.' : sourceCorrectionRequired ? 'Unavailable until the source model is corrected.' : 'Changes 3MF object grouping, not mesh coordinates. Review material assignments in the slicer.'}</small></span></label><p>Check Make never repairs or boolean-unions geometry during normal export.</p></details>
+          {multiPlateProject && <details className="project-structure-summary"><summary><span><b>Imported project</b><small>{analysis?.document?.plateCount} plates · {analysis?.document?.instanceCount} objects</small></span><em>Details</em></summary><ul>{analysis?.document?.plates?.map(plate => <li key={plate.id}><span>{plate.name || `Plate ${plate.id}`}</span><b>{plate.instanceCount} objects · {plate.sizeMm.map(value => Math.round(value)).join(' × ')} mm</b></li>)}</ul><p>Plate assignments, names, IDs, and orientations are preserved.</p>{Boolean(analysis?.document?.overrideKeys?.length) && <p className="project-override-warning">Preserved overrides: {analysis?.document?.overrideKeys?.join(', ')}.</p>}</details>}
+          <details className="workflow-evidence"><summary>Package contents & validation</summary><ul><li>Core 3MF geometry in millimetres</li><li>{multiPlateProject ? 'Imported per-object orientations and plate placements preserved' : 'Selected orientation baked into geometry'}</li><li>Degenerate triangles removed</li><li>Check Make analysis and canonical settings metadata</li>{nativeProjectTarget && <li>{nativeTargetLabel} native profiles and mapped settings</li>}</ul><p>{nativeValidationText}</p></details>
           {status && <p className="save-status">{status.startsWith('Project saved:') ? 'Check Make project saved.' : status === 'Export cancelled' ? status : 'Export completed successfully.'}</p>}
           {(packageResult || status.startsWith('Project saved:') || validationReport) && <details className="export-details"><summary><span>{packageResult || validationReport ? 'Export details & checks' : 'Saved project details'}</span><em>{validationReport ? `${validationReport.checks.length} checks` : 'Details'}</em></summary><div className="export-detail-content">
             {(packageResult?.path || status.startsWith('Project saved:')) && <section className="export-detail-section export-location"><h3>{packageResult ? 'Exported file' : 'Saved project'}</h3><div className="export-location-row"><p title={packageResult?.path ?? status.slice('Project saved:'.length).trim()}>{fileNameFromPath(packageResult?.path ?? status.slice('Project saved:'.length).trim())}</p>{packageResult && <button type="button" className="export-reveal-file" onClick={() => void revealExportedFile(packageResult.path)}><UiIcon name="folder"/><span>{fileManagerActionLabel}</span></button>}</div></section>}

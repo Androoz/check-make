@@ -22,8 +22,9 @@ The AI layer may infer object class, likely purpose, relevant loads, uncertainty
 - Complete: adaptive structured questions, provider-neutral result schema, and deterministic readiness gating. Review and export remain unavailable until every decision-changing requirement is confirmed, explicitly not applicable, or supported by a sufficiently confident evidenced inference.
 - Complete: deterministic recommendation and printer compatibility validation.
 - Complete: Core 3MF package generation and package-level Rust test.
-- Placeholder: Claude API provider, local Ollama/MLX provider, multi-view renders, advanced topology analysis, and full mesh repair.
+- Placeholder: Claude API provider, local Ollama/MLX provider, and general hole/self-intersection reconstruction. Indexed-versus-spatial topology, lossless 3MF part preservation, and advanced multipart shell packaging are implemented. A gated Manifold boolean-union engine exists for controlled validation, but normal user export does not modify or repair source geometry.
 - Complete for listed supported printers: Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print project adapters with a generic Core 3MF fallback.
+- Complete for imported Bambu-family build-plate projects: Bambu, Orca, and Creality preserve the native plate graph; Prusa, Cura, and generic export one project per imported plate in a validated manifest-backed ZIP. Project-wide geometry operations remain blocked, and files without explicit plate metadata are never assigned synthetic plates.
 
 ## Product roadmap status
 

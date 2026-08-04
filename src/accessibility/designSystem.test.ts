@@ -99,11 +99,21 @@ describe('accessible Check Make design system', () => {
     expect(app).toContain("question.id === 'mesh-repair'");
     expect(modelPreview).toContain("mode === 'mesh'");
     expect(modelPreview).toContain('Mesh integrity review');
+    expect(modelPreview).toContain('mesh-info-symbol');
+    expect(css).toMatch(/\.mesh-legend \{[^}]*grid-template-columns: repeat\(2, max-content\)/);
+    expect(css).toMatch(/\.mesh-legend > span \{[^}]*white-space: nowrap/);
     expect(app).toContain('event.preventDefault(); event.stopPropagation(); showMeshIssues();');
-    expect(app).toContain('Source model marked as needing repair');
+    expect(app).toContain('Source correction required before export');
     expect(css).toMatch(/\.mesh-legend \{[^}]*top: 12px; bottom: auto/);
     expect(css).toMatch(/\.technical-geometry dt, \.technical-geometry dd \{[^}]*font-size: 13px/);
     expect(css).toMatch(/\.analysis-limits p \{[^}]*font-size: 12px/);
+    expect(app).toContain('className="model-check-detail overhang-check"');
+    expect(app).toContain('Show in 3D');
+    expect(app).toContain('selectedOverhangRegionId={selectedOverhangRegionId}');
+    expect(modelPreview).toContain('risk-region-navigation');
+    expect(modelPreview).toContain("setCameraView('bottom')");
+    expect(modelPreview).toContain('selectedRiskTriangles');
+    expect(css).toMatch(/\.overhang-region-list article b \{[^}]*font-size: 13px/);
   });
 
   it('uses two analysis modes and keeps the Extended AI provider in settings', () => {
@@ -119,7 +129,7 @@ describe('accessible Check Make design system', () => {
   });
 
   it('keeps 3D labels below application popovers', () => {
-    expect(modelPreview.match(/<Html[^>]*zIndexRange=\{\[12, 0\]\}/g)).toHaveLength(5);
+    expect(modelPreview.match(/<Html[^>]*zIndexRange=\{\[12, 0\]\}/g)).toHaveLength(6);
     expect(css).toMatch(/\.printer-picker-menu \{[^}]*z-index: 200/);
   });
 
@@ -154,7 +164,7 @@ describe('accessible Check Make design system', () => {
     expect(app).toContain("applied={appliedPlanCandidate?.id ?? 'balanced'}");
     expect(app).toContain('inheritedPlanPreference');
     expect(app).toContain('projectPlanPreference');
-    expect(app).toContain('schemaVersion: 5');
+    expect(app).toContain('schemaVersion: 6');
     expect(app).toContain('filamentProductId');
     expect(app).toContain('filamentProduct: selectedFilamentProduct ?? null');
     expect(app).toContain('changesFromBalanced');
@@ -241,8 +251,8 @@ describe('accessible Check Make design system', () => {
     expect(app).toContain("clarificationApplied ? 'Updated' : 'Review'");
     expect(app).toContain("const clarification = followUps['object-purpose-description']?.trim()");
     expect(app).toContain('Check Make waits until you apply the complete description.');
-    expect(css).toMatch(/\.interpretation-summary > div p \{[^}]*font-size: 13px/);
-    expect(css).toMatch(/\.interpretation-summary ul \{[^}]*font-size: 12px/);
+    expect(css).toMatch(/\.interpretation-summary > div p \{[^}]*font-size: var\(--body-size\)/);
+    expect(css).toMatch(/\.interpretation-summary ul \{[^}]*font-size: var\(--secondary-size\)/);
   });
 
   it('integrates compatible material alternatives into the Material setting', () => {
@@ -271,7 +281,7 @@ describe('accessible Check Make design system', () => {
   });
 
   it('keeps export diagnostics optional and exposes project saving', () => {
-    expect(app).toContain('Save Check Make project…');
+    expect(app).toContain('Save Project…');
     expect(app).toContain('Export details & checks');
     expect(app).toContain("status.startsWith('Project saved:') ? 'Check Make project saved.'");
     expect(css).toContain('.export-details > summary');
@@ -290,6 +300,67 @@ describe('accessible Check Make design system', () => {
     expect(css).toContain('.export-notes > ul');
     expect(css).toContain('.export-validation > ul');
     expect(css).toContain('.export-actions');
+    expect(app).toContain("const selectable = adapter.available && compatible");
+    expect(app).toContain('Choose compatible printer');
+    expect(app).toContain('className="adapter-tooltip"');
+    expect(app).toContain('disabled={!selectable}');
+    expect(app).not.toContain('does not yet support ${printer.model}');
+    expect(css).toContain('.adapter-option.unavailable button');
+    expect(css).toContain('.adapter-option.unavailable:hover .adapter-tooltip');
+    expect(css).toMatch(/\.workflow-adapters \{[^}]*grid-template-columns: 1fr/);
+    expect(css).toMatch(/\.workflow-adapters button \{[^}]*min-height: 52px/);
+    expect(app.indexOf('className="export-actions"')).toBeLessThan(app.indexOf('className="advanced-packaging"'));
+  });
+
+  it('makes multi-plate preservation explicit and prevents destructive project-wide export choices', () => {
+    expect(app).toContain("const multiPlateProject = (analysis?.document?.plateCount ?? 0) > 1");
+    expect(app).toContain('buildPlates={importedBuildPlates}');
+    expect(app).toContain("question.id === 'components'");
+    expect(app).toContain('<b>Build plate placement</b>');
+    expect(modelPreview).toContain('hasMultipleBuildPlates');
+    expect(modelPreview).toContain("'Build plates'");
+    expect(css).toContain('.plate-name-label');
+    expect(app).toContain('<b>Imported project</b>');
+    expect(app).toContain('Plate assignments, names, IDs, and orientations are preserved.');
+    expect(app).toContain("'Native multi-plate project'");
+    expect(app).toContain("'Per-plate ZIP bundle'");
+    expect(app).toContain("multiPlateProject ? 'as-imported' : orientation.id");
+    expect(app).toContain('disabled={multiPlateProject || sourceCorrectionRequired}');
+    expect(css).toContain('.project-structure-summary');
+  });
+
+  it('preserves source geometry by default and keeps shell packaging advanced', () => {
+    expect(app.indexOf('EXPORT FORMAT')).toBeLessThan(app.indexOf('className="advanced-packaging"'));
+    expect(app).toContain('<details className="advanced-packaging">');
+    expect(app).toContain('<b>Advanced packaging</b>');
+    expect(app).toContain('Changes 3MF object grouping, not mesh coordinates.');
+    expect(app).toContain('Check Make never repairs or boolean-unions geometry during normal export.');
+    expect(app).not.toContain('<b>Geometry intent</b>');
+    expect(app).not.toContain('Create one solid</b>');
+    expect(app).not.toContain("import('./geometry/booleanRepair')");
+    expect(css).toContain('.advanced-packaging > summary');
+    expect(css).toContain('.export-format-heading');
+  });
+
+  it('shows confirmed coincident geometry as reviewed instead of an issue', () => {
+    expect(app).toContain("const intentionalGeometryConfirmed = followUps['mesh-repair'] === 'intentional'");
+    expect(app).toContain("intentionalGeometryConfirmed && geometryWarnings.length ? 'Reviewed'");
+    expect(app).toContain('These coincident or shared edges were confirmed as intentional.');
+  });
+
+  it('blocks manufacturing export when the designer says the source should be one solid', () => {
+    expect(app).toContain("const sourceCorrectionRequired = followUps['mesh-repair'] === 'closed-solid'");
+    expect(app).toContain('Correct the source model before export');
+    expect(app).toContain('Check Make will not alter the design geometry.');
+    expect(app).toContain('disabled={busy || sourceCorrectionRequired || materialPlanBlocked');
+    expect(app).toContain("sourceCorrectionRequired ? 'Source correction required'");
+    expect(app).toContain("project.geometryStrategy === 'multipart' ? 'multipart' : 'preserve'");
+  });
+
+  it('allows unresolved geometry only through source-preserving export with a warning', () => {
+    expect(app).toContain("const unresolvedGeometry = followUps['mesh-repair'] === 'not-sure'");
+    expect(app).toContain('Geometry remains unresolved');
+    expect(app).toContain('Check Make will preserve the source.');
   });
 
   it('does not add a detached disclosure arrow to the plan-preference header', () => {

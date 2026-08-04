@@ -170,6 +170,25 @@ describe('local model intelligence', () => {
     expect(result.questions.length).toBeLessThanOrEqual(7);
   });
 
+  it('does not reinterpret parts assigned to imported build plates as an unresolved separation decision', () => {
+    const result = localModelAnalysis({
+      ...model,
+      topology: { componentCount: 6, boundaryEdgeCount: 0, nonManifoldEdgeCount: 0, degenerateTriangleCount: 0, watertight: true },
+      document: {
+        sourceFormat: '3mf', exportSource: 'original', preservesSourceTopology: true,
+        partCount: 6, partNames: [], objectCount: 6, instanceCount: 6, plateCount: 2,
+        plates: [
+          { id: '1', name: 'Plate 1', instanceCount: 3, instances: [], triangleCount: 6, sizeMm: [80, 80, 4] },
+          { id: '2', name: 'Plate 2', instanceCount: 3, instances: [], triangleCount: 6, sizeMm: [80, 80, 4] },
+        ],
+        sourceProjectFlavor: 'bambu', overrideKeys: [],
+      },
+    });
+
+    expect(result.questions.map(question => question.id)).not.toContain('components');
+    expect(result.evidence).toContain('6 mesh bodies are already assigned across 2 imported build plates.');
+  });
+
   it('closes deterministic requirements from structured answers instead of relying on prose keywords', () => {
     const context = 'Protective machine cover';
     const refined = refineLocalIntelligence({ ...localModelAnalysis(model, context), userEvidence: [context] }, {

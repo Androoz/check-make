@@ -1,7 +1,7 @@
 {
   "name": "check-make",
   "private": true,
-  "version": "0.2.6-beta.4",
+  "version": "0.2.6-beta.5",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -34,6 +34,7 @@
     "@react-three/fiber": "^9.4.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
+    "manifold-3d": "^3.5.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "three": "^0.180.0",

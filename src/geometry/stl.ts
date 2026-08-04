@@ -60,9 +60,11 @@ export function extractModelMetadata(buffer: ArrayBuffer, fileName: string): Mod
 }
 
 interface MeasuredTriangle {
+  triangleIndex: number;
   vertices: [THREE.Vector3, THREE.Vector3, THREE.Vector3];
   area: number;
   normalZ: number;
+  normal: THREE.Vector3;
 }
 
 interface GeometryMeasurement {
@@ -75,7 +77,7 @@ interface GeometryMeasurement {
   risk: GeometryRiskMetrics;
 }
 
-function connectedOverhangRegions(triangles: MeasuredTriangle[], quantizationMm: number): OverhangRegion[] {
+function connectedOverhangRegions(triangles: MeasuredTriangle[], quantizationMm: number, modelMinZ: number, modelHeight: number): OverhangRegion[] {
   if (!triangles.length) return [];
   const parents = triangles.map((_, index) => index);
   const ranks = triangles.map(() => 0);
@@ -112,24 +114,47 @@ function connectedOverhangRegions(triangles: MeasuredTriangle[], quantizationMm:
   });
   return [...groups.values()].map(group => {
     let area = 0, weightedAngle = 0, horizontalArea = 0;
+    const centroid = new THREE.Vector3(); const meanNormal = new THREE.Vector3();
     const min = new THREE.Vector3(Infinity, Infinity, Infinity);
     const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
     group.forEach(triangle => {
       const angle = Math.acos(THREE.MathUtils.clamp(-triangle.normalZ, -1, 1)) * 180 / Math.PI;
       area += triangle.area; weightedAngle += angle * triangle.area;
       if (angle <= 15) horizontalArea += triangle.area;
+      const triangleCentroid = triangle.vertices[0].clone().add(triangle.vertices[1]).add(triangle.vertices[2]).multiplyScalar(1 / 3);
+      centroid.addScaledVector(triangleCentroid, triangle.area);
+      meanNormal.addScaledVector(triangle.normal, triangle.area);
       triangle.vertices.forEach(vertex => { min.min(vertex); max.max(vertex); });
     });
+    if (area) centroid.multiplyScalar(1 / area);
+    if (meanNormal.lengthSq()) meanNormal.normalize();
+    const normalizedMin = new THREE.Vector3(min.x, min.y, min.z - modelMinZ);
+    const normalizedMax = new THREE.Vector3(max.x, max.y, max.z - modelMinZ);
+    const normalizedCentroid = new THREE.Vector3(centroid.x, centroid.y, centroid.z - modelMinZ);
+    const projectedSpanMm = Math.max(max.x - min.x, max.y - min.y);
+    const nearBuildPlate = normalizedMin.z <= Math.max(0.3, modelHeight * 0.003);
+    const narrowFeature = projectedSpanMm <= 2;
     return {
       triangleCount: group.length,
+      triangleIndices: group.map(triangle => triangle.triangleIndex),
       areaMm2: area,
-      projectedSpanMm: Math.max(max.x - min.x, max.y - min.y),
-      minZMm: min.z,
-      maxZMm: max.z,
+      projectedSpanMm,
+      minZMm: normalizedMin.z,
+      maxZMm: normalizedMax.z,
+      centroid: vectorValue(normalizedCentroid),
+      meanNormal: vectorValue(meanNormal),
+      boundingBox: { min: vectorValue(normalizedMin), max: vectorValue(normalizedMax), size: vectorValue(new THREE.Vector3().subVectors(normalizedMax, normalizedMin)) },
       meanDownwardNormalAngleDeg: area ? weightedAngle / area : 0,
       horizontalAreaFraction: area ? horizontalArea / area : 0,
+      supportAssessment: nearBuildPlate || narrowFeature ? 'inspect' as const : 'likely-support' as const,
+      assessmentReason: nearBuildPlate
+        ? 'This downward-facing area is close to the build plate; inspect it before adding support.'
+        : narrowFeature
+          ? 'This is a narrow angle-based candidate; the slicer may print it without dedicated support.'
+          : 'The downward-facing span is large enough to warrant a slicer support check.',
     };
-  }).sort((left, right) => right.areaMm2 - left.areaMm2);
+  }).sort((left, right) => right.areaMm2 - left.areaMm2)
+    .map((region, index) => ({ ...region, id: `overhang-${index + 1}` }));
 }
 
 function measureGeometry(
@@ -164,12 +189,12 @@ function measureGeometry(
     if (touchesBed) {
       bedContactArea += area; bedCentroid.addScaledVector(centroid, area); bedCentroidWeight += area;
     } else if (normal.z < -Math.SQRT1_2) {
-      overhangTriangles.push({ vertices: [a.clone(), b.clone(), c.clone()], area, normalZ: normal.z });
+      overhangTriangles.push({ triangleIndex: index / 3, vertices: [a.clone(), b.clone(), c.clone()], area, normalZ: normal.z, normal: normal.clone() });
     }
   }
   if (surfaceCentroidWeight) surfaceCentroid.multiplyScalar(1 / surfaceCentroidWeight);
   if (bedCentroidWeight) bedCentroid.multiplyScalar(1 / bedCentroidWeight);
-  const regions = connectedOverhangRegions(overhangTriangles, quantizationMm);
+  const regions = connectedOverhangRegions(overhangTriangles, quantizationMm, min.z, size.z);
   const overhangArea = regions.reduce((sum, region) => sum + region.areaMm2, 0);
   const boundingFootprintArea = Math.max(0, size.x * size.y);
   const centroidOffset = bedCentroidWeight && surfaceCentroidWeight
@@ -325,18 +350,26 @@ export function geometryForOrientation(geometry: THREE.BufferGeometry, orientati
   return result;
 }
 
-export function riskVisualizationGeometry(geometry: THREE.BufferGeometry, orientationId: string) {
+export function riskVisualizationGeometry(geometry: THREE.BufferGeometry, orientationId: string, selectedTriangleIndices?: number[]) {
   const result = geometryForOrientation(geometry, orientationId);
   const positions = result.getAttribute('position'); const colors = new Float32Array(positions.count * 3);
   const box = result.boundingBox?.clone() ?? new THREE.Box3(); const size = new THREE.Vector3(); box.getSize(size);
   const bedEpsilon = Math.max(0.05, size.z * 0.002);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), normal = new THREE.Vector3();
-  const regular = new THREE.Color('#aeb8b4'), bed = new THREE.Color('#3f9fc2'), overhang = new THREE.Color('#f0a34a'), severe = new THREE.Color('#df6559');
+  const selected = selectedTriangleIndices?.length ? new Set(selectedTriangleIndices) : undefined;
+  const regular = new THREE.Color(selected ? '#76817d' : '#aeb8b4');
+  const bed = new THREE.Color(selected ? '#52798b' : '#3f9fc2');
+  const overhang = new THREE.Color('#f0a34a'); const severe = new THREE.Color('#df6559');
+  const otherOverhang = new THREE.Color('#806c4e');
   for (let index = 0; index < positions.count; index += 3) {
     a.fromBufferAttribute(positions, index); b.fromBufferAttribute(positions, index + 1); c.fromBufferAttribute(positions, index + 2);
     normal.crossVectors(new THREE.Vector3().subVectors(b, a), new THREE.Vector3().subVectors(c, a)).normalize();
     const touchesBed = Math.max(a.z, b.z, c.z) <= box.min.z + bedEpsilon && Math.abs(normal.z) > 0.9;
-    const color = touchesBed ? bed : normal.z < -0.9 ? severe : normal.z < -Math.SQRT1_2 ? overhang : regular;
+    const triangleIndex = index / 3;
+    const isOverhang = !touchesBed && normal.z < -Math.SQRT1_2;
+    const color = touchesBed ? bed
+      : isOverhang && selected && !selected.has(triangleIndex) ? otherOverhang
+        : normal.z < -0.9 ? severe : isOverhang ? overhang : regular;
     for (let vertex = 0; vertex < 3; vertex += 1) colors.set(color.toArray(), (index + vertex) * 3);
   }
   result.setAttribute('color', new THREE.BufferAttribute(colors, 3));

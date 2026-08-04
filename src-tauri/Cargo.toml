@@ -1,6 +1,6 @@
 [package]
 name = "check-make"
-version = "0.2.6-beta.4"
+version = "0.2.6-beta.5"
 edition = "2021"
 description = "Needs-first desktop planning for verifiable 3D-print projects"
 license = "MIT"
@@ -17,6 +17,7 @@ stl_io = "0.8"
 rfd = "0.15"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.38"
 tauri-plugin-opener = "2"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

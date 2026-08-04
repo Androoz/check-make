@@ -49,11 +49,10 @@ separate release states; see [the release process](docs/RELEASING.md).
 
 ## Release status
 
-- **Published:** [`v0.2.6-beta.3`](https://github.com/Androoz/check-make/releases/tag/v0.2.6-beta.3) from commit `fcc53c3`, with an ad-hoc-signed macOS Universal DMG. It is not Developer ID signed or notarized.
-- **Merged candidate:** `0.2.6-beta.4` is consolidated in `main`. PR [#16](https://github.com/Androoz/check-make/pull/16) was merged on 2 August 2026. The verified candidate baseline is commit `6ef6e99`, which contains the beta 4 product commit `e7ef69f` plus the repository-consolidation documentation and scoped opener permission.
-- **Automatically verified at `6ef6e99`:** 313 TypeScript tests in 51 files, the production frontend build and bundle budget, 132/132 semantic acceptance checks, 34/34 deterministic provider checks, and 15 Rust tests. Nine installed-slicer tests were ignored; live llama.cpp and OpenAI were unavailable and are not counted as passed.
-- **Package status:** an earlier local ad-hoc-signed macOS Universal DMG was built from `e7ef69f`. It is not package evidence for `6ef6e99`, and no public beta 4 release exists.
-- **Not yet established for beta 4:** clean-machine installation, Intel launch, Windows or Linux packaging and user-flow validation, installed-slicer integration, live llama.cpp or OpenAI behavior, and physical printing.
+- **Published:** [`v0.2.6-beta.3`](https://github.com/Androoz/check-make/releases/tag/v0.2.6-beta.3) remains the latest public prerelease while `0.2.6-beta.5` is reviewed. Beta 4 was consolidated into `main` but was not published.
+- **Beta 5 candidate:** `0.2.6-beta.5` adds source-preserving 3MF topology, explicit multipart packaging, build-plate preservation across export adapters, indexed-versus-spatial topology reporting, and conservative geometry-review gates. It is not published until the candidate PR, release commit, package, and manual macOS flow have passed their separate release gates.
+- **Planned beta 5 package:** one ad-hoc-signed macOS Universal DMG containing `arm64` and `x86_64`. Windows and Linux packages are outside this prerelease and are neither published nor verified by beta 5.
+- **Evidence boundary:** automated source checks, package creation, architecture inspection, installation/start, Inspect → Prepare → Export, installed-slicer integration, live providers, Intel runtime, and physical printing are recorded independently. Missing or ignored evidence is not counted as passed.
 
 Source validation, building, packaging, signing, installation, launch, core-workflow testing, slicer integration, live-provider testing, physical printing, and publication are independent evidence states. A passed source or CI build does not imply that a package is installable or tested on its target platform.
 
@@ -68,7 +67,7 @@ Reviewed filament-product data and its native-export boundary are documented in 
 - real macOS app-icon packaging plus visible in-app logo
 - one native macOS title bar; the duplicate simulated title bar was removed
 - native window-level drag-and-drop and file browser import
-- STL, 3MF, and OBJ mesh import with normalized local analysis and interactive Three.js preview
+- STL, 3MF, and OBJ mesh import with normalized local analysis and interactive Three.js preview; original 3MF topology remains the canonical export source instead of being flattened through STL
 - save and reopen `.checkmake` project files that preserve the source model, analysis state, printer, answers, and export target
 - provider-neutral intelligence contract
 - provider-neutral, versioned English semantic hypothesis contract shared by deterministic Local Analysis, optional loopback-only `llama.cpp`, and OpenAI Structured Outputs, including separate printed-object and parent-system understanding
@@ -82,12 +81,15 @@ Reviewed filament-product data and its native-export boundary are documented in 
 - a focused Prepare review followed by a Key Settings result view; interpretation, important-area, and support inputs move behind Modify plan after confirmation
 - Important areas integrated with Model checks, including visible model overlays and a reset action for spatial selections
 - P1 geometry measurements for normalized bed coverage, leverage proxies, centroid offset, and connected overhang regions
-- P2 mesh topology findings, disconnected-part detection, visual geometry-risk overlays, printer-sized build plate, XYZ axes, fixed camera views, and explainable six-orientation comparison
+- P2 mesh topology findings with separate indexed-source and spatial/coincident-edge measurements, disconnected-part detection, visual geometry-risk overlays, printer-sized build plate, XYZ axes, fixed camera views, and explainable six-orientation comparison
 - deterministic rules for material, orientation, compatibility, and process validation
 - printer-gated material alternatives integrated into Key Settings → Material, including ten reviewed Prusament and Bambu Lab processing profiles across five material families, explicit trade-offs, capability requirements, and persisted project/export selection
 - schema-validated filament-product data with active/stale/retired lifecycle, review deadlines, variant/nozzle scope, native-project identity, reviewed-temperature round-trip checks, and a hard evidence gate that currently prevents every product from making an unqualified performance-upgrade claim
 - deferred loading of the interactive 3D preview and model-format loaders, enforced by a gzip-aware production entry-bundle budget
-- Core 3MF generation with millimetre units, baked orientation, removal of degenerate triangles, and Check Make analysis metadata
+- Core 3MF generation with millimetre units, baked orientation, removal of degenerate triangles, preserved part indices/material assignments, and Check Make analysis metadata
+- source-preserving geometry export by default, with optional advanced packaging that can expose disconnected indexed shells as slicer parts without changing mesh coordinates
+- explicit build-plate preservation across every export: Bambu Studio, OrcaSlicer, and Creality Print retain one native multi-plate project, while PrusaSlicer, Cura, and generic Core 3MF receive one validated project per imported plate in a manifest-backed ZIP bundle
+- an internal Manifold boolean-union capability with bounding-box and watertight-output gates, retained for controlled validation rather than normal user export
 - export targets for OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print, plus installed-slicer detection
 - direct Bambu Studio project export using the installed application's machine, process, and filament profiles without launching the slicer
 - native OrcaSlicer project export for every printer in the UI, with installed profile resolution and effective-setting validation
@@ -113,7 +115,8 @@ Reviewed filament-product data and its native-export boundary are documented in 
 - Generic Core 3MF export makes geometry, units, transforms, and metadata portable, but its process settings remain advisory. The Bambu Studio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, and Creality Print adapters write native project structures and validate mapped settings before saving.
 - Native project export depends on the target slicer being installed. Bambu export supports X1 Carbon, P1S, A1, and A1 mini; OrcaSlicer supports all twelve 0.4 mm printer profiles shown in the UI; PrusaSlicer supports MK4S and CORE One; UltiMaker Cura supports ELEGOO Neptune 4 Pro and Creality Ender-3 V3 SE/KE; Creality Print supports the Bambu Lab and Creality profiles available in its installed library.
 - Bambu Studio does not expose a single portable `speed preset` setting through this export path, so that recommendation remains advisory and is reported as a warning.
-- Basic export correction currently removes degenerate triangles and bakes the selected orientation. Full manifold repair, hole closing, self-intersection repair, and dimensional geometry changes remain future work.
+- Explicit source build plates are never inferred or repacked. Check Make locks these projects to Preserve source and imported per-object orientations. Bambu Studio, OrcaSlicer, and Creality Print preserve the native plate graph; PrusaSlicer, Cura, and generic Core 3MF use a deterministic per-plate ZIP bundle because Core 3MF has no interoperable cross-slicer plate-grouping contract. Files without explicit plate metadata remain without Check Make-created plate metadata.
+- Normal export never performs implicit geometry repair or boolean union. If Prepare confirms that a model should be one closed solid, manufacturing export is paused until the designer corrects the source in CAD or a dedicated mesh editor and imports the revision. Advanced shell packaging can change 3MF object grouping, but not mesh coordinates. The internal Manifold path remains a controlled validation capability rather than a normal product option.
 - STEP/STP import is intentionally deferred because CAD boundary-representation data requires a separately evaluated tessellation engine; it is not treated as a mesh-format variation.
 
 See [P2 model analysis](docs/P2_MODEL_ANALYSIS.md), [the printer support roadmap](docs/ROADMAP.md), [the AI and 3MF architecture](docs/AI_3MF_ARCHITECTURE.md), and [Desktop MVP specification](docs/MVP_SPEC.md).
