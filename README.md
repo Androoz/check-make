@@ -49,9 +49,11 @@ separate release states; see [the release process](docs/RELEASING.md).
 
 ## Release status
 
-- **Published:** [`v0.2.6-beta.3`](https://github.com/Androoz/check-make/releases/tag/v0.2.6-beta.3) remains the latest public prerelease while `0.2.6-beta.5` is reviewed. Beta 4 was consolidated into `main` but was not published.
-- **Beta 5 candidate:** `0.2.6-beta.5` adds source-preserving 3MF topology, explicit multipart packaging, build-plate preservation across export adapters, indexed-versus-spatial topology reporting, and conservative geometry-review gates. It is not published until the candidate PR, release commit, package, and manual macOS flow have passed their separate release gates.
-- **Planned beta 5 package:** one ad-hoc-signed macOS Universal DMG containing `arm64` and `x86_64`. Windows and Linux packages are outside this prerelease and are neither published nor verified by beta 5.
+- **Published:** [`v0.2.6-beta.5`](https://github.com/Androoz/check-make/releases/tag/v0.2.6-beta.5) from release commit `916039e`, with one ad-hoc-signed macOS Universal DMG. Beta 4 was consolidated into `main` but was not published.
+- **Included:** source-preserving 3MF topology, explicit multipart packaging, build-plate preservation across export adapters, indexed-versus-spatial topology reporting, and conservative geometry-review gates.
+- **Automatically verified at `916039e`:** 320 TypeScript tests in 52 files, the production frontend build and bundle budget, 132/132 semantic acceptance checks, 34/34 deterministic provider checks, 22 Rust tests, and GitHub CI. Thirteen installed-slicer/profile tests were ignored; live llama.cpp and OpenAI were unavailable and are not counted as passed.
+- **Package verification:** DMG integrity, ad-hoc signature, and the `arm64` plus `x86_64` executable were verified. On Apple Silicon with macOS 26.5.1, the packaged app was launched, completed Inspect → Prepare → Export using a source 3MF, recovered from a cancelled save, and relaunched successfully.
+- **Not established:** Intel runtime, installed-slicer round-trips for this package, live providers, physical printing, Developer ID signing, and notarization. Windows and Linux packages are outside beta 5 and are neither published nor verified.
 - **Evidence boundary:** automated source checks, package creation, architecture inspection, installation/start, Inspect → Prepare → Export, installed-slicer integration, live providers, Intel runtime, and physical printing are recorded independently. Missing or ignored evidence is not counted as passed.
 
 Source validation, building, packaging, signing, installation, launch, core-workflow testing, slicer integration, live-provider testing, physical printing, and publication are independent evidence states. A passed source or CI build does not imply that a package is installable or tested on its target platform.
