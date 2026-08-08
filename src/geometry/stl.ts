@@ -110,7 +110,10 @@ function connectedOverhangRegions(triangles: MeasuredTriangle[], quantizationMm:
   });
   const groups = new Map<number, MeasuredTriangle[]>();
   triangles.forEach((triangle, index) => {
-    const root = find(index); groups.set(root, [...(groups.get(root) ?? []), triangle]);
+    const root = find(index);
+    const group = groups.get(root);
+    if (group) group.push(triangle);
+    else groups.set(root, [triangle]);
   });
   return [...groups.values()].map(group => {
     let area = 0, weightedAngle = 0, horizontalArea = 0;
@@ -159,7 +162,7 @@ function connectedOverhangRegions(triangles: MeasuredTriangle[], quantizationMm:
 
 function measureGeometry(
   positions: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
-  transform: (vertex: THREE.Vector3) => THREE.Vector3 = vertex => vertex.clone(),
+  transform: (vertex: THREE.Vector3) => THREE.Vector3 = vertex => vertex,
 ): GeometryMeasurement {
   const min = new THREE.Vector3(Infinity, Infinity, Infinity);
   const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
@@ -245,13 +248,14 @@ function analyzeMeshTopology(positions: THREE.BufferAttribute | THREE.Interleave
   const quantization = Math.max(1e-6, Math.max(size.x, size.y, size.z, 1) * 1e-6);
   const vertexKey = (vertex: THREE.Vector3) => [vertex.x, vertex.y, vertex.z].map(value => Math.round(value / quantization)).join(',');
   const edgeOwners = new Map<string, number[]>();
-  const faces: Array<{ triangleIndex: number; area: number; min: THREE.Vector3; max: THREE.Vector3 }> = [];
+  const faceAreas = new Float64Array(triangleCount);
   let degenerateTriangleCount = 0;
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), normal = new THREE.Vector3();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), normal = new THREE.Vector3();
   for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
     const offset = triangleIndex * 3;
     a.fromBufferAttribute(positions, offset); b.fromBufferAttribute(positions, offset + 1); c.fromBufferAttribute(positions, offset + 2);
-    const area = normal.crossVectors(new THREE.Vector3().subVectors(b, a), new THREE.Vector3().subVectors(c, a)).length() / 2;
+    const area = normal.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a)).length() / 2;
     if (area <= 1e-12) { degenerateTriangleCount += 1; continue; }
     const keys = [vertexKey(a), vertexKey(b), vertexKey(c)];
     for (const [left, right] of [[0, 1], [1, 2], [2, 0]] as const) {
@@ -259,20 +263,37 @@ function analyzeMeshTopology(positions: THREE.BufferAttribute | THREE.Interleave
       const owners = edgeOwners.get(edge) ?? [];
       owners.forEach(owner => join(triangleIndex, owner)); owners.push(triangleIndex); edgeOwners.set(edge, owners);
     }
-    faces.push({ triangleIndex, area, min: new THREE.Vector3().copy(a).min(b).min(c), max: new THREE.Vector3().copy(a).max(b).max(c) });
+    faceAreas[triangleIndex] = area;
   }
-  const componentFaces = new Map<number, typeof faces>();
-  faces.forEach(face => { const root = find(face.triangleIndex); componentFaces.set(root, [...(componentFaces.get(root) ?? []), face]); });
-  const components = [...componentFaces.values()].map(group => {
-    const min = new THREE.Vector3(Infinity, Infinity, Infinity); const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-    let surfaceAreaMm2 = 0;
-    group.forEach(face => { min.min(face.min); max.max(face.max); surfaceAreaMm2 += face.area; });
-    return { id: 0, triangleCount: group.length, surfaceAreaMm2, boundingBox: { min: vectorValue(min), max: vectorValue(max), size: vectorValue(new THREE.Vector3().subVectors(max, min)) } };
-  }).sort((left, right) => right.surfaceAreaMm2 - left.surfaceAreaMm2).map((component, index) => ({ ...component, id: index + 1 }));
-  const boundaryEdgeCount = [...edgeOwners.values()].filter(owners => owners.length === 1).length;
-  const nonManifoldEdgeCount = [...edgeOwners.values()].filter(owners => owners.length > 2).length;
-  const boundaryTriangleIndices = [...new Set([...edgeOwners.values()].filter(owners => owners.length === 1).flat())].slice(0, 4000);
-  const nonManifoldTriangleIndices = [...new Set([...edgeOwners.values()].filter(owners => owners.length > 2).flat())].slice(0, 4000);
+  const componentAggregates = new Map<number, { triangleCount: number; surfaceAreaMm2: number; min: THREE.Vector3; max: THREE.Vector3 }>();
+  for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
+    const area = faceAreas[triangleIndex];
+    if (!area) continue;
+    const root = find(triangleIndex);
+    let aggregate = componentAggregates.get(root);
+    if (!aggregate) {
+      aggregate = { triangleCount: 0, surfaceAreaMm2: 0, min: new THREE.Vector3(Infinity, Infinity, Infinity), max: new THREE.Vector3(-Infinity, -Infinity, -Infinity) };
+      componentAggregates.set(root, aggregate);
+    }
+    const offset = triangleIndex * 3;
+    a.fromBufferAttribute(positions, offset); b.fromBufferAttribute(positions, offset + 1); c.fromBufferAttribute(positions, offset + 2);
+    aggregate.triangleCount += 1; aggregate.surfaceAreaMm2 += area;
+    aggregate.min.min(a).min(b).min(c); aggregate.max.max(a).max(b).max(c);
+  }
+  const components = [...componentAggregates.values()].map(aggregate => ({
+    id: 0,
+    triangleCount: aggregate.triangleCount,
+    surfaceAreaMm2: aggregate.surfaceAreaMm2,
+    boundingBox: { min: vectorValue(aggregate.min), max: vectorValue(aggregate.max), size: vectorValue(new THREE.Vector3().subVectors(aggregate.max, aggregate.min)) },
+  })).sort((left, right) => right.surfaceAreaMm2 - left.surfaceAreaMm2).map((component, index) => ({ ...component, id: index + 1 }));
+  let boundaryEdgeCount = 0, nonManifoldEdgeCount = 0;
+  const boundaryTriangles = new Set<number>(), nonManifoldTriangles = new Set<number>();
+  edgeOwners.forEach(owners => {
+    if (owners.length === 1) { boundaryEdgeCount += 1; if (boundaryTriangles.size < 4000) boundaryTriangles.add(owners[0]); }
+    else if (owners.length > 2) { nonManifoldEdgeCount += 1; owners.forEach(owner => { if (nonManifoldTriangles.size < 4000) nonManifoldTriangles.add(owner); }); }
+  });
+  const boundaryTriangleIndices = [...boundaryTriangles];
+  const nonManifoldTriangleIndices = [...nonManifoldTriangles];
   return {
     topology: { componentCount: components.length, boundaryEdgeCount, nonManifoldEdgeCount, degenerateTriangleCount, watertight: boundaryEdgeCount === 0 && nonManifoldEdgeCount === 0 && components.length > 0, boundaryTriangleIndices, nonManifoldTriangleIndices },
     components,
@@ -303,9 +324,22 @@ export function analyzeGeometry(geometry: THREE.BufferGeometry, fileName: string
   const positions = geometry.getAttribute('position');
   const measured = measureGeometry(positions);
   const { topology, components } = analyzeMeshTopology(positions);
-  const orientations = analyzeOrientations(geometry);
+  const orientations = analyzeOrientations(geometry, measured);
+  const analysis = buildModelAnalysis(fileName, metadata, positions.count / 3, measured, topology, components, orientations);
+  return { analysis, geometry };
+}
+
+function buildModelAnalysis(
+  fileName: string,
+  metadata: ModelMetadata,
+  triangleCount: number,
+  measured: GeometryMeasurement,
+  topology: MeshTopology,
+  components: MeshComponent[],
+  orientations: OrientationCandidate[],
+): ModelAnalysis {
   const analysis: ModelAnalysis = {
-    fileName, triangleCount: positions.count / 3,
+    fileName, triangleCount,
     boundingBox: {
       min: { x: measured.min.x, y: measured.min.y, z: measured.min.z },
       max: { x: measured.max.x, y: measured.max.y, z: measured.max.z },
@@ -320,33 +354,91 @@ export function analyzeGeometry(geometry: THREE.BufferGeometry, fileName: string
     findings: geometryFindings(measured, topology),
     analysisLimits,
   };
-  return { analysis, geometry };
+  return analysis;
+}
+
+export async function analyzeGeometryAsync(
+  geometry: THREE.BufferGeometry,
+  fileName: string,
+  metadata: ModelMetadata,
+  onProgress?: (fraction: number, phase: string) => void,
+): Promise<{ analysis: ModelAnalysis; geometry: THREE.BufferGeometry }> {
+  if (geometry.index) geometry = geometry.toNonIndexed();
+  geometry.computeBoundingBox(); geometry.computeVertexNormals();
+  const positions = geometry.getAttribute('position');
+  onProgress?.(0.08, 'Measuring model surfaces');
+  await yieldAnalysisTask();
+  const measured = measureGeometry(positions);
+  onProgress?.(0.28, 'Checking mesh topology');
+  await yieldAnalysisTask();
+  const { topology, components } = analyzeMeshTopology(positions);
+  onProgress?.(0.48, 'Comparing print orientations');
+  await yieldAnalysisTask();
+  const orientations = await analyzeOrientationsAsync(geometry, measured, (completed, total) => {
+    onProgress?.(0.48 + completed / total * 0.48, `Comparing print orientations (${completed}/${total})`);
+  });
+  return { analysis: buildModelAnalysis(fileName, metadata, positions.count / 3, measured, topology, components, orientations), geometry };
 }
 
 export function analyzeStl(buffer: ArrayBuffer, fileName: string): { analysis: ModelAnalysis; geometry: THREE.BufferGeometry } {
   return analyzeGeometry(new STLLoader().parse(buffer), fileName, extractModelMetadata(buffer, fileName));
 }
 
+export async function analyzeStlAsync(
+  buffer: ArrayBuffer,
+  fileName: string,
+  onProgress?: (fraction: number, phase: string) => void,
+) {
+  onProgress?.(0.03, 'Parsing STL geometry');
+  await yieldAnalysisTask();
+  const geometry = new STLLoader().parse(buffer);
+  return analyzeGeometryAsync(geometry, fileName, extractModelMetadata(buffer, fileName), onProgress);
+}
+
 const transforms: Array<{id:string;label:string;map:(v:THREE.Vector3)=>THREE.Vector3}> = [
-  {id:'as-imported',label:'As imported',map:v=>new THREE.Vector3(v.x,v.y,v.z)},
-  {id:'flip-z',label:'Flip upside down',map:v=>new THREE.Vector3(v.x,-v.y,-v.z)},
-  {id:'right-side',label:'Place right side down',map:v=>new THREE.Vector3(v.z,v.y,-v.x)},
-  {id:'left-side',label:'Place left side down',map:v=>new THREE.Vector3(-v.z,v.y,v.x)},
-  {id:'front-side',label:'Place front side down',map:v=>new THREE.Vector3(v.x,v.z,-v.y)},
-  {id:'back-side',label:'Place back side down',map:v=>new THREE.Vector3(v.x,-v.z,v.y)}
+  {id:'as-imported',label:'As imported',map:v=>v},
+  {id:'flip-z',label:'Flip upside down',map:v=>v.set(v.x,-v.y,-v.z)},
+  {id:'right-side',label:'Place right side down',map:v=>v.set(v.z,v.y,-v.x)},
+  {id:'left-side',label:'Place left side down',map:v=>v.set(-v.z,v.y,v.x)},
+  {id:'front-side',label:'Place front side down',map:v=>v.set(v.x,v.z,-v.y)},
+  {id:'back-side',label:'Place back side down',map:v=>v.set(v.x,-v.z,v.y)}
 ];
 
 function orientationTransform(id: string) {
   return transforms.find(candidate => candidate.id === id) ?? transforms[0];
 }
 
+function orientationMatrix(id: string) {
+  const matrix = new THREE.Matrix4();
+  switch (id) {
+    case 'flip-z': return matrix.makeScale(1, -1, -1);
+    case 'right-side': return matrix.set(0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1);
+    case 'left-side': return matrix.set(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);
+    case 'front-side': return matrix.set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
+    case 'back-side': return matrix.set(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+    default: return matrix.identity();
+  }
+}
+
+export function boundingBoxForOrientation(geometry: THREE.BufferGeometry, orientationId: string) {
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  const box = geometry.boundingBox?.clone() ?? new THREE.Box3();
+  box.applyMatrix4(orientationMatrix(orientationId));
+  box.translate(new THREE.Vector3(0, 0, -box.min.z));
+  return box;
+}
+
 export function geometryForOrientation(geometry: THREE.BufferGeometry, orientationId: string) {
   let result = geometry.index ? geometry.toNonIndexed() : geometry.clone();
-  const positions = result.getAttribute('position'); const source = new THREE.Vector3(); const mapped = new THREE.Vector3();
-  const transform = orientationTransform(orientationId).map;
-  let minZ = Infinity;
-  for (let index = 0; index < positions.count; index += 1) { source.fromBufferAttribute(positions, index); mapped.copy(transform(source)); positions.setXYZ(index, mapped.x, mapped.y, mapped.z); minZ = Math.min(minZ, mapped.z); }
-  result.translate(0, 0, -minZ); result.computeBoundingBox(); result.computeVertexNormals();
+  result.applyMatrix4(orientationMatrix(orientationId));
+  result.computeBoundingBox();
+  result.translate(0, 0, -(result.boundingBox?.min.z ?? 0));
+  result.computeBoundingBox();
+  // Imported 3MF/OBJ normal attributes can be missing, zeroed, or stale after
+  // component transforms. The preview is derived data, so rebuild normals here
+  // without changing the canonical source document used for export.
+  result.deleteAttribute('normal');
+  result.computeVertexNormals();
   return result;
 }
 
@@ -376,19 +468,44 @@ export function riskVisualizationGeometry(geometry: THREE.BufferGeometry, orient
   return result;
 }
 
-function analyzeOrientations(geometry: THREE.BufferGeometry) {
+function orientationMeasurement(candidate: typeof transforms[number], measured: GeometryMeasurement): OrientationCandidate {
+  return {
+    id: candidate.id,
+    label: candidate.label,
+    heightMm: measured.size.z,
+    bedContactAreaMm2: measured.bedContactArea,
+    overhangRatio: measured.totalArea ? measured.overhangArea / measured.totalArea : 0,
+    geometryRisk: measured.risk,
+  };
+}
+
+function analyzeOrientations(geometry: THREE.BufferGeometry, importedMeasurement?: GeometryMeasurement) {
   const positions = geometry.getAttribute('position');
-  return transforms.map(candidate => {
-    const measured = measureGeometry(positions, candidate.map);
-    return {
-      id: candidate.id,
-      label: candidate.label,
-      heightMm: measured.size.z,
-      bedContactAreaMm2: measured.bedContactArea,
-      overhangRatio: measured.totalArea ? measured.overhangArea / measured.totalArea : 0,
-      geometryRisk: measured.risk,
-    };
-  });
+  return transforms.map((candidate, index) => orientationMeasurement(
+    candidate,
+    index === 0 && importedMeasurement ? importedMeasurement : measureGeometry(positions, candidate.map),
+  ));
+}
+
+function yieldAnalysisTask() {
+  return new Promise<void>(resolve => globalThis.setTimeout(resolve, 0));
+}
+
+async function analyzeOrientationsAsync(
+  geometry: THREE.BufferGeometry,
+  importedMeasurement: GeometryMeasurement,
+  onProgress?: (completed: number, total: number) => void,
+) {
+  const positions = geometry.getAttribute('position');
+  const results: OrientationCandidate[] = [];
+  for (let index = 0; index < transforms.length; index += 1) {
+    const candidate = transforms[index];
+    const measured = index === 0 ? importedMeasurement : measureGeometry(positions, candidate.map);
+    results.push(orientationMeasurement(candidate, measured));
+    onProgress?.(index + 1, transforms.length);
+    await yieldAnalysisTask();
+  }
+  return results;
 }
 
 function orientationIntentConstraints(intent?: ManufacturingIntent, spatial?: SpatialManufacturingIntent) {

@@ -3,7 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { ContactShadows, Edges, Grid, Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { applySpatialRegionColors, regionColor } from '../geometry/spatialIntent';
-import { geometryForOrientation, riskVisualizationGeometry } from '../geometry/stl';
+import { boundingBoxForOrientation, geometryForOrientation, riskVisualizationGeometry } from '../geometry/stl';
 import { cameraPose } from '../geometry/previewScene';
 import type { CameraView } from '../geometry/previewScene';
 import type { MeshTopology, OverhangRegion, SpatialRegion, SpatialRegionKind } from '../types';
@@ -101,11 +101,11 @@ function SpatialRegionOverlay({ geometry, region }: { geometry: THREE.BufferGeom
   </group>;
 }
 
-function PreparedModel({ geometry, orientationId, risk = false, selectedRiskTriangles, spatialRegions = [], meshTopology, color = '#b8bcba', position = [0, 0, 0], opacity = 1, onFaceSelect }: {
+function PreparedModel({ geometry, orientationId, risk = false, selectedRiskTriangles, spatialRegions = [], meshTopology, color = '#b8bcba', position = [0, 0, 0], opacity = 1, onFaceSelect, showEdges = true, shadows = true }: {
   geometry: THREE.BufferGeometry; orientationId: string; risk?: boolean; spatialRegions?: SpatialRegion[];
   selectedRiskTriangles?: number[];
   meshTopology?: MeshTopology;
-  color?: string; position?: [number, number, number]; opacity?: number; onFaceSelect?: (faceIndex: number) => void;
+  color?: string; position?: [number, number, number]; opacity?: number; onFaceSelect?: (faceIndex: number) => void; showEdges?: boolean; shadows?: boolean;
 }) {
   const prepared = useMemo(() => {
     const result = risk ? riskVisualizationGeometry(geometry, orientationId, selectedRiskTriangles) : geometryForOrientation(geometry, orientationId);
@@ -118,13 +118,13 @@ function PreparedModel({ geometry, orientationId, risk = false, selectedRiskTria
   }, [position, prepared]);
   useEffect(() => () => prepared.dispose(), [prepared]);
   return <group position={centeredPosition}>
-    <mesh geometry={prepared} castShadow receiveShadow onPointerDown={event => {
+    <mesh geometry={prepared} castShadow={shadows} receiveShadow={shadows} onPointerDown={event => {
       if (!onFaceSelect || event.faceIndex == null) return;
       event.stopPropagation();
       onFaceSelect(event.faceIndex);
     }}>
-      <meshStandardMaterial color={risk || spatialRegions.length ? '#ffffff' : color} vertexColors={risk || spatialRegions.length > 0} roughness={0.52} metalness={0.03} transparent={opacity < 1} opacity={opacity}/>
-      <Edges threshold={32} color={risk ? '#34413c' : '#63716b'}/>
+      <meshStandardMaterial color={risk || spatialRegions.length ? '#ffffff' : color} vertexColors={risk || spatialRegions.length > 0} side={THREE.DoubleSide} roughness={0.52} metalness={0.03} transparent={opacity < 1} opacity={opacity}/>
+      {showEdges && <Edges threshold={32} color={risk ? '#34413c' : '#63716b'}/>}
     </mesh>
     {!risk && spatialRegions.map(region => <SpatialRegionOverlay geometry={prepared} region={region} key={region.id}/>)}
     {risk && selectedRiskTriangles?.length ? <TriangleOverlay geometry={prepared} triangleIndices={selectedRiskTriangles} color="#ff9f43"/> : null}
@@ -228,22 +228,19 @@ export default function ModelPreview({
   const [cameraView, setCameraView] = useState<CameraView>('isometric');
   const [cameraReset, setCameraReset] = useState(0);
   const darkAppearance = useMediaQuery('(prefers-color-scheme: dark)');
+  const triangleCount = geometry ? Math.floor(geometry.getAttribute('position').count / 3) : 0;
+  const largeModel = triangleCount > 250_000;
+  const veryLargeModel = triangleCount > 1_000_000;
   const selectedOverhangRegion = overhangRegions.find(region => region.id === selectedOverhangRegionId);
   const selectedOverhangIndex = selectedOverhangRegion ? overhangRegions.indexOf(selectedOverhangRegion) : -1;
   const comparisonOffset = geometry ? Math.max(geometry.boundingBox?.getSize(new THREE.Vector3()).x ?? 0, 30) * 0.72 : 40;
   const modelSize = useMemo(() => {
     if (!geometry) return new THREE.Vector3(1, 1, 1);
-    const prepared = geometryForOrientation(geometry, mode === 'original' ? 'as-imported' : orientationId);
-    const size = prepared.boundingBox?.getSize(new THREE.Vector3()) ?? new THREE.Vector3(1, 1, 1);
-    prepared.dispose();
-    return size;
+    return boundingBoxForOrientation(geometry, mode === 'original' ? 'as-imported' : orientationId).getSize(new THREE.Vector3());
   }, [geometry, mode, orientationId]);
   const importedModelSize = useMemo(() => {
     if (!geometry) return new THREE.Vector3(1, 1, 1);
-    const prepared = geometryForOrientation(geometry, 'as-imported');
-    const size = prepared.boundingBox?.getSize(new THREE.Vector3()) ?? new THREE.Vector3(1, 1, 1);
-    prepared.dispose();
-    return size;
+    return boundingBoxForOrientation(geometry, 'as-imported').getSize(new THREE.Vector3());
   }, [geometry]);
   const displayHeight = mode === 'compare' ? Math.max(modelSize.z, importedModelSize.z) : modelSize.z;
   const comparisonOffsetWidth = mode === 'compare' ? Math.max(modelSize.x, importedModelSize.x) + comparisonOffset * 2 : modelSize.x;
@@ -252,10 +249,7 @@ export default function ModelPreview({
   const targetY = displayHeight / 2;
   const modelCenter = useMemo(() => {
     if (!geometry) return new THREE.Vector3();
-    const prepared = geometryForOrientation(geometry, mode === 'original' ? 'as-imported' : orientationId);
-    const center = prepared.boundingBox?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
-    prepared.dispose();
-    return center;
+    return boundingBoxForOrientation(geometry, mode === 'original' ? 'as-imported' : orientationId).getCenter(new THREE.Vector3());
   }, [geometry, mode, orientationId]);
   const plateLayouts = useMemo(() => {
     if (buildPlates.length < 2) return [];
@@ -301,10 +295,10 @@ export default function ModelPreview({
     onSelectOverhangRegion(overhangRegions[nextIndex].id);
   };
   return <div className="preview preview-analysis">
-    <Canvas dpr={[1, 2]} gl={{ antialias: true, preserveDrawingBuffer: Boolean(onCapture) }} camera={{ fov: 44, position: [cameraDistance, cameraDistance * 0.75, cameraDistance], near: 0.1, far: cameraDistance * 8 }} shadows>
+    <Canvas frameloop="demand" dpr={veryLargeModel ? 1 : largeModel ? [1, 1.25] : [1, 2]} gl={{ antialias: !veryLargeModel, preserveDrawingBuffer: Boolean(onCapture) }} camera={{ fov: 44, position: [cameraDistance, cameraDistance * 0.75, cameraDistance], near: 0.1, far: cameraDistance * 8 }} shadows={!largeModel}>
       <color attach="background" args={[darkAppearance ? '#1b221f' : '#f7f7f2']}/>
       <hemisphereLight args={[darkAppearance ? '#dce9e4' : '#ffffff', '#46554f', darkAppearance ? 1.6 : 1.25]}/>
-      <directionalLight castShadow position={[cameraDistance * .45, cameraDistance * .8, cameraDistance * .35]} intensity={2.25}/>
+      <directionalLight castShadow={!largeModel} position={[cameraDistance * .45, cameraDistance * .8, cameraDistance * .35]} intensity={2.25}/>
       <directionalLight position={[-cameraDistance * .35, cameraDistance * .3, -cameraDistance * .25]} intensity={0.75}/>
       <CameraPreset view={cameraView} distance={activeCameraDistance} target={focusTarget} inspectionDirection={inspectionDirection} resetKey={cameraReset}/>
       {effectiveShowPlate && (hasMultipleBuildPlates
@@ -313,10 +307,10 @@ export default function ModelPreview({
       {showAxes && <PrinterAxes width={Math.max(modelSize.x * 1.4, 60)} depth={Math.max(modelSize.y * 1.4, 60)}/>}
       {geometry && <group rotation={[-Math.PI / 2, 0, 0]}>
         {mode === 'compare'
-          ? <><PreparedModel geometry={geometry} orientationId="as-imported" color="#8a969c" opacity={0.72} position={[-comparisonOffset, 0, 0]}/><PreparedModel geometry={geometry} orientationId={orientationId} position={[comparisonOffset, 0, 0]}/></>
-          : <PreparedModel geometry={geometry} orientationId={mode === 'original' ? 'as-imported' : orientationId} risk={mode === 'risk'} selectedRiskTriangles={mode === 'risk' ? selectedOverhangRegion?.triangleIndices : undefined} spatialRegions={mode === 'spatial' ? spatialRegions : []} meshTopology={mode === 'mesh' ? meshTopology : undefined} onFaceSelect={mode === 'spatial' && markingKind ? onFaceSelect : undefined}/>}
+          ? <><PreparedModel geometry={geometry} orientationId="as-imported" color="#8a969c" opacity={0.72} position={[-comparisonOffset, 0, 0]} showEdges={!largeModel} shadows={!largeModel}/><PreparedModel geometry={geometry} orientationId={orientationId} position={[comparisonOffset, 0, 0]} showEdges={!largeModel} shadows={!largeModel}/></>
+          : <PreparedModel geometry={geometry} orientationId={mode === 'original' ? 'as-imported' : orientationId} risk={mode === 'risk'} selectedRiskTriangles={mode === 'risk' ? selectedOverhangRegion?.triangleIndices : undefined} spatialRegions={mode === 'spatial' ? spatialRegions : []} meshTopology={mode === 'mesh' ? meshTopology : undefined} onFaceSelect={mode === 'spatial' && markingKind ? onFaceSelect : undefined} showEdges={!largeModel} shadows={!largeModel}/>}
       </group>}
-      {effectiveShowPlate && <ContactShadows position={[0, 0.05, 0]} scale={hasMultipleBuildPlates ? Math.max(modelSize.x, modelSize.y) * 1.05 : Math.max(plateSize.x, plateSize.y) * .8} opacity={darkAppearance ? .42 : .25} blur={2.6} far={Math.max(modelSize.z, 40) * 1.4}/>}
+      {effectiveShowPlate && !largeModel && <ContactShadows position={[0, 0.05, 0]} scale={hasMultipleBuildPlates ? Math.max(modelSize.x, modelSize.y) * 1.05 : Math.max(plateSize.x, plateSize.y) * .8} opacity={darkAppearance ? .42 : .25} blur={2.6} far={Math.max(modelSize.z, 40) * 1.4}/>}
       <OrbitControls makeDefault target={focusTarget}/>
       {geometry && captureKey && onCapture && <CapturePreview captureKey={captureKey} onCapture={onCapture} distance={cameraDistance} targetY={targetY}/>}
     </Canvas>

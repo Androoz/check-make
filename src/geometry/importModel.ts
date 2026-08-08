@@ -1,12 +1,20 @@
 import * as THREE from 'three';
-import { analyzeGeometry, analyzeStl } from './stl';
+import { analyzeGeometryAsync, analyzeStlAsync } from './stl';
 import type { IndexedMeshTopology, ModelAnalysis, ModelDocumentSummary, ModelFormat, ModelMetadata, ModelTopologyReport } from '../types';
 
 export interface ImportedModel {
   analysis: ModelAnalysis;
   geometry: THREE.BufferGeometry;
   normalizedStl?: Uint8Array;
-  repairParts: THREE.BufferGeometry[];
+}
+
+export interface ModelImportProgress {
+  percent: number;
+  phase: string;
+}
+
+export interface ImportModelOptions {
+  onProgress?: (progress: ModelImportProgress) => void;
 }
 
 interface SourceStructure {
@@ -60,20 +68,6 @@ async function geometryFromObject(root: THREE.Object3D) {
   parts.forEach(part => part.dispose());
   if (!merged) throw new Error('The model meshes could not be combined.');
   return merged;
-}
-
-function indexedPartsFromObject(root: THREE.Object3D) {
-  root.updateMatrixWorld(true);
-  const parts: THREE.BufferGeometry[] = [];
-  root.traverse(child => {
-    if (!(child instanceof THREE.Mesh) || !child.geometry?.getAttribute('position')) return;
-    const geometry = child.geometry.clone();
-    geometry.applyMatrix4(child.matrixWorld);
-    geometry.deleteAttribute('uv'); geometry.deleteAttribute('color'); geometry.deleteAttribute('normal');
-    if (!geometry.index) geometry.setIndex(Array.from({ length: geometry.getAttribute('position').count }, (_, index) => index));
-    parts.push(geometry);
-  });
-  return parts;
 }
 
 function sourceStructureFromObject(root: THREE.Object3D, format: ModelFormat): SourceStructure {
@@ -154,35 +148,54 @@ async function normalizedStl(geometry: THREE.BufferGeometry) {
   return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
 }
 
-export async function importModel(buffer: ArrayBuffer, fileName: string): Promise<ImportedModel> {
+async function reportProgress(options: ImportModelOptions | undefined, percent: number, phase: string) {
+  options?.onProgress?.({ percent, phase });
+  await new Promise<void>(resolve => globalThis.setTimeout(resolve, 0));
+}
+
+export async function importModel(buffer: ArrayBuffer, fileName: string, options?: ImportModelOptions): Promise<ImportedModel> {
   const extension = extensionOf(fileName);
   if (!supportedModelExtensions.includes(extension as typeof supportedModelExtensions[number])) {
     throw new Error('Supported formats are STL, 3MF, and OBJ.');
   }
   if (extension === 'stl') {
-    const result = analyzeStl(buffer, fileName);
-    return { ...result, repairParts: [result.geometry.clone()] };
+    await reportProgress(options, 24, 'Parsing STL geometry');
+    const result = await analyzeStlAsync(buffer, fileName, (fraction, phase) => {
+      options?.onProgress?.({ percent: Math.round(25 + fraction * 69), phase });
+    });
+    await reportProgress(options, 94, 'Finalizing model');
+    return result;
   }
 
   let geometry: THREE.BufferGeometry;
   let names: string[] = [];
   if (extension === 'obj') {
+    await reportProgress(options, 24, 'Parsing OBJ geometry');
     const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
     const root = new OBJLoader().parse(new TextDecoder().decode(buffer));
     names = root.children.map(child => child.name).filter(Boolean);
-    const repairParts = indexedPartsFromObject(root);
+    await reportProgress(options, 38, 'Inspecting source structure');
     const source = sourceStructureFromObject(root, 'obj');
+    await reportProgress(options, 50, 'Preparing preview geometry');
     geometry = await geometryFromObject(root);
-    const result = analyzeGeometry(geometry, fileName, metadataFor(fileName, names));
-    return { ...result, analysis: { ...result.analysis, topologyReport: topologyReport(source, result.analysis.topology), document: source.document }, normalizedStl: await normalizedStl(result.geometry), repairParts };
+    const result = await analyzeGeometryAsync(geometry, fileName, metadataFor(fileName, names), (fraction, phase) => {
+      options?.onProgress?.({ percent: Math.round(55 + fraction * 34), phase });
+    });
+    await reportProgress(options, 90, 'Preparing export geometry');
+    return { ...result, analysis: { ...result.analysis, topologyReport: topologyReport(source, result.analysis.topology), document: source.document }, normalizedStl: await normalizedStl(result.geometry) };
   } else if (extension === '3mf') {
+    await reportProgress(options, 24, 'Opening 3MF archive');
     const { ThreeMFLoader } = await import('three/examples/jsm/loaders/3MFLoader.js');
     const root = new ThreeMFLoader().parse(buffer);
     names = root.children.map(child => child.name).filter(Boolean);
-    const repairParts = indexedPartsFromObject(root);
+    await reportProgress(options, 38, 'Inspecting 3MF structure');
     const source = sourceStructureFromObject(root, '3mf');
+    await reportProgress(options, 50, 'Preparing preview geometry');
     geometry = await geometryFromObject(root);
-    const result = analyzeGeometry(geometry, fileName, metadataFor(fileName, names));
-    return { ...result, analysis: { ...result.analysis, topologyReport: topologyReport(source, result.analysis.topology), document: source.document }, normalizedStl: await normalizedStl(result.geometry), repairParts };
+    const result = await analyzeGeometryAsync(geometry, fileName, metadataFor(fileName, names), (fraction, phase) => {
+      options?.onProgress?.({ percent: Math.round(55 + fraction * 39), phase });
+    });
+    await reportProgress(options, 96, 'Finalizing 3MF model');
+    return { ...result, analysis: { ...result.analysis, topologyReport: topologyReport(source, result.analysis.topology), document: source.document } };
   } else throw new Error('Unsupported model format.');
 }

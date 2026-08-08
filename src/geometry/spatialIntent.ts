@@ -152,6 +152,17 @@ function estimateThicknessCandidates(geometry: THREE.BufferGeometry, triangles: 
 }
 
 export function analyzeSpatialCandidates(geometry: THREE.BufferGeometry): SpatialCandidateAnalysis {
+  const totalTriangles = Math.floor(geometry.getAttribute('position').count / 3);
+  if (totalTriangles > 250_000) return {
+    schemaVersion: 1,
+    planarCandidates: [],
+    thinCandidates: [],
+    thicknessCoverage: { sampledTriangles: 0, measuredTriangles: 0, totalTriangles },
+    notes: [
+      'Automatic important-area suggestions were skipped to keep this high-detail model responsive.',
+      'You can still identify important areas from the model and manufacturing context.',
+    ],
+  };
   const triangles = trianglesForGeometry(geometry);
   const patches = connectedPlanarPatches(triangles)
     .filter(patch => patch.length > 1)

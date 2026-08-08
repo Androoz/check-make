@@ -182,7 +182,9 @@ textarea { min-height: 76px; }
 .analysis-credential-note { color: #8c4b22 !important; }
 
 .model-workspace-head { min-height: 82px; padding: 14px 20px 12px; align-items: center; }
-.model-workspace-head h1 { color: var(--text-primary); font-size: 16px; font-weight: 650; }
+.model-workspace-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+.model-workspace-head h1 { max-width: 100%; color: var(--text-primary); font-size: 16px; font-weight: 650; }
+.model-workspace-head .preview-toolbar { flex: 0 0 auto; min-width: 0; }
 .model-measured { display: flex; align-items: center; gap: 4px; margin-top: 5px; color: var(--success); font-size: 11px; font-weight: 600; }
 .model-measured .ui-icon { width: 14px; height: 14px; }
 .workflow-preview { border-color: color-mix(in srgb, var(--info) 28%, var(--separator)); }
@@ -208,7 +210,7 @@ textarea { min-height: 76px; }
 .scene-controls .focused-view { min-height: 34px; display: inline-flex; align-items: center; padding: 0 9px; color: var(--action); font-size: 11px; font-weight: 650; }
 .comparison-legend { border-color: var(--separator); background: color-mix(in srgb, var(--surface-raised) 94%, transparent); color: var(--text-secondary); box-shadow: var(--shadow-raised); }
 .comparison-legend span:last-child { color: var(--action); }
-.preview-toolbar button { min-width: 92px; }
+.preview-toolbar button { min-width: 82px; }
 .workflow-metrics b { color: var(--text-primary); font-size: 13px; }
 .workflow-metrics span { color: var(--text-secondary); font-size: 11px; }
 .workflow-metrics button { display: grid; gap: 3px; min-height: 48px; padding: 2px 10px; border: 0; border-right: 1px solid var(--separator); border-radius: 0; background: transparent; color: var(--text-primary); text-align: center; cursor: pointer; }
@@ -884,6 +886,15 @@ textarea { min-height: 76px; }
 .plan-preference-option-detail .plan-preference-option-constraint { color: var(--text-secondary); }
 .plan-preference-option-detail > button { justify-self: start; min-height: 34px; padding: 6px 10px; border: 1px solid var(--action); border-radius: 7px; background: transparent; color: var(--action); font-size: 11px; font-weight: 700; cursor: pointer; }
 .unsupported-guidance p + p { margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--warning-border) 45%, transparent); }
+
+/* Loading feedback follows the active appearance and avoids a costly backdrop blur. */
+.model-loading-overlay { background: color-mix(in srgb, var(--canvas) 94%, transparent); backdrop-filter: none; }
+.model-loading-card { border-color: var(--separator-strong); background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-raised); }
+.model-loading-card .kicker { color: var(--action); }
+.model-loading-card h2 { color: var(--text-primary); }
+.model-loading-card progress, .model-loading-card progress::-webkit-progress-bar { background: var(--separator); }
+.model-loading-card progress::-webkit-progress-value { background: var(--action); }
+.model-loading-card p { color: var(--text-secondary); }
 
 @media (max-width: 1080px) {
   .support-choices { grid-template-columns: 1fr; }

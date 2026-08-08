@@ -525,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "check-make"
-version = "0.2.6-beta.5"
+version = "0.2.6-beta.6"
 dependencies = [
  "quick-xml 0.38.4",
  "reqwest 0.12.28",
