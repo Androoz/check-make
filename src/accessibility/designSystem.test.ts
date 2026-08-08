@@ -107,13 +107,10 @@ describe('accessible Check Make design system', () => {
     expect(css).toMatch(/\.mesh-legend \{[^}]*top: 12px; bottom: auto/);
     expect(css).toMatch(/\.technical-geometry dt, \.technical-geometry dd \{[^}]*font-size: 13px/);
     expect(css).toMatch(/\.analysis-limits p \{[^}]*font-size: 12px/);
-    expect(app).toContain('className="model-check-detail overhang-check"');
-    expect(app).toContain('Show in 3D');
+    expect(app).toContain('className="overhang-check-summary"');
+    expect(app).toContain('review in the slicer');
     expect(app).toContain('selectedOverhangRegionId={selectedOverhangRegionId}');
-    expect(modelPreview).toContain('risk-region-navigation');
-    expect(modelPreview).toContain("setCameraView('bottom')");
-    expect(modelPreview).toContain('selectedRiskTriangles');
-    expect(css).toMatch(/\.overhang-region-list article b \{[^}]*font-size: 13px/);
+    expect(modelPreview).toContain("mode === 'risk'");
   });
 
   it('uses two analysis modes and keeps the Extended AI provider in settings', () => {
@@ -205,7 +202,9 @@ describe('accessible Check Make design system', () => {
   it('waits for an explicit understanding update and preserves editable plan questions', () => {
     expect(app).toContain('>Apply</button>');
     expect(app).toContain('className="primary apply-understanding"');
-    expect(app).toContain('onPurposeClarification={updatePurposeClarificationDraft}');
+    expect(app).toContain('<PurposeClarificationEditor');
+    expect(app).toContain('onApplyPurposeClarification: (value: string) => void');
+    expect(app).toContain('onClick={() => onApply(draft)}');
     expect(app).toContain('new Map([...current, ...refined.questions]');
     expect(app).not.toContain('}, 450)');
   });
@@ -249,7 +248,8 @@ describe('accessible Check Make design system', () => {
     expect(app).not.toContain('Add function to Context');
     expect(app).not.toContain('Object hypothesis');
     expect(app).toContain("clarificationApplied ? 'Updated' : 'Review'");
-    expect(app).toContain("const clarification = followUps['object-purpose-description']?.trim()");
+    expect(app).toContain('const clarification = value.trim()');
+    expect(app).toContain("'object-purpose-description': clarification");
     expect(app).toContain('Check Make waits until you apply the complete description.');
     expect(css).toMatch(/\.interpretation-summary > div p \{[^}]*font-size: var\(--body-size\)/);
     expect(css).toMatch(/\.interpretation-summary ul \{[^}]*font-size: var\(--secondary-size\)/);
@@ -325,7 +325,7 @@ describe('accessible Check Make design system', () => {
     expect(app).toContain("'Native multi-plate project'");
     expect(app).toContain("'Per-plate ZIP bundle'");
     expect(app).toContain("multiPlateProject ? 'as-imported' : orientation.id");
-    expect(app).toContain('disabled={multiPlateProject || sourceCorrectionRequired}');
+    expect(app).toContain('const hasDisconnectedShells = !multiPlateProject');
     expect(css).toContain('.project-structure-summary');
   });
 
@@ -333,6 +333,7 @@ describe('accessible Check Make design system', () => {
     expect(app.indexOf('EXPORT FORMAT')).toBeLessThan(app.indexOf('className="advanced-packaging"'));
     expect(app).toContain('<details className="advanced-packaging">');
     expect(app).toContain('<b>Advanced packaging</b>');
+    expect(app).toContain('hasDisconnectedShells && <details className="advanced-packaging">');
     expect(app).toContain('Changes 3MF object grouping, not mesh coordinates.');
     expect(app).toContain('Check Make never repairs or boolean-unions geometry during normal export.');
     expect(app).not.toContain('<b>Geometry intent</b>');
@@ -340,6 +341,22 @@ describe('accessible Check Make design system', () => {
     expect(app).not.toContain("import('./geometry/booleanRepair')");
     expect(css).toContain('.advanced-packaging > summary');
     expect(css).toContain('.export-format-heading');
+  });
+
+  it('keeps long model names from displacing preview controls and summarizes overhangs', () => {
+    expect(app).toContain('<h1 title={analysis?.fileName}>');
+    expect(css).toMatch(/\.model-workspace-head > div:first-child \{[^}]*min-width: 0/);
+    expect(css).toMatch(/\.model-workspace-head \.preview-toolbar \{[^}]*flex: 0 0 auto/);
+    expect(app).toContain('className="overhang-check-summary"');
+    expect(app).toContain('review in the slicer');
+    expect(app).not.toContain('className="overhang-region-list"');
+  });
+
+  it('rebuilds imported preview normals and renders both winding directions', () => {
+    expect(modelPreview).toContain('side={THREE.DoubleSide}');
+    const geometry = readFileSync(new URL('../geometry/stl.ts', import.meta.url), 'utf8');
+    expect(geometry).toContain("result.deleteAttribute('normal')");
+    expect(geometry).toContain('result.computeVertexNormals()');
   });
 
   it('shows confirmed coincident geometry as reviewed instead of an issue', () => {

@@ -11,6 +11,7 @@ import {
   rejectSpatialCandidate, replaceSpatialRegion, setConfirmedLoadAxis, setSpatialRegionNotApplicable,
 } from './geometry/spatialIntent';
 import { importModel } from './geometry/importModel';
+import type { ModelImportProgress } from './geometry/importModel';
 import { evaluateRules } from './rules/engine';
 import { ruleEvidenceById, rules } from './rules/load';
 import { checkBuildVolume, checkMaterialCompatibility } from './material/compatibility';
@@ -152,6 +153,45 @@ function PrinterPicker({ value, onChange, label, emptyLabel, emptyDescription }:
       <span><b>{selected ? `${selected.manufacturer} · ${selected.model}` : emptyLabel}</b></span><span className="printer-picker-chevron" aria-hidden="true">⌄</span>
     </button></div>{popup}
   </>;
+}
+
+function BufferedTextarea({ value, onCommit, onBlurCommit, inputRef, idleCommitMs, ...props }: {
+  value: string;
+  onCommit: (value: string) => void;
+  onBlurCommit?: (value: string) => void;
+  inputRef?: (element: HTMLTextAreaElement | null) => void;
+  idleCommitMs?: number;
+} & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange' | 'onBlur' | 'ref'>) {
+  const [draft, setDraft] = useState(value);
+  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
+  const commitRef = useRef(onCommit);
+  commitRef.current = onCommit;
+  useEffect(() => {
+    if (document.activeElement !== fieldRef.current) setDraft(value);
+  }, [value]);
+  useEffect(() => {
+    if (!idleCommitMs || draft === value) return;
+    const timer = window.setTimeout(() => commitRef.current(draft), idleCommitMs);
+    return () => window.clearTimeout(timer);
+  }, [draft, idleCommitMs, value]);
+  return <textarea
+    {...props}
+    ref={element => { fieldRef.current = element; inputRef?.(element); }}
+    value={draft}
+    onChange={event => setDraft(event.target.value)}
+    onBlur={() => {
+      if (draft !== value) commitRef.current(draft);
+      onBlurCommit?.(draft);
+    }}
+  />;
+}
+
+function PurposeContextField({ value, onCommit }: { value: string; onCommit: (value: string) => void }) {
+  return <BufferedTextarea value={value} onCommit={onCommit} idleCommitMs={600} placeholder="Example: Load-critical camping-chair spacer under repeated outdoor use."/>;
+}
+
+function allowUiToPaint() {
+  return new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()));
 }
 /*
  * The 3D preview implementation lives in components/ModelPreview and is loaded
@@ -392,12 +432,11 @@ function SpatialIntentPanel({ spatial, loadRequired, matingRequired, visibleRequ
 }
 
 function InterpretationSummary({
-  intelligence, purposeClarification, onPurposeClarification, onApplyPurposeClarification,
+  intelligence, purposeClarification, onApplyPurposeClarification,
 }: {
   intelligence: ModelIntelligence;
   purposeClarification: string;
-  onPurposeClarification: (value: string) => void;
-  onApplyPurposeClarification: () => void;
+  onApplyPurposeClarification: (value: string) => void;
 }) {
   const hypothesis = intelligence.objectHypothesis;
   if (!hypothesis) return null;
@@ -415,9 +454,15 @@ function InterpretationSummary({
   return <section className="interpretation-summary">
     <div><span className="kicker">CHECK MAKE’S UNDERSTANDING</span><strong>{hypothesis.identity.value}</strong><p>{describeObjectUnderstanding(intelligence)}</p></div>
     <span>{clarificationApplied ? 'Updated' : 'Review'}</span>
-    {needsPurpose && <div className="understanding-clarification"><b>What should this object do?</b><small>The model and Context did not establish a clear function. Add only the missing purpose here; Check Make waits until you apply the complete description.</small><textarea aria-label="Describe what the object should do" value={purposeClarification} onChange={event => onPurposeClarification(event.target.value)} placeholder="Example: Maintains the correct spacing in a parasol base."/><button type="button" className="primary apply-understanding" disabled={!purposeClarification.trim()} onClick={onApplyPurposeClarification}>Apply</button></div>}
+    {needsPurpose && <PurposeClarificationEditor value={purposeClarification} onApply={onApplyPurposeClarification}/>}
     <details><summary>Why Check Make reached this understanding</summary><ul>{evidence.map(item => <li key={item.id}>{item.statement}</li>)}</ul><p>This is an interpretation of your Context and the measured geometry. Review the assumptions below before they affect the manufacturing plan.</p></details>
   </section>;
+}
+
+function PurposeClarificationEditor({ value, onApply }: { value: string; onApply: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => { setDraft(value); }, [value]);
+  return <div className="understanding-clarification"><b>What should this object do?</b><small>The model and Context did not establish a clear function. Add only the missing purpose here; Check Make waits until you apply the complete description.</small><textarea aria-label="Describe what the object should do" value={draft} onChange={event => setDraft(event.target.value)} placeholder="Example: Maintains the correct spacing in a parasol base."/><button type="button" className="primary apply-understanding" disabled={!draft.trim()} onClick={() => onApply(draft)}>Apply</button></div>;
 }
 
 function ProcessBar({ stage, decisions, settingsOpen, onToggleSettings }: { stage: View; decisions: number; settingsOpen: boolean; onToggleSettings: () => void }) {
@@ -472,6 +517,7 @@ export default function App() {
   const [autoFilledDecisions, setAutoFilledDecisions] = useState<Record<string, string[]>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [modelLoadProgress, setModelLoadProgress] = useState<ModelImportProgress>();
   const [dropActive, setDropActive] = useState(false);
   const [status, setStatus] = useState('');
   const [packageResult, setPackageResult] = useState<ManufacturingPackageResult>();
@@ -503,6 +549,7 @@ export default function App() {
   const previewPlate = printer?.buildVolume ?? { x: 250, y: 250, z: 250 };
   const multiPlateProject = (analysis?.document?.plateCount ?? 0) > 1;
   const importedBuildPlates = multiPlateProject ? analysis?.document?.plates ?? [] : [];
+  const hasDisconnectedShells = !multiPlateProject && (analysis?.topology?.componentCount ?? 1) > 1;
   const effectivePreviewOrientationId = multiPlateProject ? 'as-imported' : previewOrientationId;
   const previewOrientation = analysis?.orientations.find(candidate => candidate.id === effectivePreviewOrientationId) ?? analysis?.orientations[0];
   const previewGeometryRisk = previewOrientation?.geometryRisk ?? analysis?.geometryRisk;
@@ -522,7 +569,17 @@ export default function App() {
         : undefined;
   const suggestedPackageTarget = useMemo(() => suggestSlicerTarget(adapters, printerId), [adapters, printerId]);
   const suggestedPackageAdapter = adapters.find(adapter => adapter.target === suggestedPackageTarget) ?? adapterPlaceholders[0];
-  const spatialCandidates = useMemo(() => geometry ? analyzeSpatialCandidates(geometry) : undefined, [geometry]);
+  const [spatialCandidates, setSpatialCandidates] = useState<ReturnType<typeof analyzeSpatialCandidates>>();
+  useEffect(() => {
+    setSpatialCandidates(undefined);
+    if (!geometry) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const candidates = analyzeSpatialCandidates(geometry);
+      if (!cancelled) setSpatialCandidates(candidates);
+    }, 120);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [geometry]);
   const questionnaire = useMemo(() => {
     if (!intelligence) return undefined;
     const answer = followUps[criticalDimensionQuestion.id];
@@ -686,6 +743,10 @@ export default function App() {
   }, [multiPlateProject, packageTargetManuallySelected, suggestedPackageTarget]);
 
   useEffect(() => {
+    if (!hasDisconnectedShells) setGeometryStrategy('preserve');
+  }, [hasDisconnectedShells]);
+
+  useEffect(() => {
     if (packageTarget === 'generic' || (selectedAdapter?.available && selectedPrinterSupported)) return;
     setPackageTarget('generic');
     setPackageTargetManuallySelected(false);
@@ -831,9 +892,6 @@ export default function App() {
       return next;
     });
   };
-  const updatePurposeClarificationDraft = (value: string) => {
-    setFollowUps(current => ({ ...current, 'object-purpose-description': value }));
-  };
   const updateSupportPreference = (value: NonNullable<import('./types').Questionnaire['supportPreference']>) => {
     const next = { ...followUps, 'support-preference': value };
     manuallyAnsweredDecisions.current.add('supportsAllowed');
@@ -928,21 +986,32 @@ export default function App() {
   };
   const loadBrowserFile = async (file?: File, preserveBrief = true) => {
     if (!file) return;
-    setBusy(true); setError(''); resetAnalysis(preserveBrief);
+    setBusy(true); setModelLoadProgress({ percent: 4, phase: 'Reading model file' }); setError(''); resetAnalysis(preserveBrief);
     try {
-      const result = await importModel(await file.arrayBuffer(), file.name);
+      await allowUiToPaint();
+      const buffer = await file.arrayBuffer();
+      setModelLoadProgress({ percent: 16, phase: 'Model file read' });
+      await allowUiToPaint();
+      const result = await importModel(buffer, file.name, { onProgress: setModelLoadProgress });
+      setModelLoadProgress({ percent: 98, phase: 'Preparing workspace' });
+      await allowUiToPaint();
       setAnalysis(result.analysis); setGeometry(result.geometry); setSourcePath(undefined); setSourceModelPath(undefined); setPreviewImage(undefined); setSpatialIntent(emptySpatialManufacturingIntent()); setSpatialFocusKind(undefined); setSpatialMarkingKind(undefined);
     } catch (reason) { setError(`The model could not be read. ${String(reason)}`); }
-    finally { setBusy(false); setDropActive(false); }
+    finally { setBusy(false); setModelLoadProgress(undefined); setDropActive(false); }
   };
   const loadPath = async (path: string, preserveBrief = true) => {
-    setBusy(true); setError(''); resetAnalysis(preserveBrief);
+    setBusy(true); setModelLoadProgress({ percent: 4, phase: 'Reading model file' }); setError(''); resetAnalysis(preserveBrief);
     try {
+      await allowUiToPaint();
       const raw = await invoke<ArrayBuffer | Uint8Array | number[]>('read_model_bytes', { path });
       const bytes = raw instanceof ArrayBuffer ? new Uint8Array(raw) : new Uint8Array(raw);
       const fileName = path.split(/[\\/]/).at(-1) ?? 'model.stl';
-      const imported = await importModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, fileName);
+      setModelLoadProgress({ percent: 16, phase: 'Model file read' });
+      await allowUiToPaint();
+      const imported = await importModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, fileName, { onProgress: setModelLoadProgress });
       const native = imported.analysis.metadata.format === 'stl' ? await invoke<ModelAnalysis>('analyze_stl_native', { path }) : imported.analysis;
+      setModelLoadProgress({ percent: 96, phase: imported.analysis.metadata.format === '3mf' ? 'Verifying 3MF project structure' : 'Preparing workspace' });
+      await allowUiToPaint();
       const document = imported.analysis.metadata.format === '3mf'
         ? await invoke<NonNullable<ModelAnalysis['document']>>('inspect_model_document', { path })
         : imported.analysis.document;
@@ -957,7 +1026,7 @@ export default function App() {
       setAnalysis(analysisWithP1Metrics); setGeometry(imported.geometry); setSourcePath(exportPath); setSourceModelPath(path); setPreviewImage(undefined); setSpatialIntent(emptySpatialManufacturingIntent()); setSpatialFocusKind(undefined); setSpatialMarkingKind(undefined); setView('import');
       return true;
     } catch (reason) { setError(String(reason)); return false; }
-    finally { setBusy(false); setDropActive(false); }
+    finally { setBusy(false); setModelLoadProgress(undefined); setDropActive(false); }
   };
   const browse = async (preserveBrief = true) => {
     if (isTauri()) { const path = await invoke<string | null>('pick_model_path'); if (path) await loadPath(path, preserveBrief); }
@@ -1156,14 +1225,16 @@ export default function App() {
     setIntelligence(refineLocalIntelligence(intelligence, followUps));
     setModifyingPlan(false);
   };
-  const applyPurposeClarification = () => {
-    const clarification = followUps['object-purpose-description']?.trim();
+  const applyPurposeClarification = (value: string) => {
+    const clarification = value.trim();
     if (!clarification || !intelligence) return;
     manuallyAnsweredDecisions.current.add('object-purpose-description');
-    const refined = refineLocalIntelligence(intelligence, {
+    const nextFollowUps = {
       ...followUps,
       'object-purpose-description': clarification,
-    });
+    };
+    setFollowUps(nextFollowUps);
+    const refined = refineLocalIntelligence(intelligence, nextFollowUps);
     setPlanQuestions(current => {
       const byId = new Map([...current, ...refined.questions].map(question => [question.id, question]));
       return [...byId.values()];
@@ -1285,7 +1356,7 @@ export default function App() {
       <aside className="project-context">
         <span className="context-title">PROJECT</span>
         <section className="context-card model-context"><span>MODEL</span>{analysis ? <><div className="context-glyph context-model-icon"><UiIcon name="model"/><small>{analysis.metadata.format.toUpperCase()}</small></div><div><b>{analysis.fileName}</b><small>{analysis.boundingBox.size.x.toFixed(1)} × {analysis.boundingBox.size.y.toFixed(1)} × {analysis.heightMm.toFixed(1)} mm</small><button className="context-link" onClick={() => void replaceModel()}>Replace</button></div></> : <button className="context-empty" onClick={() => void browse()}><b>Add model</b><small>STL, 3MF, or OBJ</small></button>}</section>
-        <section className="context-card purpose-context"><span>CONTEXT</span><label><textarea value={followUps.purpose ?? ''} onChange={event => updateProjectBrief(event.target.value)} placeholder="Example: Load-critical camping-chair spacer under repeated outdoor use."/><small>Describe the object, its use, known loads, environment, and designer-defined constraints. Check Make uses them as planning inputs; it does not validate structural safety.</small></label></section>
+        <section className="context-card purpose-context"><span>CONTEXT</span><label><PurposeContextField value={followUps.purpose ?? ''} onCommit={updateProjectBrief}/><small>Describe the object, its use, known loads, environment, and designer-defined constraints. Check Make uses them as planning inputs; it does not validate structural safety.</small></label></section>
         <section className="context-card printer-context"><span>PRINTER · OPTIONAL</span><div className="context-glyph printer-glyph"><UiIcon name="printer"/></div><div className="printer-control"><PrinterPicker value={printerId} onChange={selectPrinter} label="Target printer" emptyLabel="No printer selected" emptyDescription="Validate compatibility later"/><small>{printer ? `${printer.buildVolume.x} × ${printer.buildVolume.y} × ${printer.buildVolume.z} mm · ${printer.enclosed ? 'Enclosed' : 'Open frame'}` : 'Compatibility will be checked when selected.'}</small></div></section>
         <section className="context-card analysis-context"><span>ANALYSIS</span><div className="analysis-options">
           <label><input type="radio" checked={connection.provider === 'local'} onChange={() => selectAnalysisMode('local')}/><span><b>Local Analysis</b><small>Private · geometry + deterministic interpretation</small></span></label>
@@ -1297,15 +1368,18 @@ export default function App() {
       </aside>
 
       <section className="model-workspace">
-        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1>{analysis?.fileName ?? 'No model loaded'}</h1>{analysis && <span className="model-measured"><UiIcon name="check"/> Geometry measured</span>}</div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Model'], ['risk', 'Overhangs'], ...(geometryWarnings.length ? [['mesh', 'Mesh issues'] as [PreviewMode, string]] : [])] as Array<[PreviewMode, string]>).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => { setSelectedOverhangRegionId(undefined); setPreviewMode(id); }}>{label}</button>)}</div>}</header>
+        <header className="model-workspace-head"><div><span className="kicker">MODEL</span><h1 title={analysis?.fileName}>{analysis?.fileName ?? 'No model loaded'}</h1>{analysis && <span className="model-measured"><UiIcon name="check"/> Geometry measured</span>}</div>{analysis && <div className="preview-toolbar" role="group" aria-label="Model preview mode">{([['recommended', 'Model'], ['risk', 'Overhangs'], ...(geometryWarnings.length ? [['mesh', 'Mesh issues'] as [PreviewMode, string]] : [])] as Array<[PreviewMode, string]>).map(([id, label]) => <button key={id} className={previewMode === id ? 'active' : ''} aria-pressed={previewMode === id} onClick={() => { setSelectedOverhangRegionId(undefined); setPreviewMode(id); }}>{label}</button>)}</div>}</header>
+        {modelLoadProgress && <div className="model-loading-overlay" role="status" aria-live="polite" aria-label={`${modelLoadProgress.phase}, ${modelLoadProgress.percent}%`}>
+          <div className="model-loading-card"><img src="/check-make-symbol.svg" alt=""/><span className="kicker">LOADING MODEL</span><h2>{modelLoadProgress.phase}</h2><progress max="100" value={modelLoadProgress.percent}>{modelLoadProgress.percent}%</progress><p>{modelLoadProgress.percent}% · Large models can take a moment. Check Make is still working.</p></div>
+        </div>}
         {analysis ? <>
-          <div ref={modelPreview} className={`workflow-preview ${spatialMarkingKind ? 'marking-spatial-region' : ''}`}><Suspense fallback={<div className="preview preview-loading" role="status">Loading 3D preview…</div>}><LazyModelPreview geometry={geometry} orientationId={effectivePreviewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} buildPlates={importedBuildPlates} overhangRegionCount={previewGeometryRisk?.overhangRegionCount ?? 0} overhangRegions={previewGeometryRisk?.overhangRegions ?? []} selectedOverhangRegionId={selectedOverhangRegionId} onSelectOverhangRegion={showOverhangRegion} spatialRegions={spatialPreviewRegions} markingKind={spatialMarkingKind} meshTopology={analysis.topology} onFaceSelect={selectSpatialFace} captureKey={`${analysis.fileName}:${effectivePreviewOrientationId}:${previewMode}:${analysis.document?.plateCount ?? 1}:${selectedOverhangRegionId ?? 'all'}`} onCapture={setPreviewImage}/></Suspense></div>
+          <div ref={modelPreview} className={`workflow-preview ${spatialMarkingKind ? 'marking-spatial-region' : ''}`}><Suspense fallback={<div className="preview preview-loading" role="status">Loading 3D preview…</div>}><LazyModelPreview geometry={geometry} orientationId={effectivePreviewOrientationId} mode={previewMode} plateSize={previewPlate} plateLabel={printer ? 'Build plate' : 'Reference plate'} buildPlates={importedBuildPlates} overhangRegionCount={previewGeometryRisk?.overhangRegionCount ?? 0} overhangRegions={previewGeometryRisk?.overhangRegions ?? []} selectedOverhangRegionId={selectedOverhangRegionId} onSelectOverhangRegion={showOverhangRegion} spatialRegions={spatialPreviewRegions} markingKind={spatialMarkingKind} meshTopology={analysis.topology} onFaceSelect={selectSpatialFace} captureKey={connection.provider === 'openai' ? `${analysis.fileName}:${effectivePreviewOrientationId}:${previewMode}:${analysis.document?.plateCount ?? 1}:${selectedOverhangRegionId ?? 'all'}` : undefined} onCapture={connection.provider === 'openai' ? setPreviewImage : undefined}/></Suspense></div>
           <div className="workflow-metrics"><div><b>{(previewOrientation?.heightMm ?? analysis.heightMm).toFixed(1)} mm</b><span>Height</span></div><div><b>{multiPlateProject ? analysis.document?.plateCount : analysis.topology?.componentCount ?? 1}</b><span>{multiPlateProject ? 'Build plates' : 'Mesh bodies'}</span></div><button className={previewMode === 'risk' ? 'active' : ''} aria-pressed={previewMode === 'risk'} onClick={() => showOverhangRegion()}><b>{previewGeometryRisk?.overhangRegionCount ?? 0}</b><span>Overhangs</span></button><div><b>{multiPlateProject ? '—' : `${((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}%`}</b><span>{multiPlateProject ? 'Per-plate contact' : 'Bed contact'}</span></div></div>
           <details className="model-evidence-drawer" open={showPlanReview && (spatialGaps.length > 0 || meshDecisionNeeded) ? true : undefined}><summary><span>Model checks</span><em className={meshFindingNeedsAttention || spatialGaps.length ? 'warning' : 'ready'}>{meshDecisionNeeded ? '1 decision needed' : spatialGaps.length ? `${spatialGaps.length} area decision${spatialGaps.length === 1 ? '' : 's'}` : sourceCorrectionRequired ? 'Correction required' : unresolvedGeometry ? 'Unresolved' : intentionalGeometryConfirmed && geometryWarnings.length ? 'Reviewed' : meshFindingNeedsAttention ? `${geometryWarnings.length} issue${geometryWarnings.length === 1 ? '' : 's'}` : 'Mesh ready'}</em></summary>
             <div className="model-checks">
               <details className="model-check-detail mesh-integrity-check" open={previewMode === 'mesh' ? true : undefined}><summary><span className={`check-indicator ${meshFindingNeedsAttention ? 'warning' : 'ready'}`}>{meshFindingNeedsAttention ? '!' : <UiIcon name="check"/>}</span><span><b>Mesh integrity</b><small>{meshDecisionNeeded ? 'A geometry decision is required before the plan is ready' : meshDecisionStatus ?? (geometryWarnings.length ? `${geometryWarnings.length} finding${geometryWarnings.length === 1 ? '' : 's'} reviewed` : 'Closed printable mesh detected')}</small></span><em>{sourceCorrectionRequired ? 'Correct source' : unresolvedGeometry ? 'Review ›' : intentionalGeometryConfirmed && geometryWarnings.length ? 'Reviewed' : geometryWarnings.length ? 'Review ›' : ''}</em></summary>{geometryWarnings.length > 0 && <div className="mesh-integrity-body"><p>{sourceCorrectionRequired ? 'You confirmed that this should be one closed solid. Correct it in the source model and import the revised file; Check Make will not alter the design geometry.' : intentionalGeometryConfirmed ? 'These coincident or shared edges were confirmed as intentional. The source remains unchanged.' : unresolvedGeometry ? 'The geometry remains unresolved. Check Make will preserve the source and warn before export.' : 'Check Make found edges a slicer may interpret or repair. Review the highlighted areas and confirm whether they are intentional.'}</p><div className="geometry-warnings">{geometryWarnings.map(finding => <div key={finding.id}><b>{finding.label}</b><p>{finding.detail}</p></div>)}</div><div className="mesh-integrity-actions"><button type="button" onClick={showMeshIssues}>Show affected areas</button>{meshDecisionNeeded && <button type="button" onClick={() => document.getElementById('decision-mesh-repair')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Review decision</button>}</div></div>}</details>
               {multiPlateProject ? <div><span className="check-indicator ready"><UiIcon name="check"/></span><span><b>Build plate placement</b><small>{analysis.document?.plateCount} imported build plates · source assignments preserved</small></span></div> : <div><span className="check-indicator neutral">%</span><span><b>Bed contact</b><small>{((previewGeometryRisk?.bedCoverageRatio ?? 0) * 100).toFixed(1)}% of the bounding footprint</small></span></div>}
-              {previewGeometryRisk?.overhangRegionCount ? <details className="model-check-detail overhang-check"><summary><span className="check-indicator attention">{previewGeometryRisk.overhangRegionCount}</span><span><b>Overhangs</b><small>{previewGeometryRisk.overhangRegionCount} area{previewGeometryRisk.overhangRegionCount === 1 ? '' : 's'} to inspect · largest {previewGeometryRisk.largestOverhangRegionAreaMm2.toFixed(0)} mm²</small></span><em>Review ›</em></summary><div className="overhang-review"><div className="overhang-review-heading"><p>Select an area to focus the 3D camera, expose its underside, and inspect the highlighted faces.</p><button type="button" onClick={() => showOverhangRegion()}>Show all</button></div><div className="overhang-region-list">{previewGeometryRisk.overhangRegions.map((region, index) => { const regionId = region.id ?? `overhang-${index + 1}`; const location = region.minZMm <= Math.max(0.3, (previewOrientation?.heightMm ?? analysis.heightMm) * 0.003) ? 'Near build plate' : region.maxZMm >= (previewOrientation?.heightMm ?? analysis.heightMm) * 0.7 ? 'Upper model' : region.minZMm >= (previewOrientation?.heightMm ?? analysis.heightMm) * 0.3 ? 'Middle of model' : 'Lower model'; return <article className={selectedOverhangRegionId === regionId ? 'selected' : ''} key={regionId}><div><span><b>Area {index + 1}</b><em className={region.supportAssessment === 'inspect' ? 'inspect' : 'likely'}>{region.supportAssessment === 'inspect' ? 'Inspect' : 'Support likely'}</em></span><small>{location} · {region.areaMm2.toFixed(0)} mm² · {region.projectedSpanMm.toFixed(1)} mm span</small><p>{region.assessmentReason ?? 'Angle-based candidate; confirm in the slicer before printing.'}</p></div><button type="button" onClick={() => showOverhangRegion(regionId)}>Show in 3D</button></article>; })}</div></div></details> : <div><span className="check-indicator ready">0</span><span><b>Overhangs</b><small>No angle-based regions detected</small></span></div>}
+              {previewGeometryRisk?.overhangRegionCount ? <button type="button" className="overhang-check-summary" onClick={() => showOverhangRegion()}><span className="check-indicator attention">{previewGeometryRisk.overhangRegionCount}</span><span><b>Overhangs</b><small>{previewGeometryRisk.overhangRegionCount} angle-based area{previewGeometryRisk.overhangRegionCount === 1 ? '' : 's'} · largest {previewGeometryRisk.largestOverhangRegionAreaMm2.toFixed(0)} mm² · review in the slicer</small></span><em>Show ›</em></button> : <div><span className="check-indicator ready">0</span><span><b>Overhangs</b><small>No angle-based regions detected</small></span></div>}
               {orientationComparisons.length > 0 && <details className="model-check-detail orientation-check"><summary><span className="check-indicator neutral">↻</span><span><b>Orientation</b><small>{previewOrientation?.label ?? 'As imported'} · select to test alternatives</small></span><em>Review ›</em></summary><div className="orientation-comparison embedded"><p>Compare six axis-aligned orientations using bed contact, overhang exposure, and height. Selecting one updates the 3D model immediately.</p>{orientationComparisons[0].constraintsApplied?.map(note => <p className="orientation-constraint applied" key={note}>Applied: {note}</p>)}{orientationComparisons[0].constraintsUnresolved?.map(note => <p className="orientation-constraint unresolved" key={note}>Not localized: {note}</p>)}{previewOrientationId !== 'as-imported' && <button type="button" className={`compare-orientation ${previewMode === 'compare' ? 'active' : ''}`} aria-pressed={previewMode === 'compare'} onClick={() => { setPreviewMode(previewMode === 'compare' ? 'recommended' : 'compare'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}>{previewMode === 'compare' ? 'Show selected orientation' : 'Compare with imported orientation'}</button>}<div>{orientationComparisons.map((item, index) => <button className={`${previewOrientationId === item.candidate.id ? 'selected ' : ''}${index === 0 ? 'recommended' : ''}`} aria-pressed={previewOrientationId === item.candidate.id} key={item.candidate.id} onClick={() => { setPreviewOrientationId(item.candidate.id); setPreviewMode('recommended'); requestAnimationFrame(() => modelPreview.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}><span><b>{item.candidate.label}</b><small>{index === 0 ? 'Recommended for current objective' : 'Preview this orientation'}</small></span><span className="orientation-measures">{item.candidate.heightMm.toFixed(1)} mm high · {item.candidate.bedContactAreaMm2.toFixed(0)} mm² contact · {(item.candidate.overhangRatio * 100).toFixed(1)}% overhang</span></button>)}</div></div></details>}
               {showPlanReview && intelligence && <div className="important-areas-check">
                 <button type="button" className="model-check-toggle" aria-expanded={importantAreasOpen} onClick={() => setImportantAreasOpen(open => !open)}><span className={`check-indicator ${spatialGaps.length ? 'attention' : spatialIntent.regions.some(region => region.status === 'confirmed') ? 'ready' : 'neutral'}`}>{spatialGaps.length || spatialIntent.regions.filter(region => region.status === 'confirmed').length}</span><span><b>Important areas</b><small>{spatialGaps.length ? `${spatialGaps.length} location decision${spatialGaps.length === 1 ? '' : 's'} to review` : spatialIntent.regions.some(region => region.status === 'confirmed') ? 'Confirmed areas are used in the plan' : 'Optional · Check Make suggestions need your confirmation'}</small></span><em>{importantAreasOpen ? 'Hide' : 'Review'} ›</em></button>
@@ -1365,7 +1439,7 @@ export default function App() {
           </> : <>
             <span className="kicker">PREPARE</span><div className="prepare-heading"><div><h1>{unsupportedPlan ? 'Review unsupported requirement' : modifyingPlan ? 'Modify plan' : 'Review assumptions'}</h1><p>{intelligence.objectName}</p></div><span className="review-pill">{unsupportedPlan ? 'Unsupported use' : 'Review required'}</span></div><div className="readiness-summary"><i style={{ '--readiness': `${Math.max(16, 100 - Math.max(1, decisionCount) * 12)}%` } as React.CSSProperties}/><div><b>{unsupportedPlan ? 'Export is paused for this requirement' : decisionCount ? `${decisionCount} item${decisionCount === 1 ? '' : 's'} to review` : 'Review the interpreted plan inputs'}</b><small>{intelligence.likelyPurpose}</small></div></div>
             {readiness?.unsupportedReasons.map(reason => <div className="context-warning unsupported-guidance" role="alert" key={reason}><b>Export paused for this requirement</b><p>{reason}</p><p>Correct the related answer below if the requirement was misunderstood. If it is accurate, Check Make does not yet have a qualified dataset for this use.</p></div>)}
-            <InterpretationSummary intelligence={intelligence} purposeClarification={followUps['object-purpose-description'] ?? ''} onPurposeClarification={updatePurposeClarificationDraft} onApplyPurposeClarification={applyPurposeClarification}/>
+            <InterpretationSummary intelligence={intelligence} purposeClarification={followUps['object-purpose-description'] ?? ''} onApplyPurposeClarification={applyPurposeClarification}/>
             {editableQuestions.length > 0 && <div className="workflow-questions"><div className="decision-heading"><div><h2>{unsupportedPlan ? 'Review the answer that paused export' : modifyingPlan ? 'Edit plan decisions' : 'Review Check Make’s assumptions'}</h2><p>{unsupportedPlan ? 'Change the answer only if Check Make misunderstood the requirement, then re-check the complete plan.' : modifyingPlan ? 'Your earlier answers remain editable. Changes are re-applied to the complete plan.' : 'Context statements and world-model assumptions are prefilled. Change only what Check Make misunderstood.'}</p></div><span>{unansweredQuestions.length ? `${unansweredQuestions.length} missing` : assumptionReviewCount ? `${assumptionReviewCount} to review` : 'Complete'}</span></div>{editableQuestions.map(question => {
               const inferredEvidence = autoFilledDecisions[question.id];
               const requirement = question.field && ['environment', 'load', 'impact', 'heat', 'priority', 'supportsAllowed'].includes(question.field)
@@ -1379,7 +1453,7 @@ export default function App() {
                     onChange={value => updateDecision(question.id, value)}
                     triggerRef={element => { decisionInputs.current[question.id] = element; }}
                   />
-                : <textarea ref={element => { decisionInputs.current[question.id] = element; }} value={followUps[question.id] ?? ''} onChange={event => question.id === 'purpose' ? updatePurpose(event.target.value) : setFollowUps(current => ({ ...current, [question.id]: event.target.value }))} onBlur={() => { manuallyAnsweredDecisions.current.add(question.id); focusNextDecision(question.id, followUps); }} placeholder="Describe only what you know…"/>;
+                : <BufferedTextarea inputRef={element => { decisionInputs.current[question.id] = element; }} value={followUps[question.id] ?? ''} onCommit={value => question.id === 'purpose' ? updatePurpose(value) : setFollowUps(current => ({ ...current, [question.id]: value }))} onBlurCommit={value => { manuallyAnsweredDecisions.current.add(question.id); focusNextDecision(question.id, { ...followUps, [question.id]: value }); }} placeholder="Describe only what you know…"/>;
               const interpretationLabel = requirement?.status === 'assumed'
                 ? 'Assumed by Check Make · review'
                 : requirement?.status === 'inferred'
@@ -1420,7 +1494,7 @@ export default function App() {
           })}</div>
           {materialPlanBlocked && <div className="context-warning unsupported-guidance" role="alert"><b>Export blocked by material compatibility</b>{materialBlockReasons.map(reason => <p key={reason}>{reason}</p>)}</div>}
           <div className="export-actions"><button type="button" className="export-save-project" disabled={!sourceModelPath || busy} onClick={() => void saveProject()}>Save Project…</button><button className="primary" disabled={busy || sourceCorrectionRequired || materialPlanBlocked || !sourcePath || !selectedAdapter?.available || !selectedPrinterSupported || !selectedStructureSupported} onClick={() => void createPackage(packageTarget === 'bambu' ? 'open' : 'save')}>{busy ? 'Creating…' : sourceCorrectionRequired ? 'Source correction required' : packageTarget === 'generic' ? multiPlateProject ? 'Create plate bundle…' : 'Create Core 3MF…' : packageTarget === 'bambu' ? 'Open in Bambu Studio' : `Export for ${selectedAdapter?.label ?? packageTarget}…`}</button></div>
-          <details className="advanced-packaging"><summary><span><b>Advanced packaging</b><small>{geometryStrategy === 'multipart' ? 'Separate shells as parts' : 'Preserve source structure'}</small></span><em>Options</em></summary><label className={multiPlateProject || sourceCorrectionRequired ? 'disabled' : ''}><input type="checkbox" checked={geometryStrategy === 'multipart'} disabled={multiPlateProject || sourceCorrectionRequired} onChange={event => setGeometryStrategy(event.target.checked ? 'multipart' : 'preserve')}/><span><b>Export disconnected shells as separate parts</b><small>{multiPlateProject ? 'Unavailable for multi-plate projects.' : sourceCorrectionRequired ? 'Unavailable until the source model is corrected.' : 'Changes 3MF object grouping, not mesh coordinates. Review material assignments in the slicer.'}</small></span></label><p>Check Make never repairs or boolean-unions geometry during normal export.</p></details>
+          {hasDisconnectedShells && <details className="advanced-packaging"><summary><span><b>Advanced packaging</b><small>{geometryStrategy === 'multipart' ? 'Separate shells as parts' : 'Preserve source structure'}</small></span><em>Options</em></summary><label className={sourceCorrectionRequired ? 'disabled' : ''}><input type="checkbox" checked={geometryStrategy === 'multipart'} disabled={sourceCorrectionRequired} onChange={event => setGeometryStrategy(event.target.checked ? 'multipart' : 'preserve')}/><span><b>Export disconnected shells as separate parts</b><small>{sourceCorrectionRequired ? 'Unavailable until the source model is corrected.' : 'Changes 3MF object grouping, not mesh coordinates. Review material assignments in the slicer.'}</small></span></label><p>Check Make never repairs or boolean-unions geometry during normal export.</p></details>}
           {multiPlateProject && <details className="project-structure-summary"><summary><span><b>Imported project</b><small>{analysis?.document?.plateCount} plates · {analysis?.document?.instanceCount} objects</small></span><em>Details</em></summary><ul>{analysis?.document?.plates?.map(plate => <li key={plate.id}><span>{plate.name || `Plate ${plate.id}`}</span><b>{plate.instanceCount} objects · {plate.sizeMm.map(value => Math.round(value)).join(' × ')} mm</b></li>)}</ul><p>Plate assignments, names, IDs, and orientations are preserved.</p>{Boolean(analysis?.document?.overrideKeys?.length) && <p className="project-override-warning">Preserved overrides: {analysis?.document?.overrideKeys?.join(', ')}.</p>}</details>}
           <details className="workflow-evidence"><summary>Package contents & validation</summary><ul><li>Core 3MF geometry in millimetres</li><li>{multiPlateProject ? 'Imported per-object orientations and plate placements preserved' : 'Selected orientation baked into geometry'}</li><li>Degenerate triangles removed</li><li>Check Make analysis and canonical settings metadata</li>{nativeProjectTarget && <li>{nativeTargetLabel} native profiles and mapped settings</li>}</ul><p>{nativeValidationText}</p></details>
           {status && <p className="save-status">{status.startsWith('Project saved:') ? 'Check Make project saved.' : status === 'Export cancelled' ? status : 'Export completed successfully.'}</p>}
