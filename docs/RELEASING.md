@@ -33,8 +33,42 @@ without a `v` prefix. The workflow rejects mismatched versions, runs the
 portable frontend checks, then builds native bundles on each target platform.
 It creates or updates `v<version>` as a draft release.
 
-The workflow uses ad-hoc signing on macOS until Apple Developer ID secrets are
-configured. It does not make an unsigned build appear trusted.
+### macOS signing and notarization
+
+The macOS jobs sign with Developer ID and notarize automatically when the
+repository secrets below are configured. When any signing secret is missing the
+job falls back to an ad-hoc signature, prints a workflow warning, and records
+`Signing mode: ad-hoc` in the job summary. It never makes an unsigned build
+appear trusted.
+
+| Secret | Purpose | How to obtain |
+| --- | --- | --- |
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` export of the **Developer ID Application** certificate and its private key | Xcode → Settings → Accounts → Manage Certificates, or developer.apple.com → Certificates. Export from Keychain Access as `.p12`, then `base64 -i cert.p12 \| tr -d '\n' \| pbcopy` |
+| `APPLE_CERTIFICATE_PASSWORD` | Password chosen when exporting the `.p12` | Set during the export |
+| `APPLE_SIGNING_IDENTITY` | Full identity name, for example `Developer ID Application: Anders Pettersson (TEAMID)` | `security find-identity -v -p codesigning` on a Mac where the certificate is installed |
+| `APPLE_ID` | Apple ID e-mail used for notarization | The Apple Developer Program account |
+| `APPLE_PASSWORD` | App-specific password for that Apple ID | appleid.apple.com → Sign-In and Security → App-Specific Passwords |
+| `APPLE_TEAM_ID` | Ten-character team identifier | developer.apple.com → Membership details |
+
+Requirements and behaviour:
+
+- A paid Apple Developer Program membership is required for a Developer ID
+  certificate; a free account cannot issue one.
+- The certificate must be **Developer ID Application**, not Apple Development
+  or Mac App Distribution.
+- Tauri imports the certificate into a temporary keychain on the runner, signs
+  the app with the hardened runtime, submits it to Apple's notary service, and
+  staples the ticket. Notarization typically adds two to ten minutes per job.
+- Notarization requires all three of `APPLE_ID`, `APPLE_PASSWORD`, and
+  `APPLE_TEAM_ID` in addition to the signing secrets. With signing secrets only,
+  the job produces a signed but not notarized build and warns about it.
+- The **Verify macOS signature and notarization** step runs `codesign --verify
+  --deep --strict`, checks the hardened-runtime flag, validates the stapled
+  ticket with `stapler validate`, and runs `spctl --assess`. Its job summary is
+  the signing evidence for the release table below.
+- Rotate the app-specific password and re-export the certificate if a runner
+  log or secret is ever exposed. Certificates expire after five years; the
+  notarization ticket remains valid for builds notarized before expiry.
 
 ## Release evidence
 
@@ -68,6 +102,9 @@ verification. Record at least one observed Inspect → Prepare → Export user f
 on each advertised platform. Developer ID signing, notarization, and
 Authenticode are preferred but are not beta-exit requirements; every unsigned
 or ad-hoc-signed package must carry explicit installation and trust warnings.
+Developer ID signing and notarization **are** requirements for the first public
+stable macOS release, because Gatekeeper blocks ad-hoc-signed downloads on
+current macOS versions.
 
 ## Publish
 

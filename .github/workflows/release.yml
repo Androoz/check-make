@@ -82,20 +82,98 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: npm ci
+      - name: Configure macOS signing and notarization
+        if: startsWith(matrix.platform, 'macos-')
+        id: macos_signing
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Tauri treats an empty APPLE_* variable as configured, so only export
+          # the variables that are actually available. Everything else falls back
+          # to an ad-hoc signature that Gatekeeper will not trust.
+          if [[ -n "$APPLE_CERTIFICATE" && -n "$APPLE_CERTIFICATE_PASSWORD" && -n "$APPLE_SIGNING_IDENTITY" ]]; then
+            {
+              echo "APPLE_CERTIFICATE<<CHECKMAKE_EOF"
+              echo "$APPLE_CERTIFICATE"
+              echo "CHECKMAKE_EOF"
+              echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+              echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+            } >> "$GITHUB_ENV"
+            echo "mode=developer-id" >> "$GITHUB_OUTPUT"
+            echo "Signing mode: Developer ID ($APPLE_SIGNING_IDENTITY)"
+          else
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "mode=ad-hoc" >> "$GITHUB_OUTPUT"
+            echo "::warning::APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD or APPLE_SIGNING_IDENTITY is missing; falling back to ad-hoc signing."
+          fi
+
+          if [[ -n "$APPLE_CERTIFICATE" && -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+            {
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+            echo "Notarization: enabled for team $APPLE_TEAM_ID"
+          else
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+            if [[ -n "$APPLE_CERTIFICATE" ]]; then
+              echo "::warning::APPLE_ID, APPLE_PASSWORD or APPLE_TEAM_ID is missing; the build will be signed but not notarized."
+            fi
+          fi
       - name: Build and upload to a draft release
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos-') && '-' || '' }}
         with:
           tagName: v__VERSION__
           releaseName: Check Make v__VERSION__
           releaseBody: |
             Draft build generated from a verified source revision.
 
-            Before publishing, record installation and smoke-test results for every attached platform in docs/RELEASING.md. macOS builds use ad-hoc signing until Developer ID signing and notarization are configured. Windows builds are unsigned until a code-signing certificate is configured. Linux slicer integration is not yet release-validated.
+            Before publishing, record installation and smoke-test results for every attached platform in docs/RELEASING.md. Each macOS job logs whether it used Developer ID signing and notarization or fell back to ad-hoc signing; the "Verify macOS signature and notarization" step is the evidence. Windows builds are unsigned until a code-signing certificate is configured. Linux slicer integration is not yet release-validated.
           releaseDraft: true
           prerelease: ${{ needs.preflight.outputs.prerelease }}
           generateReleaseNotes: true
           args: ${{ matrix.args }}
           releaseAssetNamePattern: Check-Make-[version]-[platform]-[arch][setup][ext]
+      - name: Verify macOS signature and notarization
+        if: startsWith(matrix.platform, 'macos-')
+        shell: bash
+        env:
+          SIGNING_MODE: ${{ steps.macos_signing.outputs.mode }}
+          NOTARIZED: ${{ steps.macos_signing.outputs.notarize }}
+        run: |
+          set -euo pipefail
+          TARGET_DIR="src-tauri/target/$(echo '${{ matrix.args }}' | sed -n 's/.*--target \([^ ]*\).*/\1/p')/release/bundle"
+          APP="$(find "$TARGET_DIR/macos" -maxdepth 1 -name '*.app' | head -1)"
+          DMG="$(find "$TARGET_DIR/dmg" -maxdepth 1 -name '*.dmg' | head -1)"
+          echo "App bundle: $APP"
+          echo "Disk image: $DMG"
+          echo "## macOS signing evidence (${{ matrix.label }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Signing mode: $SIGNING_MODE" >> "$GITHUB_STEP_SUMMARY"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Identifier=|flags=' || true
+          if [[ "$SIGNING_MODE" == "developer-id" ]]; then
+            codesign -dv "$APP" 2>&1 | grep -q 'flags=.*runtime' || { echo "Hardened runtime is not enabled"; exit 1; }
+            if [[ "$NOTARIZED" == "true" ]]; then
+              xcrun stapler validate "$APP"
+              spctl --assess --type execute --verbose=2 "$APP"
+              if xcrun stapler validate "$DMG"; then
+                echo "- Notarization ticket: stapled to app and DMG, Gatekeeper assessment passed" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::warning::The app is notarized and stapled, but the DMG has no stapled ticket. Gatekeeper will still verify online."
+                echo "- Notarization ticket: stapled to app, missing on DMG (online verification only), Gatekeeper assessment passed" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            else
+              echo "- Notarization: not performed" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "- Notarization: not performed (ad-hoc signature)" >> "$GITHUB_STEP_SUMMARY"
+          fi
