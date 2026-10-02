@@ -147,17 +147,52 @@ jobs:
         if: startsWith(matrix.platform, 'macos-')
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_MODE: ${{ steps.macos_signing.outputs.mode }}
           NOTARIZED: ${{ steps.macos_signing.outputs.notarize }}
+          MATRIX_ARGS: ${{ matrix.args }}
+          MATRIX_LABEL: ${{ matrix.label }}
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          TARGET_DIR="src-tauri/target/$(echo '${{ matrix.args }}' | sed -n 's/.*--target \([^ ]*\).*/\1/p')/release/bundle"
-          APP="$(find "$TARGET_DIR/macos" -maxdepth 1 -name '*.app' | head -1)"
-          DMG="$(find "$TARGET_DIR/dmg" -maxdepth 1 -name '*.dmg' | head -1)"
-          echo "App bundle: $APP"
+          TARGET="$(echo "$MATRIX_ARGS" | sed -n 's/.*--target \([^ ]*\).*/\1/p')"
+          case "$TARGET" in
+            aarch64-apple-darwin) ASSET_ARCH=aarch64 ;;
+            x86_64-apple-darwin) ASSET_ARCH=x64 ;;
+            *) echo "Unknown macOS target: $TARGET"; exit 1 ;;
+          esac
+          DMG="$(find "src-tauri/target/$TARGET/release/bundle/dmg" -maxdepth 1 -name '*.dmg' | head -1)"
+          test -n "$DMG" || { echo "No DMG found for $TARGET"; exit 1; }
           echo "Disk image: $DMG"
-          echo "## macOS signing evidence (${{ matrix.label }})" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Signing mode: $SIGNING_MODE" >> "$GITHUB_STEP_SUMMARY"
+          SUMMARY="$GITHUB_STEP_SUMMARY"
+          echo "## macOS signing evidence ($MATRIX_LABEL)" >> "$SUMMARY"
+          echo "- Signing mode: $SIGNING_MODE" >> "$SUMMARY"
+
+          # Tauri notarizes and staples the .app but only signs the DMG. Gatekeeper
+          # evaluates the downloaded DMG too, so notarize and staple it here and
+          # replace the asset that tauri-action already uploaded.
+          if [[ "$SIGNING_MODE" == "developer-id" && "$NOTARIZED" == "true" ]]; then
+            if xcrun stapler validate "$DMG" >/dev/null 2>&1; then
+              echo "DMG already carries a stapled notarization ticket."
+            else
+              echo "Submitting DMG for notarization..."
+              xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+              xcrun stapler staple "$DMG"
+              ASSET_NAME="Check-Make-$RELEASE_VERSION-darwin-$ASSET_ARCH.dmg"
+              echo "Replacing release asset $ASSET_NAME with the stapled DMG..."
+              gh release upload "v$RELEASE_VERSION" "$DMG#$ASSET_NAME" --clobber
+            fi
+            xcrun stapler validate "$DMG"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+            echo "- DMG: Developer ID signed, notarized, ticket stapled, Gatekeeper open-assessment passed" >> "$SUMMARY"
+          fi
+
+          MOUNT="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG" >/dev/null
+          trap 'hdiutil detach "$MOUNT" -quiet || true' EXIT
+          APP="$(find "$MOUNT" -maxdepth 1 -name '*.app' | head -1)"
+          test -n "$APP" || { echo "No .app inside the DMG"; exit 1; }
+          echo "App bundle inside DMG: $APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Identifier=|flags=' || true
           if [[ "$SIGNING_MODE" == "developer-id" ]]; then
@@ -165,15 +200,10 @@ jobs:
             if [[ "$NOTARIZED" == "true" ]]; then
               xcrun stapler validate "$APP"
               spctl --assess --type execute --verbose=2 "$APP"
-              if xcrun stapler validate "$DMG"; then
-                echo "- Notarization ticket: stapled to app and DMG, Gatekeeper assessment passed" >> "$GITHUB_STEP_SUMMARY"
-              else
-                echo "::warning::The app is notarized and stapled, but the DMG has no stapled ticket. Gatekeeper will still verify online."
-                echo "- Notarization ticket: stapled to app, missing on DMG (online verification only), Gatekeeper assessment passed" >> "$GITHUB_STEP_SUMMARY"
-              fi
+              echo "- App: Developer ID signed, hardened runtime, notarized, ticket stapled, Gatekeeper execute-assessment passed" >> "$SUMMARY"
             else
-              echo "- Notarization: not performed" >> "$GITHUB_STEP_SUMMARY"
+              echo "- App: Developer ID signed, not notarized" >> "$SUMMARY"
             fi
           else
-            echo "- Notarization: not performed (ad-hoc signature)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- App: ad-hoc signature only, not notarized" >> "$SUMMARY"
           fi
