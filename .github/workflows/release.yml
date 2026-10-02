@@ -180,7 +180,9 @@ jobs:
               xcrun stapler staple "$DMG"
               ASSET_NAME="Check-Make-$RELEASE_VERSION-darwin-$ASSET_ARCH.dmg"
               echo "Replacing release asset $ASSET_NAME with the stapled DMG..."
-              gh release upload "v$RELEASE_VERSION" "$DMG#$ASSET_NAME" --clobber
+              UPLOAD_DIR="$(mktemp -d)"
+              cp "$DMG" "$UPLOAD_DIR/$ASSET_NAME"
+              gh release upload "v$RELEASE_VERSION" "$UPLOAD_DIR/$ASSET_NAME" --clobber
             fi
             xcrun stapler validate "$DMG"
             spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
