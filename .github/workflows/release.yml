@@ -53,6 +53,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - label: macOS Universal
+            platform: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
           - label: macOS Apple Silicon
             platform: macos-latest
             args: --target aarch64-apple-darwin --bundles dmg
@@ -157,6 +160,7 @@ jobs:
           set -euo pipefail
           TARGET="$(echo "$MATRIX_ARGS" | sed -n 's/.*--target \([^ ]*\).*/\1/p')"
           case "$TARGET" in
+            universal-apple-darwin) ASSET_ARCH=universal ;;
             aarch64-apple-darwin) ASSET_ARCH=aarch64 ;;
             x86_64-apple-darwin) ASSET_ARCH=x64 ;;
             *) echo "Unknown macOS target: $TARGET"; exit 1 ;;
@@ -195,6 +199,13 @@ jobs:
           APP="$(find "$MOUNT" -maxdepth 1 -name '*.app' | head -1)"
           test -n "$APP" || { echo "No .app inside the DMG"; exit 1; }
           echo "App bundle inside DMG: $APP"
+          BINARY="$APP/Contents/MacOS/$(defaults read "$APP/Contents/Info.plist" CFBundleExecutable)"
+          ARCHS="$(lipo -archs "$BINARY")"
+          echo "Executable architectures: $ARCHS"
+          echo "- Architectures: $ARCHS" >> "$SUMMARY"
+          if [[ "$TARGET" == "universal-apple-darwin" ]]; then
+            [[ "$ARCHS" == *x86_64* && "$ARCHS" == *arm64* ]] || { echo "Universal build is missing a slice"; exit 1; }
+          fi
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Identifier=|flags=' || true
           if [[ "$SIGNING_MODE" == "developer-id" ]]; then

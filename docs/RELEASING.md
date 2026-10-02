@@ -62,6 +62,10 @@ Requirements and behaviour:
 - Notarization requires all three of `APPLE_ID`, `APPLE_PASSWORD`, and
   `APPLE_TEAM_ID` in addition to the signing secrets. With signing secrets only,
   the job produces a signed but not notarized build and warns about it.
+- The Universal DMG (`darwin-universal`) is the public download; the
+  per-architecture DMGs remain as smaller alternatives. The verification step
+  checks with `lipo` that the universal executable contains both `x86_64` and
+  `arm64`.
 - The **Verify macOS signature and notarization** step runs `codesign --verify
   --deep --strict`, checks the hardened-runtime flag, validates the stapled
   ticket with `stapler validate`, and runs `spctl --assess`. Its job summary is
@@ -76,6 +80,7 @@ Record each result in the draft release notes or the release pull request:
 
 | Target | Bundle | Build | Checksum | Signature | Install/start | Core workflow | Native slicer export |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| macOS Universal | DMG | required | required | Developer ID + notarization required | required | required | test installed slicers |
 | macOS Apple Silicon | DMG | required | required | Developer ID + notarization preferred | required | required | test installed slicers |
 | macOS Intel | DMG | required | required | Developer ID + notarization preferred | required | required | test installed slicers |
 | Windows x64 | NSIS EXE | required | required | Authenticode preferred | required | required | test installed slicers |
