@@ -53,6 +53,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - label: macOS Universal
+            platform: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
           - label: macOS Apple Silicon
             platform: macos-latest
             args: --target aarch64-apple-darwin --bundles dmg
@@ -82,20 +85,138 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: npm ci
+      - name: Configure macOS signing and notarization
+        if: startsWith(matrix.platform, 'macos-')
+        id: macos_signing
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Tauri treats an empty APPLE_* variable as configured, so only export
+          # the variables that are actually available. Everything else falls back
+          # to an ad-hoc signature that Gatekeeper will not trust.
+          if [[ -n "$APPLE_CERTIFICATE" && -n "$APPLE_CERTIFICATE_PASSWORD" && -n "$APPLE_SIGNING_IDENTITY" ]]; then
+            {
+              echo "APPLE_CERTIFICATE<<CHECKMAKE_EOF"
+              echo "$APPLE_CERTIFICATE"
+              echo "CHECKMAKE_EOF"
+              echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+              echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+            } >> "$GITHUB_ENV"
+            echo "mode=developer-id" >> "$GITHUB_OUTPUT"
+            echo "Signing mode: Developer ID ($APPLE_SIGNING_IDENTITY)"
+          else
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "mode=ad-hoc" >> "$GITHUB_OUTPUT"
+            echo "::warning::APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD or APPLE_SIGNING_IDENTITY is missing; falling back to ad-hoc signing."
+          fi
+
+          if [[ -n "$APPLE_CERTIFICATE" && -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+            {
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+            echo "Notarization: enabled for team $APPLE_TEAM_ID"
+          else
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+            if [[ -n "$APPLE_CERTIFICATE" ]]; then
+              echo "::warning::APPLE_ID, APPLE_PASSWORD or APPLE_TEAM_ID is missing; the build will be signed but not notarized."
+            fi
+          fi
       - name: Build and upload to a draft release
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos-') && '-' || '' }}
         with:
           tagName: v__VERSION__
           releaseName: Check Make v__VERSION__
           releaseBody: |
             Draft build generated from a verified source revision.
 
-            Before publishing, record installation and smoke-test results for every attached platform in docs/RELEASING.md. macOS builds use ad-hoc signing until Developer ID signing and notarization are configured. Windows builds are unsigned until a code-signing certificate is configured. Linux slicer integration is not yet release-validated.
+            Before publishing, record installation and smoke-test results for every attached platform in docs/RELEASING.md. Each macOS job logs whether it used Developer ID signing and notarization or fell back to ad-hoc signing; the "Verify macOS signature and notarization" step is the evidence. Windows builds are unsigned until a code-signing certificate is configured. Linux slicer integration is not yet release-validated.
           releaseDraft: true
           prerelease: ${{ needs.preflight.outputs.prerelease }}
           generateReleaseNotes: true
           args: ${{ matrix.args }}
           releaseAssetNamePattern: Check-Make-[version]-[platform]-[arch][setup][ext]
+      - name: Verify macOS signature and notarization
+        if: startsWith(matrix.platform, 'macos-')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_MODE: ${{ steps.macos_signing.outputs.mode }}
+          NOTARIZED: ${{ steps.macos_signing.outputs.notarize }}
+          MATRIX_ARGS: ${{ matrix.args }}
+          MATRIX_LABEL: ${{ matrix.label }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TARGET="$(echo "$MATRIX_ARGS" | sed -n 's/.*--target \([^ ]*\).*/\1/p')"
+          case "$TARGET" in
+            universal-apple-darwin) ASSET_ARCH=universal ;;
+            aarch64-apple-darwin) ASSET_ARCH=aarch64 ;;
+            x86_64-apple-darwin) ASSET_ARCH=x64 ;;
+            *) echo "Unknown macOS target: $TARGET"; exit 1 ;;
+          esac
+          DMG="$(find "src-tauri/target/$TARGET/release/bundle/dmg" -maxdepth 1 -name '*.dmg' | head -1)"
+          test -n "$DMG" || { echo "No DMG found for $TARGET"; exit 1; }
+          echo "Disk image: $DMG"
+          SUMMARY="$GITHUB_STEP_SUMMARY"
+          echo "## macOS signing evidence ($MATRIX_LABEL)" >> "$SUMMARY"
+          echo "- Signing mode: $SIGNING_MODE" >> "$SUMMARY"
+
+          # Tauri notarizes and staples the .app but only signs the DMG. Gatekeeper
+          # evaluates the downloaded DMG too, so notarize and staple it here and
+          # replace the asset that tauri-action already uploaded.
+          if [[ "$SIGNING_MODE" == "developer-id" && "$NOTARIZED" == "true" ]]; then
+            if xcrun stapler validate "$DMG" >/dev/null 2>&1; then
+              echo "DMG already carries a stapled notarization ticket."
+            else
+              echo "Submitting DMG for notarization..."
+              xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+              xcrun stapler staple "$DMG"
+              ASSET_NAME="Check-Make-$RELEASE_VERSION-darwin-$ASSET_ARCH.dmg"
+              echo "Replacing release asset $ASSET_NAME with the stapled DMG..."
+              UPLOAD_DIR="$(mktemp -d)"
+              cp "$DMG" "$UPLOAD_DIR/$ASSET_NAME"
+              gh release upload "v$RELEASE_VERSION" "$UPLOAD_DIR/$ASSET_NAME" --clobber
+            fi
+            xcrun stapler validate "$DMG"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+            echo "- DMG: Developer ID signed, notarized, ticket stapled, Gatekeeper open-assessment passed" >> "$SUMMARY"
+          fi
+
+          MOUNT="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG" >/dev/null
+          trap 'hdiutil detach "$MOUNT" -quiet || true' EXIT
+          APP="$(find "$MOUNT" -maxdepth 1 -name '*.app' | head -1)"
+          test -n "$APP" || { echo "No .app inside the DMG"; exit 1; }
+          echo "App bundle inside DMG: $APP"
+          BINARY="$APP/Contents/MacOS/$(defaults read "$APP/Contents/Info.plist" CFBundleExecutable)"
+          ARCHS="$(lipo -archs "$BINARY")"
+          echo "Executable architectures: $ARCHS"
+          echo "- Architectures: $ARCHS" >> "$SUMMARY"
+          if [[ "$TARGET" == "universal-apple-darwin" ]]; then
+            [[ "$ARCHS" == *x86_64* && "$ARCHS" == *arm64* ]] || { echo "Universal build is missing a slice"; exit 1; }
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Identifier=|flags=' || true
+          if [[ "$SIGNING_MODE" == "developer-id" ]]; then
+            codesign -dv "$APP" 2>&1 | grep -q 'flags=.*runtime' || { echo "Hardened runtime is not enabled"; exit 1; }
+            if [[ "$NOTARIZED" == "true" ]]; then
+              xcrun stapler validate "$APP"
+              spctl --assess --type execute --verbose=2 "$APP"
+              echo "- App: Developer ID signed, hardened runtime, notarized, ticket stapled, Gatekeeper execute-assessment passed" >> "$SUMMARY"
+            else
+              echo "- App: Developer ID signed, not notarized" >> "$SUMMARY"
+            fi
+          else
+            echo "- App: ad-hoc signature only, not notarized" >> "$SUMMARY"
+          fi
