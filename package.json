@@ -36,14 +36,14 @@
     "@tauri-apps/plugin-opener": "^2.5.4",
     "manifold-3d": "^3.5.1",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "react-dom": "^19.2.8",
     "three": "^0.180.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",
     "@types/react": "^19.1.16",
-    "@types/react-dom": "^19.1.9",
+    "@types/react-dom": "^19.2.4",
     "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^5.0.4",
     "typescript": "^5.9.2",
