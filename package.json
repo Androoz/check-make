@@ -37,7 +37,7 @@
     "manifold-3d": "^3.5.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "three": "^0.180.0",
+    "three": "^0.185.1",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
